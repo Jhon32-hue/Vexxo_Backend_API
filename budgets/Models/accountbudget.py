@@ -1,0 +1,7 @@
+from django.db import models
+class AccountBudget(models.Model):
+    owner = models.ForeignKey("auth.User", on_delete=models.CASCADE)
+    month = models.CharField(max_length=7)
+    account = models.ForeignKey("accounts.Account", on_delete=models.CASCADE)
+    amount = models.DecimalField(max_digits=14, decimal_places=2)
+    class Meta: unique_together = ("owner","month","account")
