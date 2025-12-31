@@ -1,8 +1,10 @@
+# transactions/apps.py
 from django.apps import AppConfig
 
 
 class TransactionsConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'transactions'
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "transactions"
+
     def ready(self):
-        from . import signals  # noqa: F401
+        import transactions.signals  # noqa

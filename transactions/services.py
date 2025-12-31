@@ -1,45 +1,58 @@
+# transactions/services.py
 from datetime import date
 from decimal import Decimal
+
 from django.db.models import Sum
+
 from transactions.Models.transacciones import Transaction
+from .utils_limits import month_range, account_month_expense_total
 
 
-def month_range(d: date):
-    start = d.replace(day=1)
-    if d.month == 12:
-        end = d.replace(year=d.year + 1, month=1, day=1)
-    else:
-        end = d.replace(month=d.month + 1, day=1)
-    return start, end
+__all__ = [
+    "month_range",
+    "account_month_expense_total",
+    "user_monthly_expense_total",
+    "user_category_expense_summary",
+]
 
 
-def account_month_expense_total(account, when: date) -> Decimal:
+def user_monthly_expense_total(user, when: date) -> Decimal:
+    """
+    Total de gastos de TODO el usuario en el mes de 'when'
+    (todas las cuentas).
+    """
     start, end = month_range(when)
-    total = Transaction.objects.filter(
-        owner=account.owner,
-        account=account,
-        type="expense",
-        date__gte=start,
-        date__lt=end,
-    ).aggregate(total=Sum("amount"))["total"] or 0
+    total = (
+        Transaction.objects.filter(
+            owner=user,
+            type="expense",
+            date__gte=start,
+            date__lt=end,
+        ).aggregate(total=Sum("amount"))["total"]
+        or 0
+    )
     return Decimal(total)
 
 
-def apply_balance_effect(tx, *, old_amount=None, old_account=None):
+def user_category_expense_summary(user, when: date):
     """
-    Recalcula balances en updates:
-    - si hay old_amount/old_account, revierte efecto viejo
-    - aplica efecto nuevo (income suma, expense resta)
+    Resumen de gastos por categoría en el mes de 'when'.
+    Devuelve un queryset con:
+    - category_id
+    - category__name
+    - total_amount
     """
-    if old_amount is not None and old_account is not None:
-        if tx.type == "expense":
-            old_account.balance += Decimal(old_amount)
-        else:
-            old_account.balance -= Decimal(old_amount)
-        old_account.save(update_fields=["balance"])
-
-    if tx.type == "expense":
-        tx.account.balance -= Decimal(tx.amount)
-    else:
-        tx.account.balance += Decimal(tx.amount)
-    tx.account.save(update_fields=["balance"])
+    start, end = month_range(when)
+    qs = (
+        Transaction.objects.filter(
+            owner=user,
+            type="expense",
+            date__gte=start,
+            date__lt=end,
+            category__isnull=False,
+        )
+        .values("category_id", "category__name")
+        .annotate(total_amount=Sum("amount"))
+        .order_by("-total_amount")
+    )
+    return qs

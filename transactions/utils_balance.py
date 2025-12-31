@@ -1,19 +1,22 @@
 # transactions/utils_balance.py
-from decimal import Decimal
+from accounts.models.account import Account
+
 
 def apply_balance_effect(tx, *, old_amount=None, old_account=None):
     """
-    Para updates: revierte el efecto anterior y aplica el nuevo.
-    """
-    if old_amount is not None and old_account is not None:
-        if tx.type == "expense":
-            old_account.balance += Decimal(old_amount)
-        else:
-            old_account.balance -= Decimal(old_amount)
-        old_account.save(update_fields=["balance"])
+    Helper de compatibilidad.
 
-    if tx.type == "expense":
-        tx.account.balance -= Decimal(tx.amount)
-    else:
-        tx.account.balance += Decimal(tx.amount)
-    tx.account.save(update_fields=["balance"])
+    HISTÓRICO:
+        Antes se tocaban los balances a mano desde aquí.
+    AHORA:
+        El balance de la cuenta se recalcula siempre desde el ledger
+        (account.recalc_balance) vía señales en 'accounts.signals'.
+
+    Este helper es seguro y NO rompe consistencia: simplemente fuerza
+    un recálculo en las cuentas implicadas. Puedes usarlo desde tareas
+    puntuales o scripts de mantenimiento.
+    """
+    if old_account is not None:
+        old_account.recalc_balance()
+
+    tx.account.recalc_balance()
