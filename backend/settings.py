@@ -30,8 +30,6 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
 
-    "users.apps.UsersConfig",   # <-- PRIMERO entre tus apps
-
     "rest_framework",
     "rest_framework.authtoken",
     "rest_framework_simplejwt.token_blacklist",
@@ -44,7 +42,7 @@ INSTALLED_APPS = [
     "allauth",
     "allauth.account",
 
-    "accounts",
+    "accounts.apps.AccountsConfig",
     "transactions",
     "debts",
     "vendors",
@@ -61,6 +59,7 @@ INSTALLED_APPS = [
     "whatsapp",
     "ingest",
     "common",
+    "users",
 ]
 
 # Social login apps are optional to avoid heavy deps during setup

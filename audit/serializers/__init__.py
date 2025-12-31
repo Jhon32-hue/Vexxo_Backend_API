@@ -1,9 +1,0 @@
-from rest_framework import serializers
-from audit.models import AuditLog
-
-
-class AuditoriaSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = AuditLog
-        fields = '__all__'
-
