@@ -1,4 +1,3 @@
-# transactions/services.py
 from datetime import date
 from decimal import Decimal
 
@@ -19,13 +18,15 @@ __all__ = [
 def user_monthly_expense_total(user, when: date) -> Decimal:
     """
     Total de gastos de TODO el usuario en el mes de 'when'
-    (todas las cuentas).
+    (todas las cuentas, solo transacciones contabilizadas).
     """
     start, end = month_range(when)
     total = (
         Transaction.objects.filter(
             owner=user,
-            type="expense",
+            type=Transaction.Type.EXPENSE,
+            status__in=[Transaction.Status.POSTED, Transaction.Status.RECONCILED],
+            confirmed=True,
             date__gte=start,
             date__lt=end,
         ).aggregate(total=Sum("amount"))["total"]
@@ -37,16 +38,15 @@ def user_monthly_expense_total(user, when: date) -> Decimal:
 def user_category_expense_summary(user, when: date):
     """
     Resumen de gastos por categoría en el mes de 'when'.
-    Devuelve un queryset con:
-    - category_id
-    - category__name
-    - total_amount
+    Solo transacciones contabilizadas.
     """
     start, end = month_range(when)
     qs = (
         Transaction.objects.filter(
             owner=user,
-            type="expense",
+            type=Transaction.Type.EXPENSE,
+            status__in=[Transaction.Status.POSTED, Transaction.Status.RECONCILED],
+            confirmed=True,
             date__gte=start,
             date__lt=end,
             category__isnull=False,

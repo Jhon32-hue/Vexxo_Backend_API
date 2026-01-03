@@ -1,4 +1,3 @@
-# transactions/utils_limits.py
 from datetime import date
 from decimal import Decimal
 
@@ -23,16 +22,16 @@ def month_range(d: date):
 def account_month_expense_total(account, when: date) -> Decimal:
     """
     Total de gastos (expense) de UNA cuenta en el mes de 'when'.
-    Se usa para:
-    - límites mensuales por cuenta
-    - alertas de overspending
+    Solo transacciones contabilizadas (posted/reconciled) y confirmadas.
     """
     start, end = month_range(when)
     total = (
         Transaction.objects.filter(
             owner=account.owner,
             account=account,
-            type="expense",
+            type=Transaction.Type.EXPENSE,
+            status__in=[Transaction.Status.POSTED, Transaction.Status.RECONCILED],
+            confirmed=True,
             date__gte=start,
             date__lt=end,
         ).aggregate(total=Sum("amount"))["total"]
@@ -44,7 +43,8 @@ def account_month_expense_total(account, when: date) -> Decimal:
 def user_month_tx_count(user, when: date) -> int:
     """
     Número de transacciones del usuario en el mes de 'when'.
-    Útil para límites de transacciones por plan (free/plus/pro).
+    Se usa para límites de transacciones por plan (free/plus/pro).
+    Cuenta todas, independientemente del estado.
     """
     start, end = month_range(when)
     return Transaction.objects.filter(

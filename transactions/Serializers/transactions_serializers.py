@@ -1,19 +1,18 @@
-# transactions/Serializers/transactions_serializers.py
 from decimal import Decimal
 
-from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from users.models import User
+from django.utils import timezone
+from rest_framework import serializers
 
 from transactions.Models.transacciones import (
     Transaction,
     Tag,
     IncomeSource,
     ScheduledPayment,
+    TransactionParticipant,
 )
 from transactions.utils_limits import account_month_expense_total, user_month_tx_count
-
-User = get_user_model()
-
 
 class BaseOwnerSerializer(serializers.ModelSerializer):
     """Asegura owner=request.user en create y valida pertenencia en FKs."""
@@ -51,23 +50,66 @@ class ScheduledPaymentSerializer(BaseOwnerSerializer):
         read_only_fields = ("owner", "created_at")
 
     def validate(self, attrs):
-        # Aseguramos pertenencia en FKs
         for f in ["account", "category", "vendor", "debt", "installment"]:
             self._assert_owner(attrs.get(f), f)
         return attrs
 
+
+# ====== PARTICIPANTES ======
+
+class TransactionParticipantSerializer(BaseOwnerSerializer):
+    pending_amount = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = TransactionParticipant
+        fields = [
+            "id",
+            "transaction",
+            "display_name",
+            "email",
+            "phone",
+            "role",
+            "status",
+            "invite_status",
+            "share_amount",
+            "paid_amount",
+            "pending_amount",
+            "linked_user",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ("owner", "created_at", "updated_at", "pending_amount")
+
+    def get_pending_amount(self, obj):
+        return obj.pending_amount
+
+    def validate(self, attrs):
+        self._assert_owner(attrs.get("transaction"), "transaction")
+        return attrs
+
+
+# ====== TRANSACTION ======
 
 class TransactionSerializer(BaseOwnerSerializer):
     account_name = serializers.CharField(source="account.name", read_only=True)
     category_name = serializers.CharField(source="category.name", read_only=True)
     vendor_name = serializers.CharField(source="vendor.name", read_only=True)
 
+    participants = TransactionParticipantSerializer(many=True, read_only=True)
+
     class Meta:
         model = Transaction
         fields = "__all__"
-        read_only_fields = ("owner", "created_at", "updated_at", "fingerprint")
+        read_only_fields = (
+            "owner",
+            "created_at",
+            "updated_at",
+            "fingerprint",
+            "reimbursed",
+            "reimbursement_transaction",
+        )
 
-    # ======== HELPERS DE PLAN ========
+    # ======== PLAN HELPERS ========
 
     def _get_user_plan(self, user) -> str:
         settings = getattr(user, "settings", None)
@@ -77,25 +119,27 @@ class TransactionSerializer(BaseOwnerSerializer):
         return "free"
 
     def _get_plan_limits(self, plan: str) -> dict:
-        # Valores base, luego los podrás mover a settings o base de datos
         config = {
             "free": {"max_monthly_tx": 300},
             "plus": {"max_monthly_tx": 2000},
-            "pro": {"max_monthly_tx": None},  # sin límite
+            "pro": {"max_monthly_tx": None},
         }
         return config.get(plan, config["free"])
 
+    # ======== VALIDACIÓN PRINCIPAL ========
+
     def validate(self, attrs):
         user = self.context["request"].user
+        instance = self.instance
 
-        # ----- 1) amount > 0 -----
-        amount = attrs.get("amount", getattr(self.instance, "amount", None))
+        # 1) monto
+        amount = attrs.get("amount", getattr(instance, "amount", None))
         if amount is None or Decimal(amount) <= 0:
             raise serializers.ValidationError(
                 {"amount": "El monto debe ser mayor a 0."}
             )
 
-        # ----- 2) owner-consistency en FKs -----
+        # 2) owner-consistency en FKs
         for f in [
             "account",
             "category",
@@ -105,26 +149,25 @@ class TransactionSerializer(BaseOwnerSerializer):
             "installment",
             "scheduled_payment",
         ]:
-            self._assert_owner(attrs.get(f), f)
+            self._assert_owner(attrs.get(f) or getattr(instance, f, None), f)
 
-        # ----- 3) coherencia tipo de transacción -----
-        tx_type = attrs.get("type", getattr(self.instance, "type", None))
-        account = attrs.get("account", getattr(self.instance, "account", None))
-        date = attrs.get("date", getattr(self.instance, "date", None))
-        category = attrs.get("category", getattr(self.instance, "category", None))
+        tx_type = attrs.get("type", getattr(instance, "type", None))
+        account = attrs.get("account", getattr(instance, "account", None))
+        date = attrs.get("date", getattr(instance, "date", None))
+        category = attrs.get("category", getattr(instance, "category", None))
         income_source = attrs.get(
-            "income_source", getattr(self.instance, "income_source", None)
+            "income_source", getattr(instance, "income_source", None)
         )
-        debt = attrs.get("debt", getattr(self.instance, "debt", None))
+        debt = attrs.get("debt", getattr(instance, "debt", None))
         installment = attrs.get(
-            "installment", getattr(self.instance, "installment", None)
+            "installment", getattr(instance, "installment", None)
         )
         scheduled_payment = attrs.get(
             "scheduled_payment",
-            getattr(self.instance, "scheduled_payment", None),
+            getattr(instance, "scheduled_payment", None),
         )
 
-        # 3.a) coherencia category <-> type (si Category tiene campo 'type')
+        # 3.a) categoría coherente
         if category and hasattr(category, "type"):
             if tx_type == "expense" and category.type != "expense":
                 raise serializers.ValidationError(
@@ -144,7 +187,7 @@ class TransactionSerializer(BaseOwnerSerializer):
                 }
             )
 
-        # 3.c) debt / installment solo en gastos
+        # 3.c) deudas/cuotas solo en gastos
         if (debt or installment) and tx_type != "expense":
             raise serializers.ValidationError(
                 {
@@ -169,7 +212,7 @@ class TransactionSerializer(BaseOwnerSerializer):
                 }
             )
 
-        # 3.e) scheduled_payment coherente (opcional, puedes endurecer más)
+        # 3.e) scheduled_payment coherente
         if scheduled_payment and getattr(
             scheduled_payment, "status", None
         ) == ScheduledPayment.Status.PAID:
@@ -181,7 +224,17 @@ class TransactionSerializer(BaseOwnerSerializer):
                 }
             )
 
-        # ----- 4) límite mensual por cuenta (si aplica) -----
+        # 3.f) reembolsables: solo gastos
+        is_reimbursable = attrs.get(
+            "is_reimbursable",
+            getattr(instance, "is_reimbursable", False),
+        )
+        if is_reimbursable and tx_type != "expense":
+            raise serializers.ValidationError(
+                {"is_reimbursable": "Solo los gastos pueden ser reembolsables."}
+            )
+
+        # 4) límite mensual por cuenta
         if tx_type == "expense" and account and date:
             monthly_limit = getattr(account, "monthly_expense_limit", None)
             lock_on_limit = getattr(account, "lock_on_limit", False)
@@ -189,18 +242,15 @@ class TransactionSerializer(BaseOwnerSerializer):
             if monthly_limit:
                 month_total = account_month_expense_total(account, date)
                 projected = month_total + Decimal(amount)
-                if projected > Decimal(monthly_limit):
-                    if lock_on_limit:
-                        raise serializers.ValidationError(
-                            {
-                                "amount": "Límite mensual de gasto para la cuenta excedido."
-                            }
-                        )
-                    # Si no bloquea, se permitirá y una señal/alerta podrá notificar
+                if projected > Decimal(monthly_limit) and lock_on_limit:
+                    raise serializers.ValidationError(
+                        {
+                            "amount": "Límite mensual de gasto para la cuenta excedido."
+                        }
+                    )
 
-        # ----- 5) límite de transacciones mensuales por plan -----
-        # Solo se aplica en creaciones, no en updates
-        if self.instance is None and user and date:
+        # 5) límite por plan (solo en creación)
+        if instance is None and user and date:
             plan = self._get_user_plan(user)
             limits = self._get_plan_limits(plan)
             max_monthly_tx = limits.get("max_monthly_tx")
@@ -217,13 +267,18 @@ class TransactionSerializer(BaseOwnerSerializer):
                         }
                     )
 
+        # 6) splits: si es hija, no anidamos más de un nivel
+        parent = attrs.get("parent", getattr(instance, "parent", None))
+        if parent and parent.parent_id:
+            raise serializers.ValidationError(
+                {"parent": "No puedes anidar splits a más de un nivel."}
+            )
+
         return attrs
 
+    # ======== CREATE/UPDATE ========
+
     def create(self, validated_data):
-        """
-        Manejo de tags por id desde el body:
-        "tags": [1, 2, 3]
-        """
         tags_data = self.initial_data.get("tags")
         tx = super().create(validated_data)
         if isinstance(tags_data, list):
@@ -239,4 +294,20 @@ class TransactionSerializer(BaseOwnerSerializer):
             tx.tags.set(
                 Tag.objects.filter(owner=tx.owner, id__in=tags_data)
             )
+        return tx
+
+    # ======== HELPER PARA COMENTARIOS ========
+
+    @staticmethod
+    def add_comment(tx: Transaction, text: str, user: User):
+        comments = list(tx.comments or [])
+        comments.append(
+            {
+                "author_id": user.id,
+                "text": text,
+                "created_at": timezone.now().isoformat(),
+            }
+        )
+        tx.comments = comments
+        tx.save(update_fields=["comments"])
         return tx
