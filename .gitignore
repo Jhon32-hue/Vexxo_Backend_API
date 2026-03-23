@@ -1,4 +1,4 @@
 # Env
-.env
+*.env
 enviroment
 
