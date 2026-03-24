@@ -53,7 +53,28 @@ class EventNames:
     # --- ACCOUNTS ---
     ACCOUNT_BALANCE_UPDATED = "accounts.balance.updated.v1"
     ACCOUNT_CREATED = "accounts.created.v1"
+    ACCOUNT_UPDATED = "accounts.updated.v1"
     ACCOUNT_CLOSED = "accounts.closed.v1"
+    ACCOUNT_PRIMARY_CHANGED = "accounts.primary.changed.v1"
+    ACCOUNT_FROZEN = "accounts.frozen.v1"
+    ACCOUNT_UNFROZEN = "accounts.unfrozen.v1"
+    ACCOUNT_ARCHIVED = "accounts.archived.v1"
+    ACCOUNT_UNARCHIVED = "accounts.unarchived.v1"
+    ACCOUNT_RECALCULATED = "accounts.recalculated.v1"
+    ACCOUNT_SNAPSHOT_CREATED = "accounts.balance.snapshot.created.v1"
+    ACCOUNT_DRIFT_DETECTED = "accounts.balance.drift.detected.v1"
+    ACCOUNT_EXTERNAL_LINKED = "accounts.external.linked.v1"
+    ACCOUNT_EXTERNAL_UNLINKED = "accounts.external.unlinked.v1"
+    ACCOUNT_SYNC_SCHEDULED = "accounts.sync.scheduled.v1"
+    ACCOUNT_SYNC_STATUS_CHANGED = "accounts.sync.status.changed.v1"
+    ACCOUNT_SYNC_STARTED = "accounts.sync.started.v1"
+    ACCOUNT_SYNC_SUCCEEDED = "accounts.sync.succeeded.v1"
+    ACCOUNT_SYNC_FAILED = "accounts.sync.failed.v1"
+    ACCOUNT_MEMBERSHIP_CREATED = "accounts.membership.created.v1"
+    ACCOUNT_MEMBERSHIP_INVITED = "accounts.membership.invited.v1"
+    ACCOUNT_MEMBERSHIP_UPDATED = "accounts.membership.updated.v1"
+    ACCOUNT_MEMBERSHIP_ACCEPTED = "accounts.membership.accepted.v1"
+    ACCOUNT_MEMBERSHIP_REVOKED = "accounts.membership.revoked.v1"
 
     # --- TRANSACTIONS ---
     TRANSACTION_CREATED = "transactions.created.v1"
@@ -103,7 +124,28 @@ KNOWN_EVENT_TYPES: Dict[str, str] = {
     # type: descripción corta
     EventNames.ACCOUNT_BALANCE_UPDATED: "Balance de una cuenta recalculado",
     EventNames.ACCOUNT_CREATED: "Cuenta creada",
+    EventNames.ACCOUNT_UPDATED: "Cuenta actualizada",
     EventNames.ACCOUNT_CLOSED: "Cuenta cerrada",
+    EventNames.ACCOUNT_PRIMARY_CHANGED: "Cuenta principal actualizada",
+    EventNames.ACCOUNT_FROZEN: "Cuenta congelada",
+    EventNames.ACCOUNT_UNFROZEN: "Cuenta descongelada",
+    EventNames.ACCOUNT_ARCHIVED: "Cuenta archivada",
+    EventNames.ACCOUNT_UNARCHIVED: "Cuenta desarchivada",
+    EventNames.ACCOUNT_RECALCULATED: "Balance de cuenta recalculado manualmente",
+    EventNames.ACCOUNT_SNAPSHOT_CREATED: "Snapshot de balance de cuenta creado",
+    EventNames.ACCOUNT_DRIFT_DETECTED: "Drift detectado entre cache y ledger de cuenta",
+    EventNames.ACCOUNT_EXTERNAL_LINKED: "Cuenta vinculada a proveedor externo",
+    EventNames.ACCOUNT_EXTERNAL_UNLINKED: "Cuenta desvinculada de proveedor externo",
+    EventNames.ACCOUNT_SYNC_SCHEDULED: "Sincronizacion de cuenta programada",
+    EventNames.ACCOUNT_SYNC_STATUS_CHANGED: "Estado de sincronizacion de cuenta actualizado",
+    EventNames.ACCOUNT_SYNC_STARTED: "Sincronizacion de cuenta iniciada",
+    EventNames.ACCOUNT_SYNC_SUCCEEDED: "Sincronizacion de cuenta completada",
+    EventNames.ACCOUNT_SYNC_FAILED: "Sincronizacion de cuenta fallida",
+    EventNames.ACCOUNT_MEMBERSHIP_CREATED: "Membresia de cuenta creada",
+    EventNames.ACCOUNT_MEMBERSHIP_INVITED: "Invitacion a membresia de cuenta emitida",
+    EventNames.ACCOUNT_MEMBERSHIP_UPDATED: "Membresia de cuenta actualizada",
+    EventNames.ACCOUNT_MEMBERSHIP_ACCEPTED: "Membresia de cuenta aceptada",
+    EventNames.ACCOUNT_MEMBERSHIP_REVOKED: "Membresia de cuenta revocada",
     EventNames.TRANSACTION_CREATED: "Transacción creada",
     EventNames.TRANSACTION_UPDATED: "Transacción actualizada",
     EventNames.TRANSACTION_DELETED: "Transacción eliminada",

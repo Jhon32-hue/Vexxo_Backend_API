@@ -1,11 +1,34 @@
-# accounts/signals.py
+"""
+Signals de consistencia contable para accounts.
+
+Descripcion general:
+- escucha cambios sobre transacciones y mantiene el balance cacheado de
+  `Account` sincronizado con el ledger
+- emite eventos de dominio cuando hay cambios relevantes de balance
+
+Analisis detallado:
+- el flujo principal usa deltas incrementales para evitar recalculos completos
+- cuando no se puede calcular el delta con seguridad, se hace fallback a
+  `recalc_balance()` y aun asi se publica el evento `accounts.balance.updated.v1`
+- esto mantiene alineados dashboards, alertas, notificaciones y futuros
+  consumidores en Pub/Sub o workers externos
+
+Que se puede hacer despues:
+- agregar mas telemetria por motivo de fallback
+- mover ciertos handlers a consumidores asinc si el trafico sube mucho
+"""
+
+from __future__ import annotations
+
 import logging
+
 from django.apps import apps
 from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 
 from finance.accounts.domain.enums import BalanceChangeReason
 from finance.accounts.models.account import Account
+from finance.accounts.services.outbox_service import publish_account_balance_updated
 from finance.accounts.use_cases import (
     TransactionBalanceState,
     apply_transaction_balance_change,
@@ -73,6 +96,9 @@ def update_account_balance_on_transaction_delete(sender, instance, **kwargs):
 def _fallback_recalc(tx, *, reason: str) -> None:
     """
     Recalcula balance por ledger cuando no se puede calcular delta incremental.
+
+    Si el balance cambia, tambien emite el evento de dominio para no perder
+    integraciones aguas abajo.
     """
     affected_ids = {getattr(tx, "account_id", None)}
     old_state = getattr(tx, "_old_balance_state", None)
@@ -88,9 +114,18 @@ def _fallback_recalc(tx, *, reason: str) -> None:
             continue
 
         old_balance = account.balance
-        new_balance = account.recalc_balance()
+        new_balance = account.recalc_balance(reason=reason)
         if new_balance == old_balance:
             continue
+
+        publish_account_balance_updated(
+            account=account,
+            old_balance=old_balance,
+            new_balance=new_balance,
+            reason=reason,
+            transaction_id=getattr(tx, "pk", None),
+            metadata={"source": "accounts.signals.fallback_recalc"},
+        )
 
         logger.warning(
             "[accounts] Fallback recalc account_id=%s tx_id=%s old=%s new=%s reason=%s",

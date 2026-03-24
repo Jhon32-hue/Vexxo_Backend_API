@@ -1,20 +1,38 @@
-# accounts/use_cases.py
+"""
+Use cases de balance incremental para accounts.
+
+Descripcion general:
+- aplica cambios incrementales al cache `Account.balance`
+- traduce mutaciones de transacciones en cambios contables y eventos del dominio
+
+Analisis detallado:
+- el objetivo principal es evitar recalculos completos del ledger ante cada
+  cambio de transaccion
+- aun asi, el modulo sigue publicando eventos `accounts.balance.updated.v1`
+  para que alertas, notificaciones, dashboards y servicios externos reaccionen
+- este flujo esta preparado para convivir con outbox, bus local y futuros
+  consumidores en Pub/Sub sin cambiar el contrato funcional
+
+Que se puede hacer despues:
+- agregar metricas de drift entre incremental y full recalc
+- introducir retries o colas si el throughput de transacciones crece mucho
+"""
+
 from __future__ import annotations
 
-import hashlib
-import json
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
 from django.utils import timezone
 
-from finance.accounts.services.event_service import enqueue_domain_event, publish_after_commit
+from finance.accounts.services.event_service import publish_after_commit
+from finance.accounts.services.outbox_service import enqueue_account_balance_updated_event
 from finance.accounts.services.realtime_services import ping_account_changed
-from finance.transactions.constants import POSTED_STATUSES, CREDIT_TYPES, DEBIT_TYPES
+from finance.transactions.constants import CREDIT_TYPES, DEBIT_TYPES, POSTED_STATUSES
 
 ZERO = Decimal("0.00")
-PREC = Decimal("0.000001")  # tu modelo ya usa 6 decimales, consistente
+PREC = Decimal("0.000001")
 
 
 @dataclass(frozen=True)
@@ -38,14 +56,9 @@ def _decimal(value) -> Decimal:
 
 
 def _signed_effect(state: TransactionBalanceState | None) -> Decimal:
-    """
-    Efecto contable de una transacción sobre una cuenta.
-    """
     if state is None or not state.account_id:
         return ZERO
-    if not state.confirmed:
-        return ZERO
-    if not state.affects_balance:
+    if not state.confirmed or not state.affects_balance:
         return ZERO
     if state.status not in POSTED_STATUSES:
         return ZERO
@@ -76,11 +89,6 @@ def calculate_account_balance_deltas(
     old_state: TransactionBalanceState | None,
     new_state: TransactionBalanceState | None,
 ) -> dict[int, Decimal]:
-    """
-    Delta por cuenta sin recalc completo:
-    - revertir old_state
-    - aplicar new_state
-    """
     deltas: dict[int, Decimal] = {}
 
     if old_state and old_state.account_id:
@@ -93,23 +101,7 @@ def calculate_account_balance_deltas(
         if new_effect != ZERO:
             deltas[new_state.account_id] = deltas.get(new_state.account_id, ZERO) + new_effect
 
-    return {aid: amt.quantize(PREC) for aid, amt in deltas.items() if amt != ZERO}
-
-
-def _idempotency_key(event_type: str, *, account_id: int, tx_id: int | None, reason: str, payload: dict) -> str:
-    """
-    Key determinística para no duplicar eventos.
-    """
-    base = {
-        "event_type": event_type,
-        "account_id": account_id,
-        "tx_id": tx_id,
-        "reason": reason,
-        "payload": payload,
-    }
-    raw = json.dumps(base, sort_keys=True, default=str)
-    h = hashlib.sha1(raw.encode("utf-8")).hexdigest()
-    return f"{event_type}:{account_id}:{tx_id}:{h}"
+    return {account_id: amount.quantize(PREC) for account_id, amount in deltas.items() if amount != ZERO}
 
 
 def apply_account_balance_deltas(
@@ -117,45 +109,34 @@ def apply_account_balance_deltas(
     deltas: dict[int, Decimal],
     tx=None,
     reason: str,
-    publish_bus_after_commit: bool = True,  # si usas bus local hoy, útil
+    publish_bus_after_commit: bool = True,
 ) -> list[dict]:
-    """
-    Aplica deltas a Account.balance (cache incremental) con lock por fila.
-    Además:
-    - encola outbox idempotente
-    - on_commit hace ping realtime (patrón 2)
-    - opcional: publica al bus local después de commit
-    """
     if not deltas:
         return []
 
-    from finance.accounts.models.account import Account  # local import evita ciclos
+    from finance.accounts.models.account import Account
 
     changes: list[dict] = []
     now = timezone.now()
 
     with transaction.atomic():
-        accounts = {acc.pk: acc for acc in Account.objects.select_for_update().filter(pk__in=deltas.keys())}
+        accounts = {
+            account.pk: account
+            for account in Account.objects.select_for_update().filter(pk__in=deltas.keys())
+        }
 
-        # Recolectamos pings y eventos para ejecutar after commit
         pings: list[dict] = []
         outbox_events = []
 
         for account_id, delta in deltas.items():
             account = accounts.get(account_id)
-            if account is None:
-                continue
-
-            # Guardrails: no romper tu lógica, pero evitar inconsistencias
-            if account.is_closed:
+            if account is None or account.is_closed:
                 continue
             if account.read_only:
-                # si quieres permitir deltas “importados” en read_only, lo manejas en flags
                 continue
 
             old_balance = _decimal(account.balance)
             new_balance = (old_balance + _decimal(delta)).quantize(PREC)
-
             if new_balance == old_balance:
                 continue
 
@@ -179,48 +160,16 @@ def apply_account_balance_deltas(
             }
             changes.append(change)
 
-            # ===== OUTBOX EVENT =====
-            payload = {
-                "account_id": account.pk,
-                "owner_id": account.owner_id,
-                "currency": account.currency,
-                "old_balance": str(old_balance),
-                "new_balance": str(new_balance),
-                "delta": str(change["delta"]),
-                "reason": reason,
-            }
-            if tx is not None:
-                payload.update(
-                    {
-                        "transaction_id": getattr(tx, "pk", None),
-                        "transaction_type": getattr(tx, "type", None),
-                        "transaction_amount": str(getattr(tx, "amount", None)),
-                    }
-                )
-
-            event_type = "accounts.balance.updated.v1"
-            idem = _idempotency_key(
-                event_type,
-                account_id=account.pk,
-                tx_id=getattr(tx, "pk", None),
+            event = enqueue_account_balance_updated_event(
+                account=account,
+                old_balance=old_balance,
+                new_balance=new_balance,
                 reason=reason,
-                payload=payload,
-            )
-
-            event = enqueue_domain_event(
-                aggregate_type="account",
-                aggregate_id=str(account.pk),
-                event_type=event_type,
-                idempotency_key=idem,
-                payload=payload,
-                metadata={
-                    "source": "accounts.use_cases",
-                    "context": "accounts",
-                },
+                transaction_id=getattr(tx, "pk", None),
+                metadata={"source": "accounts.use_cases"},
             )
             outbox_events.append(event)
 
-            # ===== REALTIME PING (Patrón 2) =====
             pings.append(
                 {
                     "owner_id": account.owner_id,
@@ -231,14 +180,12 @@ def apply_account_balance_deltas(
             )
 
         def _after_commit():
-            # 1) pings livianos
-            for p in pings:
-                ping_account_changed(**p)
+            for ping in pings:
+                ping_account_changed(**ping)
 
-            # 2) (opcional) publicar al bus local desde outbox
             if publish_bus_after_commit:
-                for ev in outbox_events:
-                    publish_after_commit(ev)
+                for event in outbox_events:
+                    publish_after_commit(event)
 
         transaction.on_commit(_after_commit)
 

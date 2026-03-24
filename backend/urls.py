@@ -18,19 +18,9 @@ from django.contrib import admin
 from django.urls import path, include
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('api/', include('finance.debts.urls')),
-    path('api/', include('finance.transactions.urls')),
-    path('api/', include('finance.accounts.urls')),
-    path('api/', include('finance.categories.urls')),
-    path('api/', include('finance.vendors.urls')),
-    path('api/', include('alerts.rules.urls')),
-    path('api/', include('finance.fx.urls')),
-    path('api/', include('planning.goals.urls')),
-    path('api/', include('alerts.alerts.urls')),
-    path('api/', include('support.audit.urls')),
-    path('api/', include('reports.reports.urls')),
-    path('api/', include('common.urls')),
-    path('api/', include('identity.users.urls')),
-    path("api/teams/", include("social.teams.urls")),
+    path("admin/", admin.site.urls),
+
+    # API entrypoint
+    path("api/", include("api.v1.routers")),
+    path("internal/integrations/banks/", include("integrations_stub.banks.urls")),
 ]

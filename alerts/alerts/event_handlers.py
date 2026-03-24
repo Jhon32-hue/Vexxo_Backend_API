@@ -1,5 +1,6 @@
 # alerts/event_handlers.py
 import logging
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.utils import timezone
@@ -12,7 +13,8 @@ from common.domain_events import (
     EventPriority,
 )
 from finance.accounts.models.account import Account
-from alerts.alerts.services import evaluate_balance_alerts_for_account  # servicio de alertas de dominio
+from alerts.alerts.models.alerts import Alert, AlertCategory, AlertSeverity, AlertType
+from alerts.alerts.services import create_alert, evaluate_balance_alerts_for_account  # servicio de alertas de dominio
 from alerts.alerts.ai_services import enrich_alert_with_ai  # hook de IA para enriquecer alertas
 
 logger = logging.getLogger(__name__)
@@ -36,6 +38,18 @@ def _safe_decimal(raw, fallback: str = "0") -> Decimal:
             fallback,
         )
         return Decimal(fallback)
+
+
+def _has_recent_system_alert(*, owner_id, source: str, account_id, minutes: int = 60) -> bool:
+    since = timezone.now() - timedelta(minutes=minutes)
+    return Alert.objects.filter(
+        owner_id=owner_id,
+        type=AlertType.SYSTEM,
+        source=source,
+        is_active=True,
+        created_at__gte=since,
+        payload__account_id=account_id,
+    ).exists()
 
 
 # ========= LISTENER: ACCOUNT_BALANCE_UPDATED =========
@@ -196,4 +210,125 @@ def handle_alert_created_ai(event: MindwalletDomainEvent) -> None:
             "[alerts][corr=%s] Error enriqueciendo alerta con IA id=%s",
             correlation_id,
             alert_id,
+        )
+
+
+@subscribe(
+    EventNames.ACCOUNT_SYNC_FAILED,
+    name="alerts.handle_account_sync_failed",
+    run_async=True,
+    contexts=[EventContext.ACCOUNTS],
+    priority=EventPriority.HIGH,
+)
+def handle_account_sync_failed(event: MindwalletDomainEvent) -> None:
+    payload = event.payload or {}
+    account_id = payload.get("account_id")
+    correlation_id = event.correlation_id
+    if not account_id:
+        return
+
+    try:
+        account = Account.objects.get(pk=account_id)
+    except Account.DoesNotExist:
+        logger.warning(
+            "[alerts][corr=%s] ACCOUNT_SYNC_FAILED para cuenta inexistente id=%s",
+            correlation_id,
+            account_id,
+        )
+        return
+
+    try:
+        if _has_recent_system_alert(
+            owner_id=account.owner_id,
+            source="alerts.event_handlers.handle_account_sync_failed",
+            account_id=account.pk,
+        ):
+            return
+        create_alert(
+            owner=account.owner,
+            type=AlertType.SYSTEM,
+            title=f"Error de sincronizacion en {account.name}",
+            message=(
+                f"La sincronizacion de la cuenta {account.name} con el proveedor "
+                f"{payload.get('provider') or account.provider or 'externo'} fallo. "
+                f"Motivo: {payload.get('message') or 'sin detalle'}."
+            ),
+            category=AlertCategory.SYSTEM,
+            severity=AlertSeverity.WARNING,
+            payload={
+                "account_id": account.pk,
+                "provider": payload.get("provider") or account.provider,
+                "sync_status": payload.get("sync_status") or account.sync_status,
+                "next_sync_at": payload.get("next_sync_at"),
+                "event_type": event.type,
+            },
+            source="alerts.event_handlers.handle_account_sync_failed",
+            correlation_id=correlation_id,
+        )
+    except Exception:
+        logger.exception(
+            "[alerts][corr=%s] Error generando alerta para ACCOUNT_SYNC_FAILED account_id=%s",
+            correlation_id,
+            account_id,
+        )
+
+
+@subscribe(
+    EventNames.ACCOUNT_DRIFT_DETECTED,
+    name="alerts.handle_account_drift_detected",
+    run_async=True,
+    contexts=[EventContext.ACCOUNTS],
+    priority=EventPriority.HIGH,
+)
+def handle_account_drift_detected(event: MindwalletDomainEvent) -> None:
+    payload = event.payload or {}
+    account_id = payload.get("account_id")
+    correlation_id = event.correlation_id
+    if not account_id:
+        return
+
+    try:
+        account = Account.objects.get(pk=account_id)
+    except Account.DoesNotExist:
+        logger.warning(
+            "[alerts][corr=%s] ACCOUNT_DRIFT_DETECTED para cuenta inexistente id=%s",
+            correlation_id,
+            account_id,
+        )
+        return
+
+    try:
+        if _has_recent_system_alert(
+            owner_id=account.owner_id,
+            source="alerts.event_handlers.handle_account_drift_detected",
+            account_id=account.pk,
+        ):
+            return
+        create_alert(
+            owner=account.owner,
+            type=AlertType.SYSTEM,
+            title=f"Inconsistencia de balance detectada en {account.name}",
+            message=(
+                f"Se detecto drift entre el balance cacheado y el ledger de la cuenta "
+                f"{account.name}. Drift absoluto: {payload.get('drift_abs')} {account.currency}."
+            ),
+            category=AlertCategory.SYSTEM,
+            severity=AlertSeverity.CRITICAL,
+            payload={
+                "account_id": account.pk,
+                "snapshot_id": payload.get("snapshot_id"),
+                "drift": payload.get("drift"),
+                "drift_abs": payload.get("drift_abs"),
+                "drift_threshold": payload.get("drift_threshold"),
+                "source": payload.get("source"),
+                "event_type": event.type,
+            },
+            source="alerts.event_handlers.handle_account_drift_detected",
+            correlation_id=correlation_id,
+        )
+    except Exception:
+        logger.exception(
+            "[alerts][corr=%s] Error generando alerta para ACCOUNT_DRIFT_DETECTED account_id=%s",
+            correlation_id,
+            account_id,
         )

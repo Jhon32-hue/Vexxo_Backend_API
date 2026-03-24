@@ -8,3 +8,4 @@ class AccountsConfig(AppConfig):
 
     def ready(self):
         import finance.accounts.signals  # noqa
+        import finance.accounts.event_handlers  # noqa

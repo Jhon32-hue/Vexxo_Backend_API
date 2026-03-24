@@ -296,7 +296,6 @@ if ENV == "cloud":
             "ENGINE": "django.db.backends.postgresql",
             "NAME": config("DB_NAME"),
             "USER": config("DB_USER"),
-            "USER_PASSWORD": config("DB_USER_PASSWORD"),
             "PASSWORD": config("DB_PASSWORD"),
             "HOST": f"/cloudsql/{config('INSTANCE_CONNECTION_NAME')}",
             "PORT": "5432",
@@ -355,7 +354,7 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-AUTH_USER_MODEL = 'identity.users.User'
+AUTH_USER_MODEL = 'users.User'
 
 AUTHENTICATION_BACKENDS = (
     'django.contrib.auth.backends.ModelBackend',
@@ -374,13 +373,10 @@ SOCIALACCOUNT_PROVIDERS = {
         'AUTH_PARAMS': {
             'access_type': 'online',
         },
-        'APP': {
-            'client_id': config('GOOGLE_CLIENT_ID'),
-            'secret': config('GOOGLE_CLIENT_SECRET'),
-            'key': ''
+        
         }
     }
-}
+
 
 import os
 
@@ -390,3 +386,58 @@ EMAIL_PORT = config("EMAIL_PORT", default=587, cast=int)
 EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="")
 EMAIL_USE_TLS = config("EMAIL_USE_TLS", default=True, cast=bool)
+
+
+# ========= EVENTING / GCP INTEGRATION =========
+
+GCP_PROJECT_ID = config("GCP_PROJECT_ID", default="")
+GCP_REGION = config("GCP_REGION", default="us-central1")
+
+DOMAIN_EVENTS_PUBSUB_ENABLED = config("DOMAIN_EVENTS_PUBSUB_ENABLED", default=False, cast=bool)
+DOMAIN_EVENTS_PUBSUB_TOPIC = config("DOMAIN_EVENTS_PUBSUB_TOPIC", default="vexxo-domain-events")
+DOMAIN_EVENTS_PUBSUB_ENABLE_ORDERING = config(
+    "DOMAIN_EVENTS_PUBSUB_ENABLE_ORDERING",
+    default=False,
+    cast=bool,
+)
+DOMAIN_EVENTS_PUBSUB_WAIT_FOR_RESULT = config(
+    "DOMAIN_EVENTS_PUBSUB_WAIT_FOR_RESULT",
+    default=False,
+    cast=bool,
+)
+DOMAIN_EVENTS_PUBSUB_TIMEOUT_SECONDS = config(
+    "DOMAIN_EVENTS_PUBSUB_TIMEOUT_SECONDS",
+    default=5,
+    cast=int,
+)
+
+ACCOUNTS_SYNC_CLOUD_TASKS_ENABLED = config(
+    "ACCOUNTS_SYNC_CLOUD_TASKS_ENABLED",
+    default=False,
+    cast=bool,
+)
+ACCOUNTS_SYNC_CLOUD_TASKS_QUEUE = config(
+    "ACCOUNTS_SYNC_CLOUD_TASKS_QUEUE",
+    default="accounts-sync-queue",
+)
+ACCOUNTS_SYNC_CLOUD_TASKS_LOCATION = config(
+    "ACCOUNTS_SYNC_CLOUD_TASKS_LOCATION",
+    default=GCP_REGION,
+)
+ACCOUNTS_SYNC_HANDLER_URL = config("ACCOUNTS_SYNC_HANDLER_URL", default="")
+ACCOUNTS_SYNC_INTERNAL_TOKEN = config("ACCOUNTS_SYNC_INTERNAL_TOKEN", default="")
+ACCOUNTS_SYNC_TASK_SERVICE_ACCOUNT_EMAIL = config(
+    "ACCOUNTS_SYNC_TASK_SERVICE_ACCOUNT_EMAIL",
+    default="",
+)
+ACCOUNTS_SYNC_TASK_AUDIENCE = config("ACCOUNTS_SYNC_TASK_AUDIENCE", default="")
+ACCOUNTS_SYNC_TASK_DEADLINE_SECONDS = config(
+    "ACCOUNTS_SYNC_TASK_DEADLINE_SECONDS",
+    default=30,
+    cast=int,
+)
+ACCOUNTS_SYNC_TASK_BUFFER_SECONDS = config(
+    "ACCOUNTS_SYNC_TASK_BUFFER_SECONDS",
+    default=15,
+    cast=int,
+)

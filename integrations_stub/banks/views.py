@@ -1,3 +1,71 @@
-from django.shortcuts import render
+"""
+Endpoints internos stub para integraciones bancarias.
 
-# Create your views here.
+Descripcion general:
+- recibe jobs internos de sincronizacion de cuentas
+- simula el rol de un futuro `integrations_service` externo
+"""
+
+from __future__ import annotations
+
+from rest_framework import serializers, status
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from django.conf import settings
+
+from finance.accounts.models import Account
+from integrations_stub.banks.services import process_stub_account_sync
+
+
+class InternalAccountSyncJobSerializer(serializers.Serializer):
+    event = serializers.JSONField(required=False)
+    account_id = serializers.IntegerField()
+    provider = serializers.CharField(required=False, allow_blank=True, max_length=64)
+    mode = serializers.ChoiceField(choices=["success", "error", "stale"], default="success", required=False)
+    sync_cursor = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    next_sync_at = serializers.DateTimeField(required=False)
+    duration_ms = serializers.IntegerField(required=False, min_value=0, default=0)
+    provider_metadata = serializers.JSONField(required=False)
+    message = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    retry_in_minutes = serializers.IntegerField(required=False, min_value=1, max_value=10080)
+
+
+class InternalAccountSyncJobView(APIView):
+    permission_classes = [AllowAny]
+
+    def _authorized(self, request) -> bool:
+        configured = getattr(settings, "ACCOUNTS_SYNC_INTERNAL_TOKEN", "")
+        provided = request.headers.get("X-Vexxo-Internal-Token", "")
+        if configured:
+            return bool(provided and provided == configured)
+        user = getattr(request, "user", None)
+        return bool(user and user.is_authenticated and getattr(user, "is_staff", False))
+
+    def post(self, request):
+        if not self._authorized(request):
+            return Response({"detail": "No autorizado para sync interno."}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = InternalAccountSyncJobSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            account = Account.objects.get(pk=serializer.validated_data["account_id"])
+        except Account.DoesNotExist:
+            return Response({"detail": "Cuenta no encontrada."}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            account = process_stub_account_sync(account=account, **serializer.validated_data)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            {
+                "message": "Sync interno procesado.",
+                "account_id": account.pk,
+                "sync_status": account.sync_status,
+                "last_sync_at": account.last_sync_at.isoformat() if account.last_sync_at else None,
+                "next_sync_at": account.next_sync_at.isoformat() if account.next_sync_at else None,
+            },
+            status=status.HTTP_200_OK,
+        )

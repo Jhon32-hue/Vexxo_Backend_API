@@ -1,7 +1,7 @@
 from django.apps import AppConfig
 
 
-class ScheduledPaymnetsConfig(AppConfig):
+class ScheduledPaymentsConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
-    name = 'payments.scheduled_paymnets'
-    label = 'scheduled_paymnets'
+    name = 'payments.scheduled_payments'
+    label = 'scheduled_payments'

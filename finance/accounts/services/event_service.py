@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 
 from django.db import transaction
-from django.utils import timezone
 
 from common.domain_events import EventContext, EventPriority, publish_domain_event
 
@@ -61,16 +60,10 @@ def publish_outbox_event(event: DomainEventOutbox) -> None:
             correlation_id=(event.metadata or {}).get("correlation_id"),
             causation_id=(event.metadata or {}).get("causation_id"),
         )
-        DomainEventOutbox.objects.filter(pk=event.pk, published_at__isnull=True).update(
-            published_at=timezone.now(),
-            last_error="",
-        )
+        event.mark_published()
     except Exception as exc:
         logger.exception("[accounts] Error publicando outbox id=%s", event.pk)
-        DomainEventOutbox.objects.filter(pk=event.pk).update(
-            retry_count=event.retry_count + 1,
-            last_error=str(exc),
-        )
+        event.mark_failed(str(exc))
 
 
 def publish_after_commit(event: DomainEventOutbox) -> None:
