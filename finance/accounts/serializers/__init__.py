@@ -32,9 +32,20 @@ from .account_serializers import (
     AccountWriteSerializer,
 )
 from .balance_snapshot_serializers import BalanceSnapshotCreateSerializer, BalanceSnapshotSerializer
+from .intelligence_serializers import (
+    AccountCurrencyExposureSerializer,
+    AccountIntelligenceRefreshSerializer,
+    AccountOwnerMetricsSerializer,
+    AccountPortfolioSnapshotSerializer,
+    AccountProductSignalSerializer,
+    AccountRiskSnapshotSerializer,
+    AccountTypeDistributionSerializer,
+)
 from .outbox_serializers import DomainEventOutboxSerializer, OutboxActionSerializer
 
 __all__ = [
+    "AccountCurrencyExposureSerializer",
+    "AccountIntelligenceRefreshSerializer",
     "AccountDetailSerializer",
     "AccountExternalLinkSerializer",
     "AccountListSerializer",
@@ -43,15 +54,20 @@ __all__ = [
     "AccountMembershipRotateInvitationSerializer",
     "AccountMembershipSerializer",
     "AccountMembershipWriteSerializer",
+    "AccountOwnerMetricsSerializer",
     "AccountPlanUsageSerializer",
+    "AccountPortfolioSnapshotSerializer",
+    "AccountProductSignalSerializer",
     "AccountReasonActionSerializer",
     "AccountRecalcSerializer",
+    "AccountRiskSnapshotSerializer",
     "AccountSerializer",
     "AccountSyncErrorSerializer",
     "AccountSyncRunningSerializer",
     "AccountSyncScheduleSerializer",
     "AccountSyncSuccessSerializer",
     "AccountSummarySerializer",
+    "AccountTypeDistributionSerializer",
     "AccountWriteSerializer",
     "BalanceSnapshotCreateSerializer",
     "BalanceSnapshotSerializer",

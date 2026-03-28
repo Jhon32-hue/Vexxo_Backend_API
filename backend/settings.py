@@ -76,6 +76,7 @@ INSTALLED_APPS = [
     "allauth.account",
     "allauth.socialaccount",
     "allauth.socialaccount.providers.google",
+    "allauth.socialaccount.providers.facebook",
 
     # CORE PLATFORM
     "common.apps.CommonConfig",
@@ -93,6 +94,8 @@ INSTALLED_APPS = [
 
     # IDENTITY
     "identity.users.apps.UsersConfig",
+    "identity.eventing.apps.EventingConfig",
+    "identity.social_identities.apps.SocialIdentitiesConfig",
     "identity.devices.apps.DevicesConfig",
     "identity.sessions.apps.SessionsConfig",
     "identity.consents.apps.ConsentsConfig",
@@ -228,8 +231,8 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=int(config("ACCESS_TOKEN_LIFETIME", default=30))),
     "SIGNING_KEY": config("DJANGO_SECRET_KEY"), #El usuario no necesita autenticarse constantemente
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
-    "ROTATE_REFRESH_TOKENS": False,
-    "BLACKLIST_AFTER_ROTATION": False,
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
     "UPDATE_LAST_LOGIN": False,
 
     "ALGORITHM": "HS256",
@@ -257,7 +260,7 @@ SIMPLE_JWT = {
     "SLIDING_TOKEN_REFRESH_LIFETIME": timedelta(days=1),
 
     "TOKEN_OBTAIN_SERIALIZER": "rest_framework_simplejwt.serializers.TokenObtainPairSerializer",
-    "TOKEN_REFRESH_SERIALIZER": "rest_framework_simplejwt.serializers.TokenRefreshSerializer",
+    "TOKEN_REFRESH_SERIALIZER": "identity.users.views.auth.SecureTokenRefreshSerializer",
     "TOKEN_VERIFY_SERIALIZER": "rest_framework_simplejwt.serializers.TokenVerifySerializer",
     "TOKEN_BLACKLIST_SERIALIZER": "rest_framework_simplejwt.serializers.TokenBlacklistSerializer",
     "SLIDING_TOKEN_OBTAIN_SERIALIZER": "rest_framework_simplejwt.serializers.TokenObtainSlidingSerializer",
@@ -373,8 +376,12 @@ SOCIALACCOUNT_PROVIDERS = {
         'AUTH_PARAMS': {
             'access_type': 'online',
         },
-        
-        }
+        },
+    'facebook': {
+        'METHOD': 'oauth2',
+        'SCOPE': ['email', 'public_profile'],
+        'FIELDS': ['id', 'email', 'name', 'first_name', 'last_name'],
+    },
     }
 
 
@@ -392,6 +399,46 @@ EMAIL_USE_TLS = config("EMAIL_USE_TLS", default=True, cast=bool)
 
 GCP_PROJECT_ID = config("GCP_PROJECT_ID", default="")
 GCP_REGION = config("GCP_REGION", default="us-central1")
+GCP_IDENTITY_PLATFORM_ENABLED = config(
+    "GCP_IDENTITY_PLATFORM_ENABLED",
+    default=False,
+    cast=bool,
+)
+GCP_IDENTITY_PLATFORM_PROJECT_ID = config(
+    "GCP_IDENTITY_PLATFORM_PROJECT_ID",
+    default=GCP_PROJECT_ID,
+)
+GCP_IDENTITY_PLATFORM_TENANT_ID = config(
+    "GCP_IDENTITY_PLATFORM_TENANT_ID",
+    default="",
+)
+GCP_IDENTITY_PLATFORM_API_KEY = config(
+    "GCP_IDENTITY_PLATFORM_API_KEY",
+    default="",
+)
+
+GOOGLE_OAUTH_ENABLED = config("GOOGLE_OAUTH_ENABLED", default=False, cast=bool)
+GOOGLE_OAUTH_CLIENT_ID = config("GOOGLE_OAUTH_CLIENT_ID", default="")
+GOOGLE_OAUTH_CLIENT_SECRET = config("GOOGLE_OAUTH_CLIENT_SECRET", default="")
+GOOGLE_OAUTH_CALLBACK_URL = config("GOOGLE_OAUTH_CALLBACK_URL", default="")
+GOOGLE_OAUTH_FRONTEND_CALLBACK_URL = config("GOOGLE_OAUTH_FRONTEND_CALLBACK_URL", default="")
+
+FACEBOOK_OAUTH_ENABLED = config("FACEBOOK_OAUTH_ENABLED", default=False, cast=bool)
+FACEBOOK_OAUTH_CLIENT_ID = config("FACEBOOK_OAUTH_CLIENT_ID", default="")
+FACEBOOK_OAUTH_CLIENT_SECRET = config("FACEBOOK_OAUTH_CLIENT_SECRET", default="")
+FACEBOOK_OAUTH_CALLBACK_URL = config("FACEBOOK_OAUTH_CALLBACK_URL", default="")
+FACEBOOK_OAUTH_FRONTEND_CALLBACK_URL = config("FACEBOOK_OAUTH_FRONTEND_CALLBACK_URL", default="")
+IDENTITY_SOCIAL_STATE_SALT = config("IDENTITY_SOCIAL_STATE_SALT", default="identity-social-oauth")
+IDENTITY_SOCIAL_STATE_MAX_AGE_SECONDS = config(
+    "IDENTITY_SOCIAL_STATE_MAX_AGE_SECONDS",
+    default=600,
+    cast=int,
+)
+IDENTITY_SOCIAL_AUTO_LINK_BY_EMAIL = config(
+    "IDENTITY_SOCIAL_AUTO_LINK_BY_EMAIL",
+    default=False,
+    cast=bool,
+)
 
 DOMAIN_EVENTS_PUBSUB_ENABLED = config("DOMAIN_EVENTS_PUBSUB_ENABLED", default=False, cast=bool)
 DOMAIN_EVENTS_PUBSUB_TOPIC = config("DOMAIN_EVENTS_PUBSUB_TOPIC", default="vexxo-domain-events")
@@ -439,5 +486,131 @@ ACCOUNTS_SYNC_TASK_DEADLINE_SECONDS = config(
 ACCOUNTS_SYNC_TASK_BUFFER_SECONDS = config(
     "ACCOUNTS_SYNC_TASK_BUFFER_SECONDS",
     default=15,
+    cast=int,
+)
+
+ACCOUNTS_INTELLIGENCE_CLOUD_TASKS_ENABLED = config(
+    "ACCOUNTS_INTELLIGENCE_CLOUD_TASKS_ENABLED",
+    default=False,
+    cast=bool,
+)
+ACCOUNTS_INTELLIGENCE_CLOUD_TASKS_QUEUE = config(
+    "ACCOUNTS_INTELLIGENCE_CLOUD_TASKS_QUEUE",
+    default="accounts-intelligence-queue",
+)
+ACCOUNTS_INTELLIGENCE_CLOUD_TASKS_LOCATION = config(
+    "ACCOUNTS_INTELLIGENCE_CLOUD_TASKS_LOCATION",
+    default=GCP_REGION,
+)
+ACCOUNTS_INTELLIGENCE_HANDLER_URL = config("ACCOUNTS_INTELLIGENCE_HANDLER_URL", default="")
+ACCOUNTS_INTELLIGENCE_INTERNAL_TOKEN = config(
+    "ACCOUNTS_INTELLIGENCE_INTERNAL_TOKEN",
+    default="",
+)
+ACCOUNTS_INTELLIGENCE_TASK_SERVICE_ACCOUNT_EMAIL = config(
+    "ACCOUNTS_INTELLIGENCE_TASK_SERVICE_ACCOUNT_EMAIL",
+    default="",
+)
+ACCOUNTS_INTELLIGENCE_TASK_AUDIENCE = config(
+    "ACCOUNTS_INTELLIGENCE_TASK_AUDIENCE",
+    default="",
+)
+ACCOUNTS_INTELLIGENCE_TASK_DEADLINE_SECONDS = config(
+    "ACCOUNTS_INTELLIGENCE_TASK_DEADLINE_SECONDS",
+    default=30,
+    cast=int,
+)
+ACCOUNTS_INTELLIGENCE_TASK_BUFFER_SECONDS = config(
+    "ACCOUNTS_INTELLIGENCE_TASK_BUFFER_SECONDS",
+    default=10,
+    cast=int,
+)
+ACCOUNTS_INTELLIGENCE_LOCAL_FALLBACK_ENABLED = config(
+    "ACCOUNTS_INTELLIGENCE_LOCAL_FALLBACK_ENABLED",
+    default=True,
+    cast=bool,
+)
+ACCOUNTS_INTELLIGENCE_ALERTS_ENABLED = config(
+    "ACCOUNTS_INTELLIGENCE_ALERTS_ENABLED",
+    default=True,
+    cast=bool,
+)
+ACCOUNTS_INTELLIGENCE_MAX_PENDING_SECONDS = config(
+    "ACCOUNTS_INTELLIGENCE_MAX_PENDING_SECONDS",
+    default=900,
+    cast=int,
+)
+ACCOUNTS_INTELLIGENCE_STALE_AFTER_SECONDS = config(
+    "ACCOUNTS_INTELLIGENCE_STALE_AFTER_SECONDS",
+    default=86400,
+    cast=int,
+)
+IDENTITY_CONSENTS_INTERNAL_TOKEN = config(
+    "IDENTITY_CONSENTS_INTERNAL_TOKEN",
+    default="",
+)
+IDENTITY_CONSENT_TEARDOWN_HANDLER_URL = config(
+    "IDENTITY_CONSENT_TEARDOWN_HANDLER_URL",
+    default="",
+)
+IDENTITY_CONSENT_LOCAL_FALLBACK_ENABLED = config(
+    "IDENTITY_CONSENT_LOCAL_FALLBACK_ENABLED",
+    default=True,
+    cast=bool,
+)
+IDENTITY_PROJECTIONS_LOCAL_FALLBACK_ENABLED = config(
+    "IDENTITY_PROJECTIONS_LOCAL_FALLBACK_ENABLED",
+    default=True,
+    cast=bool,
+)
+
+IDENTITY_MAX_ACTIVE_SESSIONS = config(
+    "IDENTITY_MAX_ACTIVE_SESSIONS",
+    default=5,
+    cast=int,
+)
+IDENTITY_STEP_UP_ON_UNKNOWN_DEVICE = config(
+    "IDENTITY_STEP_UP_ON_UNKNOWN_DEVICE",
+    default=True,
+    cast=bool,
+)
+IDENTITY_STEP_UP_ON_SUSPICIOUS_DEVICE = config(
+    "IDENTITY_STEP_UP_ON_SUSPICIOUS_DEVICE",
+    default=True,
+    cast=bool,
+)
+IDENTITY_STEP_UP_REQUIRED_PATHS = config(
+    "IDENTITY_STEP_UP_REQUIRED_PATHS",
+    default="/api/finance/accounts/",
+    cast=lambda v: [s.strip() for s in v.split(",") if s.strip()],
+)
+
+ACCOUNTS_BALANCE_SNAPSHOT_SCHEDULED_FREQUENCY = config(
+    "ACCOUNTS_BALANCE_SNAPSHOT_SCHEDULED_FREQUENCY",
+    default="nightly",
+)
+ACCOUNTS_BALANCE_SNAPSHOT_RETENTION_DAYS = config(
+    "ACCOUNTS_BALANCE_SNAPSHOT_RETENTION_DAYS",
+    default=90,
+    cast=int,
+)
+ACCOUNTS_BALANCE_SNAPSHOT_INCONSISTENT_RETENTION_DAYS = config(
+    "ACCOUNTS_BALANCE_SNAPSHOT_INCONSISTENT_RETENTION_DAYS",
+    default=365,
+    cast=int,
+)
+ACCOUNTS_BALANCE_SNAPSHOT_ON_DEMAND_RETENTION_DAYS = config(
+    "ACCOUNTS_BALANCE_SNAPSHOT_ON_DEMAND_RETENTION_DAYS",
+    default=180,
+    cast=int,
+)
+ACCOUNTS_BALANCE_SNAPSHOT_AUTO_REPAIR_RETENTION_DAYS = config(
+    "ACCOUNTS_BALANCE_SNAPSHOT_AUTO_REPAIR_RETENTION_DAYS",
+    default=365,
+    cast=int,
+)
+ACCOUNTS_BALANCE_SNAPSHOT_MAX_PER_ACCOUNT = config(
+    "ACCOUNTS_BALANCE_SNAPSHOT_MAX_PER_ACCOUNT",
+    default=200,
     cast=int,
 )

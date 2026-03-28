@@ -1,160 +1,218 @@
-# users/signals.py
-import logging
+"""
+Signals de lifecycle del usuario.
+
+Descripcion general:
+- detecta altas y cambios relevantes del modelo `User`
+- publica eventos de dominio despues de commit para desacoplar onboarding,
+  cuentas, alertas y otras reacciones del sistema
+
+Analisis detallado:
+- `identity.users` es el origen del lifecycle del usuario, pero no debe crear
+  directamente recursos de otros bounded contexts
+- este archivo captura estado previo del usuario, detecta cambios semanticos y
+  los traduce a eventos versionados
+- otros modulos como `finance.accounts` o listeners internos de identidad ya
+  reaccionan sobre esos eventos usando el bus de dominio
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
 
 from django.contrib.auth import get_user_model
-from django.db import transaction
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 
-from finance.accounts.models.account import Account
-from finance.categories.models.categories import Category
-from alerts.alerts.models import Alert
-from social.teams.models import Team, Membership
+from common.domain_events import EventPriority
+from identity.users.domain import UserDomainEventTypes, build_user_lifecycle_payload
+from identity.users.models import UserStatus
+from identity.users.services.event_service import publish_user_event_after_commit
 
 User = get_user_model()
-logger = logging.getLogger(__name__)
-
-# --------- CONFIGURACIÓN BASE --------- #
-
-DEFAULT_ACCOUNTS = (
-    ("Efectivo principal", "COP", 0),
-    ("Tarjeta de crédito", "COP", 0),
-    ("Ahorros", "COP", 0),
-    ("Inversiones", "USD", 0),
-)
-
-DEFAULT_CATEGORIES = (
-    ("Alimentación", "expense"),
-    ("Transporte", "expense"),
-    ("Salud", "expense"),
-    ("Educación", "expense"),
-    ("Vivienda", "expense"),
-    ("Servicios", "expense"),
-    ("Entretenimiento", "expense"),
-    ("Mascotas", "expense"),
-    ("Donaciones", "expense"),
-    ("Salario", "income"),
-    ("Freelance", "income"),
-    ("Inversiones", "income"),
-    ("Ahorro", "income"),
-    ("Otros ingresos", "income"),
-)
-
-# --------- HELPERS --------- #
 
 
-def setup_default_accounts(user):
-    currency = user.preferred_currency or "COP"
-
-    for name, cur, bal in DEFAULT_ACCOUNTS:
-        acc, created = Account.objects.get_or_create(
-            owner=user,
-            name=name,
-            defaults={"currency": cur or currency, "balance": bal},
-        )
-        if created:
-            logger.debug(
-                f"[INIT:ACCOUNTS] Cuenta creada: {name} para {user.username}"
-            )
-
-    # Bono inicial
-    bonus, created_bonus = Account.objects.get_or_create(
-        owner=user,
-        name="Gratificación de bienvenida",
-        defaults={"currency": currency, "balance": 50000},
-    )
-    if created_bonus:
-        logger.info(
-            f"[INIT:BONUS] Bono creado para {user.username} con saldo {bonus.balance}"
-        )
+@dataclass
+class PreviousUserState:
+    plan: str
+    status: str
+    preferred_currency: str
+    onboarding_completed: bool
+    is_verified: bool
+    is_active: bool
+    first_name: str
+    last_name: str
+    phone_number: str
+    locale: str
+    timezone_name: str
 
 
-def setup_default_categories(user):
-    for name, type_ in DEFAULT_CATEGORIES:
-        _, created = Category.objects.get_or_create(
-            owner=user,
-            name=name,
-            defaults={"type": type_},
-        )
-        if created:
-            logger.debug(
-                f"[INIT:CATEGORIES] Categoría '{name}' creada para {user.username}"
-            )
-
-
-def setup_personal_team(user):
-    team, created = Team.objects.get_or_create(
-        name=f"Equipo de {user.username}",
-        defaults={},
+def _capture_previous_state(instance) -> PreviousUserState | None:
+    if not instance.pk:
+        return None
+    previous = User.objects.filter(pk=instance.pk).first()
+    if previous is None:
+        return None
+    return PreviousUserState(
+        plan=previous.plan,
+        status=previous.status,
+        preferred_currency=previous.preferred_currency,
+        onboarding_completed=bool(previous.onboarding_completed),
+        is_verified=bool(previous.is_verified),
+        is_active=bool(previous.is_active),
+        first_name=previous.first_name,
+        last_name=previous.last_name,
+        phone_number=previous.phone_number or "",
+        locale=previous.locale,
+        timezone_name=previous.timezone_name,
     )
 
-    Membership.objects.get_or_create(
-        user=user,
-        team=team,
-        defaults={"role": "owner"},
-    )
 
-    if created:
-        logger.info(f"[INIT:TEAMS] Equipo personal creado para {user.username}")
-
-
-def setup_welcome_alerts(user):
-    if Alert.objects.filter(owner=user, type="welcome").exists():
-        return
-
-    Alert.objects.create(
-        owner=user,
-        type="welcome",
-        payload={
-            "title": "¡Bienvenido a tu nueva plataforma financiera!",
-            "message": (
-                f"Hola {user.first_name or user.username}, ya tienes tu cuenta "
-                "principal y categorías básicas listas para empezar."
-            ),
-            "actions": [
-                {"label": "Conectar WhatsApp", "url": "/integraciones/whatsapp"}, #Registro de API  
-                {"label": "Registrar tu primer gasto", "url": "/transacciones/nueva"},
-            ],
-        },
-    )
-
-    Alert.objects.create(
-        owner=user,
-        type="tip",
-        payload={
-            "title": "Consejo de inicio 💡",
-            "message": (
-                "Empieza registrando tus gastos del día. Con el tiempo podremos "
-                "detectar patrones, alertas de sobregasto y ayudarte a cumplir tus metas."
-            ),
-        },
-    )
-
-    logger.debug(f"[INIT:ALERTS] Alertas creadas para {user.username}")
+def _state_to_dict(state: PreviousUserState | None) -> dict:
+    if state is None:
+        return {}
+    return {
+        "plan": state.plan,
+        "status": state.status,
+        "preferred_currency": state.preferred_currency,
+        "onboarding_completed": state.onboarding_completed,
+        "is_verified": state.is_verified,
+        "is_active": state.is_active,
+        "first_name": state.first_name,
+        "last_name": state.last_name,
+        "phone_number": state.phone_number,
+        "locale": state.locale,
+        "timezone_name": state.timezone_name,
+    }
 
 
-# --------- SEÑAL PRINCIPAL --------- #
+@receiver(pre_save, sender=User)
+def capture_user_previous_state(sender, instance, **kwargs):
+    instance._previous_user_state = _capture_previous_state(instance)
 
 
 @receiver(post_save, sender=User)
-def initialize_user_environment(sender, instance, created: bool, **kwargs):
-    """
-    Inicializa cuentas, categorías, equipo personal y alertas
-    cuando se crea un nuevo usuario.
-    """
-    if not created:
+def emit_user_lifecycle_events(sender, instance, created: bool, **kwargs):
+    previous = getattr(instance, "_previous_user_state", None)
+    before = _state_to_dict(previous)
+
+    if created:
+        publish_user_event_after_commit(
+            event_type=UserDomainEventTypes.USER_REGISTERED,
+            payload=build_user_lifecycle_payload(
+                user=instance,
+                change="registered",
+                extra={"registration_channel": "email_password"},
+            ),
+            metadata={"source": "users.signals"},
+            priority=EventPriority.HIGH,
+        )
+        if instance.is_verified:
+            publish_user_event_after_commit(
+                event_type=UserDomainEventTypes.USER_VERIFIED,
+                payload=build_user_lifecycle_payload(user=instance, change="verified"),
+                metadata={"source": "users.signals"},
+                priority=EventPriority.NORMAL,
+            )
         return
 
-    try:
-        with transaction.atomic():
-            setup_default_accounts(instance)
-            setup_default_categories(instance)
-            setup_personal_team(instance)
-            setup_welcome_alerts(instance)
+    if previous is None:
+        return
 
-        logger.info(f"[INIT] Entorno inicial creado para {instance.username}")
-    except Exception as e:
-        logger.error(
-            f"[INIT:ERROR] Fallo inicializando entorno para {instance.username}: {e}",
-            exc_info=True,
+    profile_changed = any(
+        [
+            previous.first_name != instance.first_name,
+            previous.last_name != instance.last_name,
+            previous.phone_number != (instance.phone_number or ""),
+            previous.locale != instance.locale,
+            previous.timezone_name != instance.timezone_name,
+        ]
+    )
+    if profile_changed:
+        publish_user_event_after_commit(
+            event_type=UserDomainEventTypes.USER_PROFILE_UPDATED,
+            payload=build_user_lifecycle_payload(
+                user=instance,
+                change="profile_updated",
+                before=before,
+                after={
+                    "first_name": instance.first_name,
+                    "last_name": instance.last_name,
+                    "phone_number": instance.phone_number or "",
+                    "locale": instance.locale,
+                    "timezone_name": instance.timezone_name,
+                },
+            ),
+            metadata={"source": "users.signals"},
+        )
+
+    if previous.plan != instance.plan:
+        publish_user_event_after_commit(
+            event_type=UserDomainEventTypes.USER_PLAN_CHANGED,
+            payload=build_user_lifecycle_payload(
+                user=instance,
+                change="plan_changed",
+                before={"plan": previous.plan},
+                after={"plan": instance.plan},
+            ),
+            metadata={"source": "users.signals"},
+            priority=EventPriority.HIGH,
+        )
+
+    if previous.preferred_currency != instance.preferred_currency:
+        publish_user_event_after_commit(
+            event_type=UserDomainEventTypes.USER_CURRENCY_CHANGED,
+            payload=build_user_lifecycle_payload(
+                user=instance,
+                change="preferred_currency_changed",
+                before={"preferred_currency": previous.preferred_currency},
+                after={"preferred_currency": instance.preferred_currency},
+            ),
+            metadata={"source": "users.signals"},
+            priority=EventPriority.HIGH,
+        )
+
+    if not previous.onboarding_completed and instance.onboarding_completed:
+        publish_user_event_after_commit(
+            event_type=UserDomainEventTypes.USER_ONBOARDING_COMPLETED,
+            payload=build_user_lifecycle_payload(user=instance, change="onboarding_completed"),
+            metadata={"source": "users.signals"},
+        )
+
+    if not previous.is_verified and instance.is_verified:
+        publish_user_event_after_commit(
+            event_type=UserDomainEventTypes.USER_VERIFIED,
+            payload=build_user_lifecycle_payload(user=instance, change="verified"),
+            metadata={"source": "users.signals"},
+        )
+
+    if (
+        (previous.status != UserStatus.SUSPENDED and instance.status == UserStatus.SUSPENDED)
+        or (previous.is_active and not instance.is_active)
+    ):
+        publish_user_event_after_commit(
+            event_type=UserDomainEventTypes.USER_SUSPENDED,
+            payload=build_user_lifecycle_payload(
+                user=instance,
+                change="suspended",
+                before=before,
+                after={"status": instance.status, "is_active": instance.is_active},
+            ),
+            metadata={"source": "users.signals"},
+            priority=EventPriority.HIGH,
+        )
+
+    if (
+        (previous.status != UserStatus.ACTIVE and instance.status == UserStatus.ACTIVE)
+        or (not previous.is_active and instance.is_active)
+    ):
+        publish_user_event_after_commit(
+            event_type=UserDomainEventTypes.USER_ACTIVATED,
+            payload=build_user_lifecycle_payload(
+                user=instance,
+                change="activated",
+                before=before,
+                after={"status": instance.status, "is_active": instance.is_active},
+            ),
+            metadata={"source": "users.signals"},
+            priority=EventPriority.HIGH,
         )

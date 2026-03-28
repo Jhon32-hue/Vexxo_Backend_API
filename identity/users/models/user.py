@@ -28,6 +28,7 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from finance.fx.models import Currency
+from identity.users.domain.plan_matrix import get_plan_capabilities
 
 
 class PlanType(models.TextChoices):
@@ -209,6 +210,13 @@ class User(AbstractUser):
         return (f"{self.first_name} {self.last_name}".strip()) or self.username or self.email
 
     @property
+    def is_premium(self) -> bool:
+        return self.has_paid_plan
+
+    def full_name(self) -> str:
+        return self.display_name
+
+    @property
     def has_paid_plan(self) -> bool:
         return self.plan in {PlanType.PLUS, PlanType.PRO, PlanType.ENTERPRISE}
 
@@ -241,65 +249,11 @@ class User(AbstractUser):
         Todos los límites del sistema deben salir de aquí o de un servicio que use esta matriz.
         """
 
-        plan_matrix = {
-            PlanType.FREE: {
-                "max_accounts": 1,
-                "max_monthly_tx_per_account": 20,
-                "max_monthly_reports": 1,
-                "max_api_connections": 1,
-                "max_investment_accounts": 1,
-                "max_shared_accounts": 2,
-                "max_contacts": 2,
-                "max_observed_accounts": 2,
-                "max_groups": 2,
-                "max_shared_goals": 2,
-                "max_documents_per_month": 20,
-            },
-            PlanType.PLUS: {
-                "max_accounts": 10,
-                "max_monthly_tx_per_account": 500,
-                "max_monthly_reports": 10,
-                "max_api_connections": 5,
-                "max_investment_accounts": 5,
-                "max_shared_accounts": 10,
-                "max_contacts": 100,
-                "max_observed_accounts": 10,
-                "max_groups": 20,
-                "max_shared_goals": 20,
-                "max_documents_per_month": 500,
-            },
-            PlanType.PRO: {
-                "max_accounts": None,
-                "max_monthly_tx_per_account": None,
-                "max_monthly_reports": None,
-                "max_api_connections": None,
-                "max_investment_accounts": None,
-                "max_shared_accounts": None,
-                "max_contacts": None,
-                "max_observed_accounts": None,
-                "max_groups": None,
-                "max_shared_goals": None,
-                "max_documents_per_month": None,
-            },
-            PlanType.ENTERPRISE: {
-                "max_accounts": None,
-                "max_monthly_tx_per_account": None,
-                "max_monthly_reports": None,
-                "max_api_connections": None,
-                "max_investment_accounts": None,
-                "max_shared_accounts": None,
-                "max_contacts": None,
-                "max_observed_accounts": None,
-                "max_groups": None,
-                "max_shared_goals": None,
-                "max_documents_per_month": None,
-            },
-        }
-
-        cfg = dict(plan_matrix.get(self.plan, plan_matrix[PlanType.FREE]))
+        cfg = get_plan_capabilities(self.plan)
 
         if self.max_accounts_override is not None:
             cfg["max_accounts"] = self.max_accounts_override
+            cfg["max_active_accounts"] = self.max_accounts_override
 
         if self.max_observed_accounts_override is not None:
             cfg["max_observed_accounts"] = self.max_observed_accounts_override
@@ -319,14 +273,14 @@ class User(AbstractUser):
         from finance.accounts.models.account import Account, AccountStatus
 
         cfg = self.get_plan_config()
-        limit = cfg.get("max_accounts")
+        limit = cfg.get("max_active_accounts", cfg.get("max_accounts"))
 
         if limit is None:
             return True
 
         current = Account.objects.filter(
             owner=self,
-            status=AccountStatus.ACTIVE,
+            status__in=[AccountStatus.ACTIVE, AccountStatus.FROZEN],
         ).count()
         return current < limit
 
@@ -342,7 +296,7 @@ class User(AbstractUser):
         current = Account.objects.filter(
             owner=self,
             type__in=[AccountType.INVESTMENT, AccountType.BROKERAGE, AccountType.CRYPTO],
-            status=AccountStatus.ACTIVE,
+            status__in=[AccountStatus.ACTIVE, AccountStatus.FROZEN],
         ).count()
         return current < limit
 

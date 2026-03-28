@@ -16,6 +16,13 @@ from .permission_service import (
     user_can_post_transactions,
     user_can_view_account,
 )
+from .user_integration_service import (
+    disable_auto_sync_for_user,
+    ensure_user_financial_home,
+    refresh_user_accounts_projection,
+    revoke_provider_integration_access_for_user,
+    sync_user_currency_to_accounts,
+)
 
 __all__ = [
     "enqueue_domain_event",
@@ -34,4 +41,9 @@ __all__ = [
     "user_can_manage_members",
     "user_can_post_transactions",
     "user_can_view_account",
+    "disable_auto_sync_for_user",
+    "ensure_user_financial_home",
+    "refresh_user_accounts_projection",
+    "revoke_provider_integration_access_for_user",
+    "sync_user_currency_to_accounts",
 ]

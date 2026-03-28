@@ -19,6 +19,7 @@ from .events import (
     build_account_snapshot_payload,
     build_account_sync_payload,
     get_account_event_catalog,
+    get_account_event_governance,
     get_account_event_runtime,
 )
 from .guards import (
@@ -43,6 +44,7 @@ __all__ = [
     "build_account_snapshot_payload",
     "build_account_sync_payload",
     "get_account_event_catalog",
+    "get_account_event_governance",
     "get_account_event_runtime",
     "get_account_plan_limits",
     "get_account_plan_snapshot",

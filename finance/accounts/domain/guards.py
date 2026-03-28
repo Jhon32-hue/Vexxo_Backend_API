@@ -11,6 +11,8 @@ Analisis detallado:
 - estas guardas se apoyan en la data real del owner y no dependen de que el
   frontend recuerde limites o planes
 - sirven tanto para serializadores como para viewsets y jobs internos
+- `user.plan` se considera la fuente oficial para el modulo; `user.settings.plan`
+  queda como compatibilidad temporal si el campo canonico aun no esta poblado
 
 Que se puede hacer despues:
 - mover aqui limites mas finos por region, tenant o features beta
@@ -22,32 +24,9 @@ from __future__ import annotations
 from django.contrib.auth import get_user_model
 
 from finance.accounts.models.account import Account, AccountStatus, AccountType
+from identity.users.domain.plan_matrix import get_plan_capabilities
 
 User = get_user_model()
-
-
-ACCOUNT_PLAN_MATRIX = {
-    "free": {
-        "max_active_accounts": 3,
-        "max_primary_accounts": 1,
-        "max_investment_accounts": 1,
-    },
-    "plus": {
-        "max_active_accounts": 6,
-        "max_primary_accounts": 3,
-        "max_investment_accounts": 3,
-    },
-    "pro": {
-        "max_active_accounts": None,
-        "max_primary_accounts": None,
-        "max_investment_accounts": None,
-    },
-    "enterprise": {
-        "max_active_accounts": None,
-        "max_primary_accounts": None,
-        "max_investment_accounts": None,
-    },
-}
 
 INVESTMENT_TYPES = {
     AccountType.INVESTMENT,
@@ -56,16 +35,40 @@ INVESTMENT_TYPES = {
     AccountType.RETIREMENT,
 }
 
+COUNTED_PLAN_STATUSES = {
+    AccountStatus.ACTIVE,
+    AccountStatus.FROZEN,
+}
+
+PRIMARY_COUNTED_STATUSES = {
+    AccountStatus.ACTIVE,
+}
+
+
+def _limit_error(*, message: str, limit, current, plan: str) -> dict:
+    return {
+        "message": message,
+        "limit": limit,
+        "current": current,
+        "plan": plan,
+    }
+
 
 def resolve_account_plan(user: User) -> str:
-    settings_plan = getattr(getattr(user, "settings", None), "plan", None)
-    explicit_plan = settings_plan or getattr(user, "plan", None) or "free"
-    return str(explicit_plan).lower()
+    canonical_plan = getattr(user, "plan", None)
+    compatibility_plan = getattr(getattr(user, "settings", None), "plan", None)
+    resolved = canonical_plan or compatibility_plan or "free"
+    return str(resolved).lower()
 
 
 def get_account_plan_limits(user: User) -> dict:
     plan = resolve_account_plan(user)
-    limits = dict(ACCOUNT_PLAN_MATRIX.get(plan, ACCOUNT_PLAN_MATRIX["free"]))
+    capability_snapshot = get_plan_capabilities(plan)
+    limits = {
+        "max_active_accounts": capability_snapshot.get("max_active_accounts"),
+        "max_primary_accounts": capability_snapshot.get("max_primary_accounts"),
+        "max_investment_accounts": capability_snapshot.get("max_investment_accounts"),
+    }
 
     if getattr(user, "max_accounts_override", None) is not None:
         limits["max_active_accounts"] = user.max_accounts_override
@@ -77,18 +80,22 @@ def get_account_plan_limits(user: User) -> dict:
 
 
 def get_account_plan_usage(user: User, *, exclude_account_id=None) -> dict:
-    base_qs = Account.objects.filter(owner=user, status=AccountStatus.ACTIVE)
+    base_qs = Account.objects.filter(owner=user, status__in=COUNTED_PLAN_STATUSES)
     if exclude_account_id:
         base_qs = base_qs.exclude(pk=exclude_account_id)
 
+    primary_qs = base_qs.filter(status__in=PRIMARY_COUNTED_STATUSES)
+
     active_accounts = base_qs.count()
-    active_primary_accounts = base_qs.filter(is_primary=True).count()
+    active_primary_accounts = primary_qs.filter(is_primary=True).count()
     active_investment_accounts = base_qs.filter(type__in=INVESTMENT_TYPES).count()
 
     return {
         "active_accounts": active_accounts,
         "active_primary_accounts": active_primary_accounts,
         "active_investment_accounts": active_investment_accounts,
+        "counted_statuses": sorted(COUNTED_PLAN_STATUSES),
+        "primary_counted_statuses": sorted(PRIMARY_COUNTED_STATUSES),
     }
 
 
@@ -99,8 +106,11 @@ def account_creation_limit_errors(user: User, *, account_type: str) -> dict:
 
     max_active = limits.get("max_active_accounts")
     if max_active is not None and usage["active_accounts"] >= max_active:
-        errors["plan"] = (
-            f"Tu plan {limits['plan']} permite hasta {max_active} cuentas activas."
+        errors["plan"] = _limit_error(
+            message=f"Tu plan {limits['plan']} permite hasta {max_active} cuentas activas o congeladas.",
+            limit=max_active,
+            current=usage["active_accounts"],
+            plan=limits["plan"],
         )
 
     max_investment = limits.get("max_investment_accounts")
@@ -109,8 +119,11 @@ def account_creation_limit_errors(user: User, *, account_type: str) -> dict:
         and max_investment is not None
         and usage["active_investment_accounts"] >= max_investment
     ):
-        errors["type"] = (
-            f"Tu plan {limits['plan']} permite hasta {max_investment} cuentas de inversion."
+        errors["type"] = _limit_error(
+            message=f"Tu plan {limits['plan']} permite hasta {max_investment} cuentas de inversion.",
+            limit=max_investment,
+            current=usage["active_investment_accounts"],
+            plan=limits["plan"],
         )
 
     return errors
@@ -123,8 +136,11 @@ def primary_account_limit_errors(user: User, *, exclude_account_id=None) -> dict
 
     if max_primary is not None and usage["active_primary_accounts"] >= max_primary:
         return {
-            "is_primary": (
-                f"Tu plan {limits['plan']} permite hasta {max_primary} cuentas principales activas."
+            "is_primary": _limit_error(
+                message=f"Tu plan {limits['plan']} permite hasta {max_primary} cuentas principales activas.",
+                limit=max_primary,
+                current=usage["active_primary_accounts"],
+                plan=limits["plan"],
             )
         }
     return {}

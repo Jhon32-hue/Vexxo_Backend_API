@@ -129,6 +129,31 @@ class AccountVisibility(models.TextChoices):
     PUBLIC_PROFILE = "public_profile", _("Visible en perfil público")
 
 
+class AccountDataOrigin(models.TextChoices):
+    MANUAL = "manual", _("Declarada manualmente")
+    IMPORTED = "imported", _("Importada")
+    SYNCED = "synced", _("Sincronizada externamente")
+    INFERRED = "inferred", _("Inferida")
+
+
+class AccountVerificationLevel(models.TextChoices):
+    SELF_DECLARED = "self_declared", _("Autodeclarada")
+    EXTERNALLY_VERIFIED = "externally_verified", _("Verificada externamente")
+    RECONCILED = "reconciled", _("Reconciliada")
+
+
+class AccountSourcePriority(models.TextChoices):
+    USER_DECLARED = "user_declared", _("Declaracion del usuario")
+    PROVIDER = "provider", _("Proveedor externo")
+    SYSTEM_INFERRED = "system_inferred", _("Inferencia del sistema")
+
+
+class AccountSensitivityLevel(models.TextChoices):
+    NORMAL = "normal", _("Normal")
+    SENSITIVE = "sensitive", _("Sensible")
+    HIGH = "high", _("Alta sensibilidad")
+
+
 class Account(models.Model):
     """
     Cuenta avanzada de Vexxo.
@@ -239,6 +264,36 @@ class Account(models.Model):
         blank=True,
         default="",
         help_text=_("Tipo externo reportado por el proveedor."),
+    )
+    data_origin = models.CharField(
+        max_length=16,
+        choices=AccountDataOrigin.choices,
+        default=AccountDataOrigin.MANUAL,
+        db_index=True,
+        help_text=_("Origen principal del dato de la cuenta."),
+    )
+    verification_level = models.CharField(
+        max_length=24,
+        choices=AccountVerificationLevel.choices,
+        default=AccountVerificationLevel.SELF_DECLARED,
+        db_index=True,
+        help_text=_("Nivel de verificacion del dato financiero de esta cuenta."),
+    )
+    source_priority = models.CharField(
+        max_length=20,
+        choices=AccountSourcePriority.choices,
+        default=AccountSourcePriority.USER_DECLARED,
+        help_text=_("Prioridad de la fuente cuando hay conflicto entre dato manual y externo."),
+    )
+    sensitivity_level = models.CharField(
+        max_length=16,
+        choices=AccountSensitivityLevel.choices,
+        default=AccountSensitivityLevel.NORMAL,
+        help_text=_("Clasificacion de sensibilidad del dato para gobierno y acceso."),
+    )
+    confidence_score = models.PositiveSmallIntegerField(
+        default=50,
+        help_text=_("Confianza del dato de 0 a 100."),
     )
 
     sync_status = models.CharField(
@@ -423,6 +478,10 @@ class Account(models.Model):
     last_balance_change_at = models.DateTimeField(null=True, blank=True)
     last_balance_change_reason = models.CharField(max_length=64, blank=True, default="")
     last_sync_status_at = models.DateTimeField(null=True, blank=True)
+    last_domain_event_at = models.DateTimeField(null=True, blank=True)
+    last_consistent_snapshot_at = models.DateTimeField(null=True, blank=True)
+    last_drift_detected_at = models.DateTimeField(null=True, blank=True)
+    account_version = models.PositiveIntegerField(default=1)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -487,6 +546,81 @@ class Account(models.Model):
             return "healthy"
         return "idle"
 
+    @property
+    def balance_health(self) -> str:
+        recently_repaired = (
+            self.last_balance_change_reason == "auto_repair_reconcile"
+            and self.last_balance_change_at
+            and self.last_balance_change_at >= timezone.now() - timedelta(days=7)
+        )
+        if recently_repaired:
+            return "repaired_recently"
+        if self.last_drift_detected_at and (
+            not self.last_consistent_snapshot_at
+            or self.last_drift_detected_at > self.last_consistent_snapshot_at
+        ):
+            return "drift_detected"
+        if self.last_consistent_snapshot_at:
+            return "healthy"
+        return "never_reconciled"
+
+    @property
+    def membership_health(self) -> str:
+        memberships = getattr(self, "_prefetched_objects_cache", {}).get("memberships")
+        if memberships is None:
+            memberships = list(self.memberships.all())
+        else:
+            memberships = list(memberships)
+
+        active_owner = any(m.user_id == self.owner_id and m.is_active for m in memberships)
+        if not active_owner:
+            return "owner_missing_membership"
+
+        stale_threshold = timezone.now() - timedelta(days=14)
+        if any(
+            m.invitation_sent_at
+            and m.invitation_sent_at < stale_threshold
+            and not m.is_active
+            and m.accepted_at is None
+            for m in memberships
+        ):
+            return "stale_invites"
+
+        if any(m.revoked_at and m.is_active for m in memberships):
+            return "revoked_active_conflict"
+
+        return "healthy"
+
+    @property
+    def integration_health(self) -> str:
+        if not self.has_external_link:
+            return "disconnected"
+        if self.sync_status == SyncStatus.ERROR:
+            return "sync_failing"
+        if self.sync_status == SyncStatus.STALE:
+            return "external_link_stale"
+        if not self.last_sync_at:
+            return "never_synced"
+        if self.last_sync_at >= timezone.now() - timedelta(days=7):
+            return "recently_synced"
+        return "external_link_stale"
+
+    @property
+    def account_operational_health(self) -> str:
+        if self.membership_health in {"owner_missing_membership", "revoked_active_conflict"}:
+            return "attention_required"
+        if self.balance_health == "drift_detected":
+            return "attention_required"
+        if self.integration_health == "sync_failing":
+            return "attention_required"
+        if (
+            self.membership_health == "stale_invites"
+            or self.balance_health == "repaired_recently"
+            or self.integration_health in {"never_synced", "external_link_stale"}
+        ):
+            return "monitoring"
+        return "healthy"
+
     def clean(self):
         super().clean()
 
@@ -520,12 +654,32 @@ class Account(models.Model):
                 {"provider": _("provider es requerido cuando external_id tiene valor.")}
             )
 
+        if self.confidence_score < 0 or self.confidence_score > 100:
+            raise ValidationError({"confidence_score": _("confidence_score debe estar entre 0 y 100.")})
+
     def save(self, *args, **kwargs):
+        update_fields = kwargs.get("update_fields")
+        normalized_update_fields = set(update_fields) if update_fields is not None else None
+
         if not self.slug:
             self.slug = slugify(f"{self.owner_id}-{self.name}-{self.currency}")[:140]
+            if normalized_update_fields is not None:
+                normalized_update_fields.add("slug")
 
         if not self.base_currency and getattr(self.owner, "preferred_currency", None):
             self.base_currency = self.owner.preferred_currency
+            if normalized_update_fields is not None:
+                normalized_update_fields.add("base_currency")
+
+        if self.pk:
+            self.account_version = max(1, int(self.account_version or 0) + 1)
+            if normalized_update_fields is not None:
+                normalized_update_fields.add("account_version")
+        else:
+            self.account_version = max(1, int(self.account_version or 1))
+
+        if normalized_update_fields is not None:
+            kwargs["update_fields"] = list(normalized_update_fields)
 
         super().save(*args, **kwargs)
 
@@ -596,6 +750,12 @@ class Account(models.Model):
         self.last_sync_status_at = now
         self.sync_attempts = 0
         self.last_sync_duration_ms = max(0, int(duration_ms))
+        if self.has_external_link:
+            self.verification_level = AccountVerificationLevel.EXTERNALLY_VERIFIED
+            if self.data_origin == AccountDataOrigin.MANUAL:
+                self.data_origin = AccountDataOrigin.SYNCED
+            self.source_priority = AccountSourcePriority.PROVIDER
+            self.confidence_score = max(int(self.confidence_score or 0), 80)
         if commit:
             self.save(
                 update_fields=[
@@ -605,6 +765,10 @@ class Account(models.Model):
                     "last_sync_status_at",
                     "sync_attempts",
                     "last_sync_duration_ms",
+                    "verification_level",
+                    "data_origin",
+                    "source_priority",
+                    "confidence_score",
                     "updated_at",
                 ]
             )
@@ -687,6 +851,10 @@ class Account(models.Model):
         self.external_id = external_id_value
         self.external_type = (external_type or "").strip()[:64]
         self.external_mask = (external_mask or "").strip()[:16]
+        if self.data_origin == AccountDataOrigin.MANUAL:
+            self.data_origin = AccountDataOrigin.SYNCED
+        self.source_priority = AccountSourcePriority.PROVIDER
+        self.confidence_score = max(int(self.confidence_score or 0), 70)
         if provider_metadata:
             self.provider_metadata = dict(provider_metadata)
         if next_sync_at is not None:
@@ -705,6 +873,9 @@ class Account(models.Model):
                     "next_sync_at",
                     "sync_status",
                     "last_sync_status_at",
+                    "data_origin",
+                    "source_priority",
+                    "confidence_score",
                     "updated_at",
                 ]
             )

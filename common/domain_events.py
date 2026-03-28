@@ -19,6 +19,7 @@ class EventContext(str, Enum):
     Bounded contexts principales de Mindwallet.
     Sirven para clasificar y enrutar eventos entre módulos.
     """
+    IDENTITY = "identity"
     ACCOUNTS = "accounts"
     TRANSACTIONS = "transactions"
     ALERTS = "alerts"
@@ -49,6 +50,29 @@ class EventNames:
     Catálogo de eventos “oficiales” de Mindwallet.
     Aquí se documenta y versionan los eventos de dominio.
     """
+
+    # --- IDENTITY / USERS ---
+    USER_REGISTERED = "users.registered.v1"
+    USER_PROFILE_UPDATED = "users.profile.updated.v1"
+    USER_PLAN_CHANGED = "users.plan.changed.v1"
+    USER_CURRENCY_CHANGED = "users.currency.changed.v1"
+    USER_ONBOARDING_COMPLETED = "users.onboarding.completed.v1"
+    USER_VERIFIED = "users.verified.v1"
+    USER_SUSPENDED = "users.suspended.v1"
+    USER_ACTIVATED = "users.activated.v1"
+    USER_SOCIAL_AUTH_PREPARED = "users.social_auth.prepared.v1"
+    USER_SOCIAL_LINKED = "users.social_identity.linked.v1"
+    USER_SOCIAL_UNLINKED = "users.social_identity.unlinked.v1"
+    USER_DEVICE_REGISTERED = "users.device.registered.v1"
+    USER_DEVICE_TRUSTED = "users.device.trusted.v1"
+    USER_DEVICE_REVOKED = "users.device.revoked.v1"
+    USER_SESSION_STARTED = "users.session.started.v1"
+    USER_SESSION_REVOKED = "users.session.revoked.v1"
+    USER_CONSENT_GRANTED = "users.consent.granted.v1"
+    USER_CONSENT_REVOKED = "users.consent.revoked.v1"
+    USER_PERMISSION_GRANTED = "users.permission.granted.v1"
+    USER_PERMISSION_DENIED = "users.permission.denied.v1"
+    USER_PERMISSION_REVOKED = "users.permission.revoked.v1"
 
     # --- ACCOUNTS ---
     ACCOUNT_BALANCE_UPDATED = "accounts.balance.updated.v1"
@@ -121,6 +145,27 @@ class EventNames:
 
 
 KNOWN_EVENT_TYPES: Dict[str, str] = {
+    EventNames.USER_REGISTERED: "Usuario registrado",
+    EventNames.USER_PROFILE_UPDATED: "Perfil de usuario actualizado",
+    EventNames.USER_PLAN_CHANGED: "Plan de usuario actualizado",
+    EventNames.USER_CURRENCY_CHANGED: "Moneda base de usuario actualizada",
+    EventNames.USER_ONBOARDING_COMPLETED: "Onboarding de usuario completado",
+    EventNames.USER_VERIFIED: "Usuario verificado",
+    EventNames.USER_SUSPENDED: "Usuario suspendido",
+    EventNames.USER_ACTIVATED: "Usuario activado",
+    EventNames.USER_SOCIAL_AUTH_PREPARED: "Proveedor social consultado o preparado",
+    EventNames.USER_SOCIAL_LINKED: "Identidad social vinculada a usuario",
+    EventNames.USER_SOCIAL_UNLINKED: "Identidad social desvinculada de usuario",
+    EventNames.USER_DEVICE_REGISTERED: "Dispositivo de usuario registrado",
+    EventNames.USER_DEVICE_TRUSTED: "Dispositivo de usuario marcado como confiable",
+    EventNames.USER_DEVICE_REVOKED: "Dispositivo de usuario revocado",
+    EventNames.USER_SESSION_STARTED: "Sesion de usuario iniciada",
+    EventNames.USER_SESSION_REVOKED: "Sesion de usuario revocada",
+    EventNames.USER_CONSENT_GRANTED: "Consentimiento de usuario otorgado",
+    EventNames.USER_CONSENT_REVOKED: "Consentimiento de usuario revocado",
+    EventNames.USER_PERMISSION_GRANTED: "Grant de permiso de usuario otorgado",
+    EventNames.USER_PERMISSION_DENIED: "Grant de permiso de usuario denegado explicitamente",
+    EventNames.USER_PERMISSION_REVOKED: "Grant de permiso de usuario revocado",
     # type: descripción corta
     EventNames.ACCOUNT_BALANCE_UPDATED: "Balance de una cuenta recalculado",
     EventNames.ACCOUNT_CREATED: "Cuenta creada",

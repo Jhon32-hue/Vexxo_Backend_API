@@ -79,6 +79,10 @@ class AccountListSerializer(serializers.ModelSerializer):
     is_observed_effective = serializers.SerializerMethodField(read_only=True)
     has_external_link = serializers.BooleanField(read_only=True)
     sync_health = serializers.CharField(read_only=True)
+    balance_health = serializers.CharField(read_only=True)
+    membership_health = serializers.CharField(read_only=True)
+    integration_health = serializers.CharField(read_only=True)
+    account_operational_health = serializers.CharField(read_only=True)
 
     class Meta:
         model = Account
@@ -101,6 +105,11 @@ class AccountListSerializer(serializers.ModelSerializer):
             "institution",
             "provider",
             "sync_status",
+            "data_origin",
+            "verification_level",
+            "source_priority",
+            "sensitivity_level",
+            "confidence_score",
             "is_primary",
             "archived",
             "read_only",
@@ -110,6 +119,10 @@ class AccountListSerializer(serializers.ModelSerializer):
             "shared_scope_id",
             "has_external_link",
             "sync_health",
+            "balance_health",
+            "membership_health",
+            "integration_health",
+            "account_operational_health",
             "goal_amount",
             "goal_progress",
             "total_transactions",
@@ -118,6 +131,10 @@ class AccountListSerializer(serializers.ModelSerializer):
             "is_closed",
             "is_shared_effective",
             "is_observed_effective",
+            "account_version",
+            "last_domain_event_at",
+            "last_consistent_snapshot_at",
+            "last_drift_detected_at",
             "created_at",
             "updated_at",
         ]

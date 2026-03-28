@@ -25,6 +25,12 @@ from decimal import Decimal
 from common.domain_events import EventNames
 
 
+def _stringify_id(value) -> str | None:
+    if value in (None, ""):
+        return None
+    return str(value)
+
+
 class AccountDomainEventTypes:
     ACCOUNT_CREATED = EventNames.ACCOUNT_CREATED
     ACCOUNT_UPDATED = EventNames.ACCOUNT_UPDATED
@@ -133,8 +139,8 @@ ACCOUNT_EVENT_CATALOG = [
     {
         "event_type": AccountDomainEventTypes.ACCOUNT_RECALCULATED,
         "category": "balance",
-        "description": "Se emite cuando se fuerza un recalculo manual del balance.",
-        "emitted_by": ["accounts.views.recalc_balance"],
+        "description": "Se emite cuando se fuerza un recalculo manual o automatico del balance.",
+        "emitted_by": ["accounts.views.recalc_balance", "accounts.services.reconcile_service"],
         "current_local_listeners": [],
         "intended_consumers": ["support", "analytics", "audit"],
     },
@@ -162,6 +168,7 @@ ACCOUNT_EVENT_CATALOG = [
             "accounts.signals",
             "accounts.use_cases",
             "accounts.views.recalc_balance",
+            "accounts.services.reconcile_service",
         ],
         "current_local_listeners": ["alerts.handle_account_balance_updated"],
         "intended_consumers": ["alerts", "reports", "notifications", "wealth"],
@@ -199,6 +206,7 @@ ACCOUNT_EVENT_CATALOG = [
             "accounts.views.mark_sync_success",
             "accounts.views.mark_sync_error",
             "accounts.views.mark_sync_stale",
+            "integrations_stub.banks.process_stub_account_sync",
         ],
         "current_local_listeners": [],
         "intended_consumers": ["integrations", "observability", "notifications"],
@@ -207,7 +215,7 @@ ACCOUNT_EVENT_CATALOG = [
         "event_type": AccountDomainEventTypes.ACCOUNT_SYNC_STARTED,
         "category": "sync",
         "description": "Se emite cuando un worker inicia la sincronizacion de una cuenta.",
-        "emitted_by": ["accounts.views.mark_sync_running"],
+        "emitted_by": ["accounts.views.mark_sync_running", "integrations_stub.banks.process_stub_account_sync"],
         "current_local_listeners": [],
         "intended_consumers": ["observability", "integrations"],
     },
@@ -215,7 +223,7 @@ ACCOUNT_EVENT_CATALOG = [
         "event_type": AccountDomainEventTypes.ACCOUNT_SYNC_SUCCEEDED,
         "category": "sync",
         "description": "Se emite cuando una sincronizacion externa finaliza correctamente.",
-        "emitted_by": ["accounts.views.mark_sync_success"],
+        "emitted_by": ["accounts.views.mark_sync_success", "integrations_stub.banks.process_stub_account_sync"],
         "current_local_listeners": [
             "notifications.handle_account_sync_succeeded",
             "accounts.publish_sync_succeeded_realtime_signal",
@@ -226,7 +234,7 @@ ACCOUNT_EVENT_CATALOG = [
         "event_type": AccountDomainEventTypes.ACCOUNT_SYNC_FAILED,
         "category": "sync",
         "description": "Se emite cuando una sincronizacion externa falla.",
-        "emitted_by": ["accounts.views.mark_sync_error"],
+        "emitted_by": ["accounts.views.mark_sync_error", "integrations_stub.banks.process_stub_account_sync"],
         "current_local_listeners": ["alerts.handle_account_sync_failed"],
         "intended_consumers": ["alerts", "observability", "integrations"],
     },
@@ -278,12 +286,165 @@ ACCOUNT_EVENT_CATALOG = [
     },
 ]
 
+ACCOUNT_EVENT_GOVERNANCE = {
+    "default": {
+        "contract_status": "active",
+        "schema_version": "v1",
+        "deprecated": False,
+        "deprecated_by": None,
+        "visibility": "internal",
+    },
+    AccountDomainEventTypes.ACCOUNT_CREATED: {
+        "payload_fields": [
+            "account_id",
+            "owner_id",
+            "name",
+            "type",
+            "role",
+            "ownership",
+            "status",
+            "currency",
+            "change",
+        ],
+        "required_fields": ["account_id", "owner_id", "name", "type", "currency", "change"],
+    },
+    AccountDomainEventTypes.ACCOUNT_UPDATED: {
+        "payload_fields": ["account_id", "owner_id", "change", "before", "after"],
+        "required_fields": ["account_id", "owner_id", "change"],
+    },
+    AccountDomainEventTypes.ACCOUNT_CLOSED: {
+        "payload_fields": ["account_id", "owner_id", "change", "reason", "final_balance"],
+        "required_fields": ["account_id", "owner_id", "change"],
+    },
+    AccountDomainEventTypes.ACCOUNT_PRIMARY_CHANGED: {
+        "payload_fields": ["account_id", "owner_id", "change", "is_primary"],
+        "required_fields": ["account_id", "owner_id", "change", "is_primary"],
+    },
+    AccountDomainEventTypes.ACCOUNT_FROZEN: {
+        "payload_fields": ["account_id", "owner_id", "change", "reason"],
+        "required_fields": ["account_id", "owner_id", "change"],
+    },
+    AccountDomainEventTypes.ACCOUNT_UNFROZEN: {
+        "payload_fields": ["account_id", "owner_id", "change"],
+        "required_fields": ["account_id", "owner_id", "change"],
+    },
+    AccountDomainEventTypes.ACCOUNT_ARCHIVED: {
+        "payload_fields": ["account_id", "owner_id", "change", "reason"],
+        "required_fields": ["account_id", "owner_id", "change"],
+    },
+    AccountDomainEventTypes.ACCOUNT_UNARCHIVED: {
+        "payload_fields": ["account_id", "owner_id", "change"],
+        "required_fields": ["account_id", "owner_id", "change"],
+    },
+    AccountDomainEventTypes.ACCOUNT_RECALCULATED: {
+        "payload_fields": ["account_id", "owner_id", "change", "old_balance", "new_balance", "reason"],
+        "required_fields": ["account_id", "owner_id", "change"],
+    },
+    AccountDomainEventTypes.ACCOUNT_BALANCE_UPDATED: {
+        "payload_fields": ["account_id", "owner_id", "currency", "old_balance", "new_balance", "delta", "reason", "transaction_id"],
+        "required_fields": ["account_id", "owner_id", "currency", "old_balance", "new_balance", "delta", "reason"],
+    },
+    AccountDomainEventTypes.ACCOUNT_SNAPSHOT_CREATED: {
+        "payload_fields": ["snapshot_id", "account_id", "change", "balance_cached", "balance_recomputed", "drift", "drift_abs", "is_consistent", "source"],
+        "required_fields": ["snapshot_id", "account_id", "change", "drift", "drift_abs", "is_consistent", "source"],
+    },
+    AccountDomainEventTypes.ACCOUNT_DRIFT_DETECTED: {
+        "payload_fields": ["snapshot_id", "account_id", "change", "drift", "drift_abs", "drift_threshold", "source"],
+        "required_fields": ["snapshot_id", "account_id", "change", "drift", "drift_abs", "source"],
+    },
+    AccountDomainEventTypes.ACCOUNT_EXTERNAL_LINKED: {
+        "payload_fields": ["account_id", "owner_id", "provider", "external_id", "sync_status", "change"],
+        "required_fields": ["account_id", "owner_id", "provider", "external_id", "change"],
+    },
+    AccountDomainEventTypes.ACCOUNT_EXTERNAL_UNLINKED: {
+        "payload_fields": ["account_id", "owner_id", "change", "previous"],
+        "required_fields": ["account_id", "owner_id", "change"],
+    },
+    AccountDomainEventTypes.ACCOUNT_SYNC_SCHEDULED: {
+        "payload_fields": ["account_id", "owner_id", "provider", "change", "next_sync_at", "sync_status", "sync_health"],
+        "required_fields": ["account_id", "owner_id", "change", "next_sync_at"],
+    },
+    AccountDomainEventTypes.ACCOUNT_SYNC_STATUS_CHANGED: {
+        "payload_fields": ["account_id", "owner_id", "provider", "change", "sync_status", "sync_health", "last_sync_at", "next_sync_at"],
+        "required_fields": ["account_id", "owner_id", "change", "sync_status", "sync_health"],
+    },
+    AccountDomainEventTypes.ACCOUNT_SYNC_STARTED: {
+        "payload_fields": ["account_id", "owner_id", "provider", "change", "sync_cursor"],
+        "required_fields": ["account_id", "owner_id", "change"],
+    },
+    AccountDomainEventTypes.ACCOUNT_SYNC_SUCCEEDED: {
+        "payload_fields": ["account_id", "owner_id", "provider", "change", "duration_ms", "last_sync_at"],
+        "required_fields": ["account_id", "owner_id", "change"],
+    },
+    AccountDomainEventTypes.ACCOUNT_SYNC_FAILED: {
+        "payload_fields": ["account_id", "owner_id", "provider", "change", "message", "next_sync_at"],
+        "required_fields": ["account_id", "owner_id", "change", "message"],
+    },
+    AccountDomainEventTypes.ACCOUNT_MEMBERSHIP_CREATED: {
+        "payload_fields": ["membership_id", "account_id", "owner_id", "user_id", "role", "access_mode", "is_active", "change"],
+        "required_fields": ["membership_id", "account_id", "owner_id", "user_id", "change"],
+    },
+    AccountDomainEventTypes.ACCOUNT_MEMBERSHIP_INVITED: {
+        "payload_fields": ["membership_id", "account_id", "owner_id", "user_id", "change"],
+        "required_fields": ["membership_id", "account_id", "owner_id", "user_id", "change"],
+    },
+    AccountDomainEventTypes.ACCOUNT_MEMBERSHIP_UPDATED: {
+        "payload_fields": ["membership_id", "account_id", "owner_id", "user_id", "change"],
+        "required_fields": ["membership_id", "account_id", "owner_id", "user_id", "change"],
+    },
+    AccountDomainEventTypes.ACCOUNT_MEMBERSHIP_ACCEPTED: {
+        "payload_fields": ["membership_id", "account_id", "owner_id", "user_id", "change", "accepted_at", "joined_at"],
+        "required_fields": ["membership_id", "account_id", "owner_id", "user_id", "change"],
+    },
+    AccountDomainEventTypes.ACCOUNT_MEMBERSHIP_REVOKED: {
+        "payload_fields": ["membership_id", "account_id", "owner_id", "user_id", "change", "revoked_at"],
+        "required_fields": ["membership_id", "account_id", "owner_id", "user_id", "change"],
+    },
+}
+
+
+def get_account_event_governance() -> dict:
+    return {
+        "versioning_policy": {
+            "event_name_format": "bounded_context.resource.action.vN",
+            "breaking_changes": "create_new_version",
+            "non_breaking_changes": "append_optional_fields_only",
+        },
+        "deprecation_policy": {
+            "supported_statuses": ["active", "deprecated", "internal_only"],
+            "default_status": "active",
+            "removal_rule": "deprecate_before_removal",
+        },
+        "schema_registry_style": "lightweight_inline_registry",
+        "registry": {
+            event_type: {**ACCOUNT_EVENT_GOVERNANCE["default"], **metadata}
+            for event_type, metadata in ACCOUNT_EVENT_GOVERNANCE.items()
+            if event_type != "default"
+        },
+    }
+
 
 def get_account_event_catalog() -> list[dict]:
     """
     Catalogo documentado de eventos emitidos por `finance.accounts`.
     """
-    return [dict(item) for item in ACCOUNT_EVENT_CATALOG]
+    default_meta = dict(ACCOUNT_EVENT_GOVERNANCE["default"])
+    enriched = []
+    pattern_local_listeners = ["accounts.refresh_owner_account_intelligence"]
+    for item in ACCOUNT_EVENT_CATALOG:
+        event_type = item["event_type"]
+        governance = {**default_meta, **ACCOUNT_EVENT_GOVERNANCE.get(event_type, {})}
+        enriched.append(
+            {
+                **dict(item),
+                **governance,
+                "pattern_local_listeners": pattern_local_listeners,
+                "effective_local_listeners": sorted(
+                    set(list(item.get("current_local_listeners", [])) + pattern_local_listeners)
+                ),
+            }
+        )
+    return enriched
 
 
 def get_account_event_runtime() -> dict:
@@ -300,6 +461,7 @@ def get_account_event_runtime() -> dict:
             "transaction.on_commit -> publish_outbox_event",
             "common.domain_events.publish_domain_event",
             "local listeners registrados con @subscribe",
+            "listener pattern finance.accounts.event_handlers -> refresh_account_intelligence_for_user",
             "dispatcher opcional common.gcp.pubsub_dispatcher",
             "listener opcional finance.accounts.event_handlers -> Cloud Tasks",
         ],
@@ -314,17 +476,32 @@ def get_account_event_runtime() -> dict:
 
 def build_account_core_payload(account) -> dict:
     return {
-        "account_id": account.pk,
-        "owner_id": account.owner_id,
+        "account_id": _stringify_id(account.pk),
+        "owner_id": _stringify_id(account.owner_id),
         "name": account.name,
+        "slug": account.slug,
         "type": account.type,
         "role": account.role,
         "ownership": account.ownership,
+        "visibility": account.visibility,
         "status": account.status,
         "currency": account.currency,
+        "institution": account.institution,
+        "country": account.country,
         "provider": account.provider,
         "external_id": account.external_id,
         "sync_status": account.sync_status,
+        "account_version": account.account_version,
+        "data_origin": account.data_origin,
+        "verification_level": account.verification_level,
+        "source_priority": account.source_priority,
+        "confidence_score": account.confidence_score,
+        "sync_health": account.sync_health,
+        "balance_health": account.balance_health,
+        "integration_health": account.integration_health,
+        "account_operational_health": account.account_operational_health,
+        "shared_scope_type": account.shared_scope_type,
+        "shared_scope_id": _stringify_id(account.shared_scope_id) or "",
     }
 
 
@@ -334,19 +511,19 @@ def build_account_balance_payload(
     old_balance,
     new_balance,
     reason: str,
-    transaction_id: int | None = None,
+    transaction_id: str | int | None = None,
 ) -> dict:
     old_value = Decimal(str(old_balance))
     new_value = Decimal(str(new_balance))
     return {
-        "account_id": account.pk,
-        "owner_id": account.owner_id,
+        "account_id": _stringify_id(account.pk),
+        "owner_id": _stringify_id(account.owner_id),
         "currency": account.currency,
         "old_balance": str(old_value),
         "new_balance": str(new_value),
         "delta": str(new_value - old_value),
         "reason": reason,
-        "transaction_id": transaction_id,
+        "transaction_id": _stringify_id(transaction_id),
     }
 
 
@@ -392,10 +569,10 @@ def build_account_sync_payload(
 
 def build_account_membership_payload(*, membership, change: str, extra: dict | None = None) -> dict:
     payload = {
-        "membership_id": membership.pk,
-        "account_id": membership.account_id,
-        "owner_id": membership.account.owner_id,
-        "user_id": membership.user_id,
+        "membership_id": _stringify_id(membership.pk),
+        "account_id": _stringify_id(membership.account_id),
+        "owner_id": _stringify_id(membership.account.owner_id),
+        "user_id": _stringify_id(membership.user_id),
         "role": membership.role,
         "access_mode": membership.access_mode,
         "is_active": membership.is_active,
@@ -412,7 +589,7 @@ def build_account_membership_payload(*, membership, change: str, extra: dict | N
 def build_account_snapshot_payload(*, snapshot, change: str, drift_threshold=None, extra: dict | None = None) -> dict:
     payload = {
         **build_account_core_payload(snapshot.account),
-        "snapshot_id": snapshot.pk,
+        "snapshot_id": _stringify_id(snapshot.pk),
         "change": change,
         "as_of": snapshot.as_of.isoformat() if snapshot.as_of else None,
         "balance_cached": str(snapshot.balance_cached),

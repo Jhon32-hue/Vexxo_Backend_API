@@ -19,6 +19,8 @@ from django.db import transaction
 from finance.accounts.domain.events import AccountDomainEventTypes, build_account_sync_payload
 from finance.accounts.models import Account
 from finance.accounts.services import publish_account_event, publish_account_sync_event
+from finance.accounts.services import revoke_provider_integration_access_for_user
+from finance.accounts.services.intelligence_service import refresh_account_intelligence_for_user
 
 
 @transaction.atomic
@@ -146,3 +148,36 @@ def process_stub_account_sync(
         metadata=upstream_metadata,
     )
     return account
+
+
+def process_stub_account_intelligence_refresh(*, owner_id: str | int, event: dict | None = None) -> dict:
+    upstream_event = dict(event or {})
+    result = refresh_account_intelligence_for_user(owner_id)
+    if result is None:
+        raise ValueError("No se encontro el usuario para refrescar inteligencia de accounts.")
+
+    return {
+        "owner_id": str(owner_id),
+        "trigger_event_type": upstream_event.get("type", ""),
+        "portfolio_snapshot_id": str(result["portfolio_snapshot"].pk),
+        "risk_snapshot_id": str(result["risk_snapshot"].pk),
+        "product_signals_count": len(result["product_signals"]),
+    }
+
+
+def process_stub_consent_revocation(*, user_id: str | int, provider: str = "", consent_type: str = "", event: dict | None = None) -> dict:
+    from django.contrib.auth import get_user_model
+
+    upstream_event = dict(event or {})
+    user = get_user_model().objects.filter(pk=user_id).first()
+    if user is None:
+        raise ValueError("No se encontro el usuario para revocar integraciones.")
+
+    result = revoke_provider_integration_access_for_user(
+        user=user,
+        provider=provider,
+        legal_reason=consent_type or "consent_revoked",
+    )
+    result["trigger_event_type"] = upstream_event.get("type", "")
+    result["consent_type"] = consent_type
+    return result

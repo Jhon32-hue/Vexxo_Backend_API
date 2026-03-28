@@ -28,6 +28,7 @@ from rest_framework.response import Response
 from finance.accounts.models import BalanceSnapshot
 from finance.accounts.serializers import BalanceSnapshotCreateSerializer, BalanceSnapshotSerializer
 from finance.accounts.services.permission_service import account_scope_for_user, user_can_manage_account_settings
+from finance.accounts.services.snapshot_policy_service import get_balance_snapshot_policy_summary
 from support.audit.helpers import audit_log
 
 
@@ -108,3 +109,7 @@ class BalanceSnapshotViewSet(
 
         serializer = BalanceSnapshotSerializer(snapshot, context=self.get_serializer_context())
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["get"])
+    def policy(self, request):
+        return Response(get_balance_snapshot_policy_summary(), status=status.HTTP_200_OK)

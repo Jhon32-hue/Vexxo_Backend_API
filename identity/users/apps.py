@@ -9,3 +9,4 @@ class UsersConfig(AppConfig):
 
     def ready(self):
         from identity.users import signals  # noqa
+        from identity.users import event_handlers  # noqa

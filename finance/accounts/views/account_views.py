@@ -36,6 +36,7 @@ from finance.accounts.domain.events import (
     build_account_lifecycle_payload,
     build_account_sync_payload,
     get_account_event_catalog,
+    get_account_event_governance,
     get_account_event_runtime,
 )
 from finance.accounts.models import Account, AccountStatus
@@ -917,6 +918,7 @@ class AccountViewSet(viewsets.ModelViewSet):
                 "module": "finance.accounts",
                 "aggregate": "account",
                 "runtime": get_account_event_runtime(),
+                "governance": get_account_event_governance(),
                 "events": get_account_event_catalog(),
             },
             status=status.HTTP_200_OK,

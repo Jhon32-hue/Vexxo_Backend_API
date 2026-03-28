@@ -6,6 +6,11 @@ urlpatterns = [
     # IDENTITY
     # -------------------
     path("identity/users/", include("identity.users.urls")),
+    path("identity/devices/", include("identity.devices.urls")),
+    path("identity/sessions/", include("identity.sessions.urls")),
+    path("identity/consents/", include("identity.consents.urls")),
+    path("identity/permissions/", include("identity.permissions.urls")),
+    path("identity/eventing/", include("identity.eventing.urls")),
 
     # -------------------
     # FINANCE CORE

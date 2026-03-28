@@ -19,8 +19,21 @@ from __future__ import annotations
 import logging
 
 from common.domain_events import EventContext, EventNames, EventPriority, MindwalletDomainEvent, subscribe
+from django.utils import timezone
+
+from finance.accounts.services.intelligence_dispatch_service import (
+    account_intelligence_local_fallback_allowed,
+    enqueue_account_intelligence_refresh_task,
+)
+from finance.accounts.services.intelligence_service import refresh_account_intelligence_for_user
 from finance.accounts.services.realtime_services import ping_account_changed
 from finance.accounts.services.sync_dispatch_service import enqueue_account_sync_task
+from finance.accounts.services.user_integration_service import (
+    disable_auto_sync_for_user,
+    ensure_user_financial_home,
+    refresh_user_accounts_projection,
+    sync_user_currency_to_accounts,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +55,35 @@ def _publish_owner_realtime_signal(event: MindwalletDomainEvent, *, signal_event
             "payload": payload,
         },
     )
+
+
+@subscribe(
+    "accounts.*",
+    name="accounts.refresh_owner_account_intelligence",
+    run_async=True,
+    contexts=[EventContext.ACCOUNTS],
+    priority=EventPriority.LOW,
+)
+def handle_any_account_event_refresh_intelligence(event: MindwalletDomainEvent) -> None:
+    owner_id = (event.payload or {}).get("owner_id")
+    if not owner_id:
+        return
+    try:
+        minute_bucket = timezone.now().strftime("%Y%m%d%H%M")
+        response = enqueue_account_intelligence_refresh_task(
+            event=event,
+            owner_id=owner_id,
+            task_name_suffix=f"{owner_id}-{minute_bucket}",
+        )
+        if response is None and account_intelligence_local_fallback_allowed():
+            refresh_account_intelligence_for_user(owner_id)
+    except Exception:
+        logger.exception(
+            "[accounts.intelligence][corr=%s] Error recalculando proyecciones owner_id=%s event=%s",
+            event.correlation_id,
+            owner_id,
+            event.type,
+        )
 
 
 @subscribe(
@@ -127,3 +169,103 @@ def handle_account_sync_succeeded(event: MindwalletDomainEvent) -> None:
         event,
         signal_event="account.sync.succeeded",
     )
+
+
+@subscribe(
+    EventNames.USER_REGISTERED,
+    name="accounts.bootstrap_user_financial_home",
+    run_async=True,
+    contexts=[EventContext.IDENTITY],
+    priority=EventPriority.HIGH,
+)
+def handle_user_registered(event: MindwalletDomainEvent) -> None:
+    from django.contrib.auth import get_user_model
+
+    owner_id = (event.payload or {}).get("user_id")
+    if not owner_id:
+        return
+    user = get_user_model().objects.filter(pk=owner_id).first()
+    if user is None:
+        return
+    ensure_user_financial_home(user)
+
+
+@subscribe(
+    EventNames.USER_PLAN_CHANGED,
+    name="accounts.handle_user_plan_changed",
+    run_async=True,
+    contexts=[EventContext.IDENTITY],
+    priority=EventPriority.NORMAL,
+)
+def handle_user_plan_changed(event: MindwalletDomainEvent) -> None:
+    from django.contrib.auth import get_user_model
+
+    owner_id = (event.payload or {}).get("user_id")
+    if not owner_id:
+        return
+    user = get_user_model().objects.filter(pk=owner_id).first()
+    if user is None:
+        return
+    refresh_user_accounts_projection(user)
+
+
+@subscribe(
+    EventNames.USER_CURRENCY_CHANGED,
+    name="accounts.handle_user_currency_changed",
+    run_async=True,
+    contexts=[EventContext.IDENTITY],
+    priority=EventPriority.HIGH,
+)
+def handle_user_currency_changed(event: MindwalletDomainEvent) -> None:
+    from django.contrib.auth import get_user_model
+
+    payload = event.payload or {}
+    owner_id = payload.get("user_id")
+    if not owner_id:
+        return
+    user = get_user_model().objects.filter(pk=owner_id).first()
+    if user is None:
+        return
+    before = payload.get("before") or {}
+    sync_user_currency_to_accounts(
+        user=user,
+        previous_currency=before.get("preferred_currency"),
+    )
+
+
+@subscribe(
+    EventNames.USER_SUSPENDED,
+    name="accounts.handle_user_suspended",
+    run_async=True,
+    contexts=[EventContext.IDENTITY],
+    priority=EventPriority.HIGH,
+)
+def handle_user_suspended(event: MindwalletDomainEvent) -> None:
+    from django.contrib.auth import get_user_model
+
+    owner_id = (event.payload or {}).get("user_id")
+    if not owner_id:
+        return
+    user = get_user_model().objects.filter(pk=owner_id).first()
+    if user is None:
+        return
+    disable_auto_sync_for_user(user)
+
+
+@subscribe(
+    EventNames.USER_ACTIVATED,
+    name="accounts.handle_user_activated",
+    run_async=True,
+    contexts=[EventContext.IDENTITY],
+    priority=EventPriority.NORMAL,
+)
+def handle_user_activated(event: MindwalletDomainEvent) -> None:
+    from django.contrib.auth import get_user_model
+
+    owner_id = (event.payload or {}).get("user_id")
+    if not owner_id:
+        return
+    user = get_user_model().objects.filter(pk=owner_id).first()
+    if user is None:
+        return
+    refresh_user_accounts_projection(user)

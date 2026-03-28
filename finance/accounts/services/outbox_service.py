@@ -25,6 +25,7 @@ import json
 from decimal import Decimal
 
 from django.db import transaction
+from django.utils import timezone
 
 from common.domain_events import EventContext
 
@@ -41,8 +42,20 @@ from finance.accounts.services.realtime_services import ping_account_changed
 
 def _stable_event_key(event_type: str, aggregate_id: str | int, payload: dict) -> str:
     raw = json.dumps(payload, sort_keys=True, default=str)
-    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
     return f"{event_type}:{aggregate_id}:{digest}"
+
+
+def _account_event_metadata(metadata: dict | None = None) -> dict:
+    return {
+        "context": EventContext.ACCOUNTS.value,
+        "source": "accounts.outbox_service",
+        **(metadata or {}),
+    }
+
+
+def _touch_account_last_domain_event(account) -> None:
+    account.__class__.objects.filter(pk=account.pk).update(last_domain_event_at=timezone.now())
 
 
 def enqueue_account_event(
@@ -52,18 +65,14 @@ def enqueue_account_event(
     payload: dict,
     metadata: dict | None = None,
 ):
-    event_metadata = {
-        "context": EventContext.ACCOUNTS.value,
-        "source": "accounts.outbox_service",
-        **(metadata or {}),
-    }
+    _touch_account_last_domain_event(account)
     return enqueue_domain_event(
         aggregate_type="account",
         aggregate_id=str(account.pk),
         event_type=event_type,
         idempotency_key=_stable_event_key(event_type, account.pk, payload),
         payload=payload,
-        metadata=event_metadata,
+        metadata=_account_event_metadata(metadata),
     )
 
 
@@ -107,7 +116,7 @@ def enqueue_account_balance_updated_event(
     old_balance: Decimal,
     new_balance: Decimal,
     reason: str,
-    transaction_id: int | None = None,
+    transaction_id: str | int | None = None,
     metadata: dict | None = None,
 ):
     payload = build_account_balance_payload(
@@ -131,7 +140,7 @@ def publish_account_balance_updated(
     old_balance: Decimal,
     new_balance: Decimal,
     reason: str,
-    transaction_id: int | None = None,
+    transaction_id: str | int | None = None,
     metadata: dict | None = None,
 ):
     if Decimal(str(new_balance)) == Decimal(str(old_balance)):
@@ -184,6 +193,7 @@ def publish_account_membership_event(
     extra: dict | None = None,
     metadata: dict | None = None,
 ):
+    _touch_account_last_domain_event(membership.account)
     event = enqueue_domain_event(
         aggregate_type="account",
         aggregate_id=str(membership.account_id),
@@ -194,11 +204,7 @@ def publish_account_membership_event(
             build_account_membership_payload(membership=membership, change=change, extra=extra),
         ),
         payload=build_account_membership_payload(membership=membership, change=change, extra=extra),
-        metadata={
-            "context": EventContext.ACCOUNTS.value,
-            "source": "accounts.outbox_service",
-            **(metadata or {}),
-        },
+        metadata=_account_event_metadata(metadata),
     )
     publish_after_commit(event)
     return event

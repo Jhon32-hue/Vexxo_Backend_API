@@ -10,13 +10,27 @@ Analisis detallado:
 """
 
 from .account_views import AccountViewSet
+from .intelligence_views import (
+    AccountCurrencyExposureViewSet,
+    AccountOwnerMetricsViewSet,
+    AccountPortfolioSnapshotViewSet,
+    AccountProductSignalViewSet,
+    AccountRiskSnapshotViewSet,
+    AccountTypeDistributionViewSet,
+)
 from .membership_views import AccountMembershipViewSet
 from .outbox_views import DomainEventOutboxViewSet
 from .snapshot_views import BalanceSnapshotViewSet
 
 __all__ = [
+    "AccountCurrencyExposureViewSet",
     "AccountMembershipViewSet",
+    "AccountOwnerMetricsViewSet",
+    "AccountPortfolioSnapshotViewSet",
+    "AccountProductSignalViewSet",
+    "AccountRiskSnapshotViewSet",
     "AccountViewSet",
+    "AccountTypeDistributionViewSet",
     "BalanceSnapshotViewSet",
     "DomainEventOutboxViewSet",
 ]

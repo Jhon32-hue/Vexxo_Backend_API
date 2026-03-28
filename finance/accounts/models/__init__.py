@@ -16,10 +16,14 @@ from .account import (
     Account,
     AccountAccess,
     AccountAccessRole,
+    AccountDataOrigin,
     AccountOwnership,
     AccountRole,
+    AccountSensitivityLevel,
+    AccountSourcePriority,
     AccountStatus,
     AccountType,
+    AccountVerificationLevel,
     AccountVisibility,
     GoalStrategy,
     RiskLevel,
@@ -27,6 +31,14 @@ from .account import (
     SyncStatus,
 )
 from .balance_snapshot import BalanceSnapshot
+from .intelligence import (
+    AccountCurrencyExposure,
+    AccountOwnerMetrics,
+    AccountPortfolioSnapshot,
+    AccountProductSignal,
+    AccountRiskSnapshot,
+    AccountTypeDistribution,
+)
 from .membership import AccountMembership
 from .outbox import DomainEventOutbox
 
@@ -34,11 +46,21 @@ __all__ = [
     "Account",
     "AccountAccess",
     "AccountAccessRole",
+    "AccountDataOrigin",
     "AccountMembership",
     "AccountOwnership",
+    "AccountOwnerMetrics",
+    "AccountPortfolioSnapshot",
+    "AccountProductSignal",
+    "AccountRiskSnapshot",
     "AccountRole",
+    "AccountSensitivityLevel",
+    "AccountSourcePriority",
+    "AccountCurrencyExposure",
+    "AccountTypeDistribution",
     "AccountStatus",
     "AccountType",
+    "AccountVerificationLevel",
     "AccountVisibility",
     "BalanceSnapshot",
     "DomainEventOutbox",

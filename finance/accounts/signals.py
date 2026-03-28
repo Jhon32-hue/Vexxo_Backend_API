@@ -105,6 +105,19 @@ def _fallback_recalc(tx, *, reason: str) -> None:
     if old_state and old_state.account_id:
         affected_ids.add(old_state.account_id)
 
+    fallback_context = {
+        "reason": reason,
+        "tx_id": str(getattr(tx, "pk", None) or ""),
+        "old_state_present": old_state is not None,
+        "affected_account_ids": sorted(str(account_id) for account_id in affected_ids if account_id),
+    }
+    logger.warning(
+        "[accounts.fallback] delta_incremental_unavailable reason=%s tx_id=%s affected_accounts=%s",
+        fallback_context["reason"],
+        fallback_context["tx_id"],
+        ",".join(fallback_context["affected_account_ids"]),
+    )
+
     for account_id in affected_ids:
         if not account_id:
             continue
@@ -128,7 +141,7 @@ def _fallback_recalc(tx, *, reason: str) -> None:
         )
 
         logger.warning(
-            "[accounts] Fallback recalc account_id=%s tx_id=%s old=%s new=%s reason=%s",
+            "[accounts.fallback] recalc_applied account_id=%s tx_id=%s old=%s new=%s reason=%s",
             account_id,
             getattr(tx, "pk", None),
             old_balance,

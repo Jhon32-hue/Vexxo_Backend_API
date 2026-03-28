@@ -15,7 +15,11 @@ from rest_framework.views import APIView
 from django.conf import settings
 
 from finance.accounts.models import Account
-from integrations_stub.banks.services import process_stub_account_sync
+from integrations_stub.banks.services import (
+    process_stub_account_intelligence_refresh,
+    process_stub_account_sync,
+    process_stub_consent_revocation,
+)
 
 
 class InternalAccountSyncJobSerializer(serializers.Serializer):
@@ -29,6 +33,18 @@ class InternalAccountSyncJobSerializer(serializers.Serializer):
     provider_metadata = serializers.JSONField(required=False)
     message = serializers.CharField(required=False, allow_blank=True, max_length=255)
     retry_in_minutes = serializers.IntegerField(required=False, min_value=1, max_value=10080)
+
+
+class InternalAccountIntelligenceRefreshSerializer(serializers.Serializer):
+    event = serializers.JSONField(required=False)
+    owner_id = serializers.CharField(max_length=64)
+
+
+class InternalConsentRevocationSerializer(serializers.Serializer):
+    event = serializers.JSONField(required=False)
+    user_id = serializers.CharField(max_length=64)
+    provider = serializers.CharField(required=False, allow_blank=True, max_length=64)
+    consent_type = serializers.CharField(required=False, allow_blank=True, max_length=64)
 
 
 class InternalAccountSyncJobView(APIView):
@@ -66,6 +82,76 @@ class InternalAccountSyncJobView(APIView):
                 "sync_status": account.sync_status,
                 "last_sync_at": account.last_sync_at.isoformat() if account.last_sync_at else None,
                 "next_sync_at": account.next_sync_at.isoformat() if account.next_sync_at else None,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class InternalAccountIntelligenceRefreshView(APIView):
+    permission_classes = [AllowAny]
+
+    def _authorized(self, request) -> bool:
+        configured = getattr(settings, "ACCOUNTS_INTELLIGENCE_INTERNAL_TOKEN", "")
+        provided = request.headers.get("X-Vexxo-Internal-Token", "")
+        if configured:
+            return bool(provided and provided == configured)
+        user = getattr(request, "user", None)
+        return bool(user and user.is_authenticated and getattr(user, "is_staff", False))
+
+    def post(self, request):
+        if not self._authorized(request):
+            return Response(
+                {"detail": "No autorizado para refresh interno de inteligencia."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = InternalAccountIntelligenceRefreshSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            result = process_stub_account_intelligence_refresh(**serializer.validated_data)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            {
+                "message": "Refresh interno de inteligencia procesado.",
+                **result,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class InternalConsentRevocationView(APIView):
+    permission_classes = [AllowAny]
+
+    def _authorized(self, request) -> bool:
+        configured = getattr(settings, "IDENTITY_CONSENTS_INTERNAL_TOKEN", "")
+        provided = request.headers.get("X-Vexxo-Internal-Token", "")
+        if configured:
+            return bool(provided and provided == configured)
+        user = getattr(request, "user", None)
+        return bool(user and user.is_authenticated and getattr(user, "is_staff", False))
+
+    def post(self, request):
+        if not self._authorized(request):
+            return Response(
+                {"detail": "No autorizado para revocacion interna de consentimientos."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = InternalConsentRevocationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            result = process_stub_consent_revocation(**serializer.validated_data)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            {
+                "message": "Revocacion interna de consentimiento procesada.",
+                **result,
             },
             status=status.HTTP_200_OK,
         )

@@ -28,7 +28,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from finance.accounts.models import Account, DomainEventOutbox
-from finance.accounts.domain.events import get_account_event_catalog, get_account_event_runtime
+from finance.accounts.domain.events import get_account_event_catalog, get_account_event_governance, get_account_event_runtime
 from finance.accounts.serializers import DomainEventOutboxSerializer, OutboxActionSerializer
 from finance.accounts.services.event_service import publish_outbox_event
 from finance.accounts.services.permission_service import account_scope_for_user, user_can_manage_account_settings
@@ -165,6 +165,7 @@ class DomainEventOutboxViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(
             {
                 "runtime": get_account_event_runtime(),
+                "governance": get_account_event_governance(),
                 "events": get_account_event_catalog(),
             },
             status=status.HTTP_200_OK,

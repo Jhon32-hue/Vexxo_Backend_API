@@ -16,6 +16,8 @@ Analisis detallado:
 Que se puede hacer despues:
 - agregar metricas de drift entre incremental y full recalc
 - introducir retries o colas si el throughput de transacciones crece mucho
+- si Vexxo migra a precision financiera superior para `Account` y
+  `Transaction`, alinear este modulo con la nueva escala global
 """
 
 from __future__ import annotations
@@ -28,16 +30,22 @@ from django.utils import timezone
 
 from finance.accounts.services.event_service import publish_after_commit
 from finance.accounts.services.outbox_service import enqueue_account_balance_updated_event
+from finance.accounts.services.permission_service import legacy_owner_read_only
 from finance.accounts.services.realtime_services import ping_account_changed
 from finance.transactions.constants import CREDIT_TYPES, DEBIT_TYPES, POSTED_STATUSES
 
 ZERO = Decimal("0.00")
-PREC = Decimal("0.000001")
+# Precision operativa alineada con los modelos persistidos actuales:
+# - Account.balance decimal_places=2
+# - Transaction.amount decimal_places=2
+# Si el dominio migra a 6/8 decimales, este valor debe moverse junto con la
+# politica global de precision para evitar drift artificial.
+PREC = Decimal("0.01")
 
 
 @dataclass(frozen=True)
 class TransactionBalanceState:
-    tx_id: int | None
+    tx_id: str | int | None
     account_id: int | None
     tx_type: str | None
     amount: Decimal | None
@@ -132,7 +140,9 @@ def apply_account_balance_deltas(
             account = accounts.get(account_id)
             if account is None or account.is_closed:
                 continue
-            if account.read_only:
+            # TODO: legacy compatibility. Remove when AccountMembership becomes
+            # the sole source of access control for shared/observed accounts.
+            if legacy_owner_read_only(account):
                 continue
 
             old_balance = _decimal(account.balance)
