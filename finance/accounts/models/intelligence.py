@@ -258,3 +258,33 @@ class AccountTypeDistribution(models.Model):
 
     def __str__(self) -> str:
         return f"TypeDistribution(owner={self.owner_id}, type={self.account_type})"
+
+
+class AccountIntelligenceDispatchState(models.Model):
+    owner = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="account_intelligence_dispatch_state",
+    )
+    pending_request = models.BooleanField(default=False)
+    request_count = models.PositiveIntegerField(default=0)
+    last_requested_at = models.DateTimeField(null=True, blank=True)
+    last_enqueued_at = models.DateTimeField(null=True, blank=True)
+    last_started_at = models.DateTimeField(null=True, blank=True)
+    last_completed_at = models.DateTimeField(null=True, blank=True)
+    last_failed_at = models.DateTimeField(null=True, blank=True)
+    last_event_type = models.CharField(max_length=128, blank=True, default="")
+    last_source = models.CharField(max_length=128, blank=True, default="")
+    last_correlation_id = models.CharField(max_length=64, blank=True, default="")
+    last_task_name = models.CharField(max_length=255, blank=True, default="")
+    last_result = models.CharField(max_length=64, blank=True, default="")
+    last_error_message = models.TextField(blank=True, default="")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Account intelligence dispatch state"
+        verbose_name_plural = "Account intelligence dispatch states"
+        indexes = [models.Index(fields=["pending_request", "last_requested_at"])]
+
+    def __str__(self) -> str:
+        return f"IntelligenceDispatchState(owner={self.owner_id}, pending={self.pending_request})"

@@ -6,3 +6,4 @@ class ReglaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Rule
         fields = '__all__'
+        read_only_fields = ("owner",)

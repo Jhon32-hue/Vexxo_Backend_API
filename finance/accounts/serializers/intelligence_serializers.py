@@ -72,3 +72,15 @@ class AccountTypeDistributionSerializer(serializers.ModelSerializer):
 
 class AccountIntelligenceRefreshSerializer(serializers.Serializer):
     force = serializers.BooleanField(required=False, default=True)
+
+
+class AccountIntelligenceWorkerReportSerializer(serializers.Serializer):
+    """
+    Callback interno para workers que materializan inteligencia fuera del web app.
+    """
+
+    owner_id = serializers.CharField()
+    status = serializers.ChoiceField(choices=["started", "completed", "failed"])
+    task_name = serializers.CharField(required=False, allow_blank=True, default="")
+    result = serializers.CharField(required=False, allow_blank=True, default="")
+    error_message = serializers.CharField(required=False, allow_blank=True, default="")

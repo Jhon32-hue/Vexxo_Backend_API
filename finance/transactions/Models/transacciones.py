@@ -168,6 +168,13 @@ class Transaction(models.Model):
         on_delete=models.SET_NULL,
         related_name="transactions",
     )
+    payment_intent = models.OneToOneField(
+        "payment_intents.PaymentIntent",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="ledger_transaction",
+    )
 
     # Fuente e integraciones
     source = models.CharField(

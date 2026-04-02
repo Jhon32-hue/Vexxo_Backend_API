@@ -8,8 +8,6 @@ import hashlib
 import json
 import logging
 
-from django.db import transaction
-
 from common.domain_events import EventContext, EventPriority, publish_domain_event
 from identity.eventing.models import IdentityDomainEventOutbox
 
@@ -61,11 +59,15 @@ def publish_identity_outbox_event(event: IdentityDomainEventOutbox) -> None:
         context = EventContext.IDENTITY
 
     try:
+        publish_metadata = dict(event.metadata or {})
+        publish_metadata.setdefault("outbox_event_id", str(event.pk))
+        publish_metadata.setdefault("projection_event_key", str(event.pk))
+        publish_metadata.setdefault("outbox_idempotency_key", str(event.idempotency_key or ""))
         publish_domain_event(
             event_type=event.event_type,
             context=context,
             payload=event.payload,
-            metadata=event.metadata or {},
+            metadata=publish_metadata,
             priority=EventPriority(int(event.priority or EventPriority.NORMAL)),
             correlation_id=event.correlation_id or (event.metadata or {}).get("correlation_id"),
             causation_id=event.causation_id or (event.metadata or {}).get("causation_id"),
@@ -109,5 +111,4 @@ def publish_identity_after_commit(
         causation_id=causation_id,
         metadata=event_metadata,
     )
-    transaction.on_commit(lambda: publish_identity_outbox_event(event))
     return event

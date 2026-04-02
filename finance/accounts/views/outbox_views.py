@@ -52,6 +52,8 @@ class DomainEventOutboxViewSet(viewsets.ReadOnlyModelViewSet):
         status_param = self.request.query_params.get("status")
         event_type = self.request.query_params.get("event_type")
         account_id = self.request.query_params.get("account")
+        correlation_id = self.request.query_params.get("correlation_id")
+        request_id = self.request.query_params.get("request_id")
 
         if status_param:
             qs = qs.filter(status=status_param)
@@ -59,6 +61,10 @@ class DomainEventOutboxViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(event_type=event_type)
         if account_id:
             qs = qs.filter(aggregate_id=str(account_id))
+        if correlation_id:
+            qs = qs.filter(correlation_id=correlation_id)
+        if request_id:
+            qs = qs.filter(request_id=request_id)
 
         return qs.order_by("-occurred_at")
 
@@ -107,7 +113,7 @@ class DomainEventOutboxViewSet(viewsets.ReadOnlyModelViewSet):
             serializer = DomainEventOutboxSerializer(event, context=self.get_serializer_context())
             return Response(serializer.data, status=status.HTTP_200_OK)
 
-        publish_outbox_event(event)
+        publish_outbox_event(event, publisher=f"api:{self.request.user.id}")
         event.refresh_from_db()
         self._audit(action_name="outbox_publish_now", event=event, account=account)
         serializer = DomainEventOutboxSerializer(event, context=self.get_serializer_context())
@@ -123,9 +129,23 @@ class DomainEventOutboxViewSet(viewsets.ReadOnlyModelViewSet):
             return Response(serializer.data, status=status.HTTP_200_OK)
 
         event.status = DomainEventOutbox.Status.PENDING
+        event.next_attempt_at = None
+        event.dead_lettered_at = None
+        event.dead_letter_reason = ""
+        event.last_backoff_seconds = 0
         event.release_lock(commit=False)
-        event.save(update_fields=["status", "locked_at", "locked_by"])
-        publish_outbox_event(event)
+        event.save(
+            update_fields=[
+                "status",
+                "next_attempt_at",
+                "dead_lettered_at",
+                "dead_letter_reason",
+                "last_backoff_seconds",
+                "locked_at",
+                "locked_by",
+            ]
+        )
+        publish_outbox_event(event, publisher=f"api:{self.request.user.id}")
         event.refresh_from_db()
 
         self._audit(action_name="outbox_retry", event=event, account=account)
@@ -151,11 +171,13 @@ class DomainEventOutboxViewSet(viewsets.ReadOnlyModelViewSet):
         qs = self.get_queryset()
         by_status = list(qs.values("status").annotate(total=Count("id")).order_by("status"))
         by_event_type = list(qs.values("event_type").annotate(total=Count("id")).order_by("event_type"))
+        by_result = list(qs.values("last_publish_result").annotate(total=Count("id")).order_by("last_publish_result"))
         return Response(
             {
                 "total_events": qs.count(),
                 "by_status": by_status,
                 "by_event_type": by_event_type,
+                "by_result": by_result,
             },
             status=status.HTTP_200_OK,
         )

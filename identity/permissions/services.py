@@ -139,13 +139,20 @@ def deny_permission(grant: UserPermissionGrant, *, reason: str = "") -> UserPerm
 
 
 PLAN_PERMISSION_CODES = {
-    "accounts.extended.enabled": lambda caps: caps.get("max_active_accounts") is None or (caps.get("max_active_accounts") or 0) > 3,
+    "accounts.extended.enabled": lambda caps: caps.get("plan") in {"pro", "enterprise"},
     "accounts.multi_primary.enabled": lambda caps: caps.get("max_primary_accounts") is None or (caps.get("max_primary_accounts") or 0) > 1,
-    "integrations.multi_connection.enabled": lambda caps: caps.get("max_api_connections") is None or (caps.get("max_api_connections") or 0) > 1,
-    "contacts.extended.enabled": lambda caps: caps.get("max_contacts") is None or (caps.get("max_contacts") or 0) > 2,
-    "sharing.extended.enabled": lambda caps: caps.get("max_shared_accounts") is None or (caps.get("max_shared_accounts") or 0) > 2,
+    "accounts.connected.extended.enabled": lambda caps: caps.get("max_connected_accounts") is None or (caps.get("max_connected_accounts") or 0) > 1,
+    "integrations.multi_connection.enabled": lambda caps: caps.get("max_connected_accounts") is None or (caps.get("max_connected_accounts") or 0) > 1,
+    "contacts.extended.enabled": lambda caps: caps.get("max_contacts") is None or (caps.get("max_contacts") or 0) > 10,
+    "sharing.extended.enabled": lambda caps: caps.get("max_members_per_account") is None or (caps.get("max_members_per_account") or 0) > 2,
     "reports.extended.enabled": lambda caps: caps.get("max_monthly_reports") is None or (caps.get("max_monthly_reports") or 0) > 1,
-    "documents.extended.enabled": lambda caps: caps.get("max_documents_per_month") is None or (caps.get("max_documents_per_month") or 0) > 20,
+    "documents.extended.enabled": lambda caps: caps.get("max_documents_per_month") is None or (caps.get("max_documents_per_month") or 0) > 10,
+    "automation.rules.extended.enabled": lambda caps: caps.get("max_rules") is None or (caps.get("max_rules") or 0) > 1,
+    "ai.advanced_insights.enabled": lambda caps: str(caps.get("insights_level") or "basic") not in {"basic", ""},
+    "alerts.smart.enabled": lambda caps: bool(caps.get("smart_alerts_enabled", False)),
+    "payments.embedded.enabled": lambda caps: bool(caps.get("embedded_payments_enabled", False)),
+    "payments.payouts.enabled": lambda caps: bool(caps.get("payouts_enabled", False)),
+    "product.ads_free.enabled": lambda caps: not bool(caps.get("ads_enabled", True)),
     "product.enterprise_controls.enabled": lambda caps: caps.get("plan") == "enterprise",
 }
 

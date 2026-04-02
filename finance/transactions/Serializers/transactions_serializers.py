@@ -13,6 +13,8 @@ from finance.transactions.Models.transacciones import (
     TransactionParticipant,
 )
 from finance.transactions.utils_limits import account_month_expense_total, user_month_tx_count
+from identity.users.domain.plan_matrix import get_plan_capabilities
+from identity.users.services.product_access_service import validate_scheduled_payments_limit
 
 class BaseOwnerSerializer(serializers.ModelSerializer):
     """Asegura owner=request.user en create y valida pertenencia en FKs."""
@@ -50,6 +52,16 @@ class ScheduledPaymentSerializer(BaseOwnerSerializer):
         read_only_fields = ("owner", "created_at")
 
     def validate(self, attrs):
+        activating_pending = (
+            self.instance is not None
+            and attrs.get("status") == ScheduledPayment.Status.PENDING
+            and getattr(self.instance, "status", None) != ScheduledPayment.Status.PENDING
+        )
+        if self.instance is None or activating_pending:
+            validate_scheduled_payments_limit(
+                self.context["request"].user,
+                source="transactions.scheduled_payments.create" if self.instance is None else "transactions.scheduled_payments.reactivate",
+            )
         for f in ["account", "category", "vendor", "debt", "installment"]:
             self._assert_owner(attrs.get(f), f)
         return attrs
@@ -112,21 +124,6 @@ class TransactionSerializer(BaseOwnerSerializer):
 
     # ======== PLAN HELPERS ========
 
-    def _get_user_plan(self, user) -> str:
-        settings = getattr(user, "settings", None)
-        plan = getattr(settings, "plan", None)
-        if plan in {"free", "plus", "pro"}:
-            return plan
-        return "free"
-
-    def _get_plan_limits(self, plan: str) -> dict:
-        config = {
-            "free": {"max_monthly_tx": 300},
-            "plus": {"max_monthly_tx": 2000},
-            "pro": {"max_monthly_tx": None},
-        }
-        return config.get(plan, config["free"])
-
     # ======== VALIDACIÓN PRINCIPAL ========
 
     def validate(self, attrs):
@@ -149,6 +146,7 @@ class TransactionSerializer(BaseOwnerSerializer):
             "debt",
             "installment",
             "scheduled_payment",
+            "payment_intent",
         ]:
             self._assert_owner(attrs.get(f) or getattr(instance, f, None), f)
 
@@ -252,9 +250,9 @@ class TransactionSerializer(BaseOwnerSerializer):
 
         # 5) límite por plan (solo en creación)
         if instance is None and user and date:
-            plan = self._get_user_plan(user)
-            limits = self._get_plan_limits(plan)
-            max_monthly_tx = limits.get("max_monthly_tx")
+            max_monthly_tx = get_plan_capabilities(getattr(user, "plan", "free")).get(
+                "max_monthly_tx_per_account"
+            )
 
             if max_monthly_tx is not None:
                 current_count = user_month_tx_count(user, date)

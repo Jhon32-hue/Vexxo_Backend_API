@@ -34,6 +34,7 @@ from finance.accounts.services.intelligence_health_service import get_account_in
 from finance.accounts.services.intelligence_service import refresh_account_intelligence_for_user
 from finance.debts.models import Debt, DebtInstallment
 from finance.transactions.Models.transacciones import Transaction
+from identity.users.services.product_access_service import capabilities_for_user, effective_plan_for_user, get_user_usage_snapshot
 from planning.goals.models import Goal
 from social.teams.models.membership import Membership
 
@@ -114,6 +115,7 @@ class UserDashboardView(views.APIView):
                     "full_name": user.display_name,
                     "preferred_currency": user.preferred_currency,
                     "plan": user.plan,
+                    "effective_plan": effective_plan_for_user(user),
                     "status": user.status,
                     "onboarding_completed": bool(user.onboarding_completed),
                 },
@@ -193,6 +195,7 @@ class UserDashboardView(views.APIView):
                     }
                     for a in latest_alerts
                 ],
-                "plan_limits": user.get_plan_config(),
+                "plan_limits": capabilities_for_user(user),
+                "plan_usage": get_user_usage_snapshot(user),
             }
         )

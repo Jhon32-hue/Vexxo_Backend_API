@@ -11,7 +11,15 @@ Analisis detallado:
 
 from django.contrib import admin
 
-from finance.accounts.models import Account, AccountMembership, BalanceSnapshot, DomainEventOutbox
+from finance.accounts.models import (
+    Account,
+    AccountBalanceFallback,
+    AccountIntelligenceDispatchState,
+    AccountInvitation,
+    AccountMembership,
+    BalanceSnapshot,
+    DomainEventOutbox,
+)
 
 
 @admin.register(Account)
@@ -41,6 +49,14 @@ class AccountMembershipAdmin(admin.ModelAdmin):
     readonly_fields = ("invitation_token",)
 
 
+@admin.register(AccountInvitation)
+class AccountInvitationAdmin(admin.ModelAdmin):
+    list_display = ("id", "membership", "status", "attempt_number", "is_current", "sent_at", "expires_at")
+    list_filter = ("status", "is_current", "channel")
+    search_fields = ("membership__account__name", "user__username", "user__email", "token")
+    readonly_fields = ("token",)
+
+
 @admin.register(BalanceSnapshot)
 class BalanceSnapshotAdmin(admin.ModelAdmin):
     list_display = ("id", "account", "as_of", "drift", "drift_abs", "is_consistent", "source", "created_at")
@@ -54,3 +70,25 @@ class DomainEventOutboxAdmin(admin.ModelAdmin):
     list_filter = ("aggregate_type", "status", "event_type")
     search_fields = ("aggregate_id", "idempotency_key", "event_type", "locked_by")
     readonly_fields = ("id", "occurred_at", "published_at")
+
+
+@admin.register(AccountBalanceFallback)
+class AccountBalanceFallbackAdmin(admin.ModelAdmin):
+    list_display = ("id", "account", "transaction_id", "reason", "recalculated", "created_at")
+    list_filter = ("reason", "recalculated", "source")
+    search_fields = ("transaction_id", "account__name", "account__owner__username")
+
+
+@admin.register(AccountIntelligenceDispatchState)
+class AccountIntelligenceDispatchStateAdmin(admin.ModelAdmin):
+    list_display = (
+        "owner",
+        "pending_request",
+        "request_count",
+        "last_requested_at",
+        "last_enqueued_at",
+        "last_completed_at",
+        "last_result",
+    )
+    list_filter = ("pending_request", "last_result")
+    search_fields = ("owner__username", "owner__email", "last_event_type", "last_source")

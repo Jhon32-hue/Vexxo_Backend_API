@@ -20,7 +20,9 @@ from django.contrib.auth.password_validation import validate_password
 from django.utils.text import slugify
 from rest_framework import serializers
 
+from identity.users.domain.plan_matrix import resolve_plan_code
 from identity.users.models.user import PlanType, UserStatus
+from identity.users.services.product_access_service import get_user_usage_snapshot
 
 User = get_user_model()
 
@@ -48,6 +50,7 @@ def _generate_username(*, email: str, full_name: str) -> str:
 
 class BaseUserSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(source="display_name", read_only=True)
+    effective_plan = serializers.SerializerMethodField(read_only=True)
     plan_config = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -66,6 +69,7 @@ class BaseUserSerializer(serializers.ModelSerializer):
             "whatsapp_connected",
             "photo",
             "plan",
+            "effective_plan",
             "plan_config",
             "status",
             "is_verified",
@@ -92,6 +96,9 @@ class BaseUserSerializer(serializers.ModelSerializer):
 
     def get_plan_config(self, obj):
         return obj.get_plan_config()
+
+    def get_effective_plan(self, obj):
+        return getattr(obj, "effective_plan", obj.plan)
 
     def validate_email(self, value):
         value = (value or "").strip().lower()
@@ -165,10 +172,14 @@ class UserRegisterSerializer(serializers.ModelSerializer):
 class UserMeSerializer(BaseUserSerializer):
     full_name = serializers.CharField(write_only=True, required=False)
     display_name = serializers.CharField(source="full_name", read_only=True)
+    plan_usage = serializers.SerializerMethodField(read_only=True)
 
     class Meta(BaseUserSerializer.Meta):
-        fields = BaseUserSerializer.Meta.fields + ["display_name"]
+        fields = BaseUserSerializer.Meta.fields + ["display_name", "plan_usage"]
         read_only_fields = BaseUserSerializer.Meta.read_only_fields + ["username", "plan"]
+
+    def get_plan_usage(self, obj):
+        return get_user_usage_snapshot(obj)
 
     def update(self, instance, validated_data):
         full_name = validated_data.pop("full_name", None)
@@ -203,6 +214,7 @@ class UserAdminSerializer(BaseUserSerializer):
         read_only_fields = ["created_at", "updated_at", "last_seen"]
 
     def validate_plan(self, value):
-        if value not in [p.value for p in PlanType]:
+        normalized = resolve_plan_code(value)
+        if normalized not in {"free", "pro", "enterprise"}:
             raise serializers.ValidationError("Plan invalido.")
-        return value
+        return normalized

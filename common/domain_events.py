@@ -23,6 +23,7 @@ class EventContext(str, Enum):
     ACCOUNTS = "accounts"
     TRANSACTIONS = "transactions"
     ALERTS = "alerts"
+    PAYMENTS = "payments"
     BUDGETS = "budgets"
     GOALS = "goals"
     CONTACTS = "contacts"
@@ -73,6 +74,7 @@ class EventNames:
     USER_PERMISSION_GRANTED = "users.permission.granted.v1"
     USER_PERMISSION_DENIED = "users.permission.denied.v1"
     USER_PERMISSION_REVOKED = "users.permission.revoked.v1"
+    GROWTH_UPGRADE_TRIGGERED = "growth.upgrade_triggered.v1"
 
     # --- ACCOUNTS ---
     ACCOUNT_BALANCE_UPDATED = "accounts.balance.updated.v1"
@@ -99,6 +101,25 @@ class EventNames:
     ACCOUNT_MEMBERSHIP_UPDATED = "accounts.membership.updated.v1"
     ACCOUNT_MEMBERSHIP_ACCEPTED = "accounts.membership.accepted.v1"
     ACCOUNT_MEMBERSHIP_REVOKED = "accounts.membership.revoked.v1"
+
+    # --- PAYMENTS ---
+    PAYMENT_ORDER_REQUESTED = "payments.order.requested.v1"
+    PAYMENT_INTENT_CREATED = "payments.intent.created.v1"
+    PAYMENT_INTENT_DISPATCHED = "payments.intent.dispatched.v1"
+    PAYMENT_INTENT_REQUIRES_ACTION = "payments.intent.requires_action.v1"
+    PAYMENT_INTENT_PROCESSING = "payments.intent.processing.v1"
+    PAYMENT_INTENT_SUCCEEDED = "payments.intent.succeeded.v1"
+    PAYMENT_INTENT_FAILED = "payments.intent.failed.v1"
+    PAYMENT_INTENT_CANCELLED = "payments.intent.cancelled.v1"
+    PAYMENT_INTENT_SETTLED = "payments.intent.settled.v1"
+    PAYMENT_FEE_CALCULATED = "payments.fee.calculated.v1"
+    PAYMENT_PROVIDER_REFERENCE_RECORDED = "payments.provider.reference.recorded.v1"
+    PAYMENT_RECURRING_TEMPLATE_CREATED = "payments.recurring.template.created.v1"
+    PAYMENT_RECURRING_TEMPLATE_UPDATED = "payments.recurring.template.updated.v1"
+    PAYMENT_RECURRING_RUN_REQUESTED = "payments.recurring.run.requested.v1"
+    PAYMENT_PAYOUT_REQUESTED = "payments.payout.requested.v1"
+    PAYMENT_PAYOUT_SUCCEEDED = "payments.payout.succeeded.v1"
+    PAYMENT_PAYOUT_FAILED = "payments.payout.failed.v1"
 
     # --- TRANSACTIONS ---
     TRANSACTION_CREATED = "transactions.created.v1"
@@ -166,6 +187,7 @@ KNOWN_EVENT_TYPES: Dict[str, str] = {
     EventNames.USER_PERMISSION_GRANTED: "Grant de permiso de usuario otorgado",
     EventNames.USER_PERMISSION_DENIED: "Grant de permiso de usuario denegado explicitamente",
     EventNames.USER_PERMISSION_REVOKED: "Grant de permiso de usuario revocado",
+    EventNames.GROWTH_UPGRADE_TRIGGERED: "Trigger de upgrade por limite de plan o friccion de valor",
     # type: descripción corta
     EventNames.ACCOUNT_BALANCE_UPDATED: "Balance de una cuenta recalculado",
     EventNames.ACCOUNT_CREATED: "Cuenta creada",
@@ -191,6 +213,23 @@ KNOWN_EVENT_TYPES: Dict[str, str] = {
     EventNames.ACCOUNT_MEMBERSHIP_UPDATED: "Membresia de cuenta actualizada",
     EventNames.ACCOUNT_MEMBERSHIP_ACCEPTED: "Membresia de cuenta aceptada",
     EventNames.ACCOUNT_MEMBERSHIP_REVOKED: "Membresia de cuenta revocada",
+    EventNames.PAYMENT_ORDER_REQUESTED: "Orden de pago solicitada por el usuario",
+    EventNames.PAYMENT_INTENT_CREATED: "Intent de pago creado",
+    EventNames.PAYMENT_INTENT_DISPATCHED: "Intent de pago despachado al proveedor",
+    EventNames.PAYMENT_INTENT_REQUIRES_ACTION: "Intent de pago requiere accion adicional",
+    EventNames.PAYMENT_INTENT_PROCESSING: "Intent de pago en procesamiento",
+    EventNames.PAYMENT_INTENT_SUCCEEDED: "Intent de pago ejecutado correctamente",
+    EventNames.PAYMENT_INTENT_FAILED: "Intent de pago fallido",
+    EventNames.PAYMENT_INTENT_CANCELLED: "Intent de pago cancelado",
+    EventNames.PAYMENT_INTENT_SETTLED: "Intent de pago liquidado",
+    EventNames.PAYMENT_FEE_CALCULATED: "Fee de pago calculado",
+    EventNames.PAYMENT_PROVIDER_REFERENCE_RECORDED: "Referencia del proveedor registrada",
+    EventNames.PAYMENT_RECURRING_TEMPLATE_CREATED: "Template recurrente de pago creado",
+    EventNames.PAYMENT_RECURRING_TEMPLATE_UPDATED: "Template recurrente de pago actualizado",
+    EventNames.PAYMENT_RECURRING_RUN_REQUESTED: "Corrida recurrente de pago solicitada",
+    EventNames.PAYMENT_PAYOUT_REQUESTED: "Dispersion solicitada",
+    EventNames.PAYMENT_PAYOUT_SUCCEEDED: "Dispersion completada",
+    EventNames.PAYMENT_PAYOUT_FAILED: "Dispersion fallida",
     EventNames.TRANSACTION_CREATED: "Transacción creada",
     EventNames.TRANSACTION_UPDATED: "Transacción actualizada",
     EventNames.TRANSACTION_DELETED: "Transacción eliminada",
@@ -283,6 +322,7 @@ class ListenerConfig:
     run_async: bool = False
     contexts: Optional[List[EventContext]] = None
     priority: EventPriority = EventPriority.NORMAL
+    required: bool = False
 
 
 class DomainEventBus:
@@ -315,6 +355,7 @@ class DomainEventBus:
         run_async: bool = False,
         contexts: Optional[List[EventContext]] = None,
         priority: EventPriority = EventPriority.NORMAL,
+        required: bool = False,
     ) -> None:
         """
         Registra un listener para un tipo de evento.
@@ -329,6 +370,7 @@ class DomainEventBus:
             run_async=run_async,
             contexts=contexts,
             priority=priority,
+            required=required,
         )
 
         with self._lock:
@@ -426,7 +468,14 @@ class DomainEventBus:
         filtered.sort(key=lambda c: int(c.priority), reverse=True)
         return filtered
 
-    def publish(self, event: MindwalletDomainEvent) -> None:
+    def publish(
+        self,
+        event: MindwalletDomainEvent,
+        *,
+        include_local: bool = True,
+        include_external: bool = True,
+        raise_required_listener_errors: bool = False,
+    ) -> None:
         """
         Publica el evento a:
         - Middlewares globales
@@ -455,38 +504,47 @@ class DomainEventBus:
 
         listeners = self._resolve_listeners(event)
 
-        # 1) Listeners locales
-        for cfg in listeners:
-            try:
-                if cfg.run_async:
-                    # Listener en thread aparte (fire-and-forget)
-                    threading.Thread(
-                        target=cfg.handler,
-                        args=(event,),
-                        name=f"event-listener-{cfg.name}",
-                        daemon=True,
-                    ).start()
-                else:
-                    cfg.handler(event)
-            except Exception:
-                logger.exception(
-                    "[events] Error en listener '%s' para evento '%s'",
-                    cfg.name,
-                    event.type,
-                )
+        if include_local:
+            required_listener_errors = []
+            for cfg in listeners:
+                try:
+                    if cfg.run_async:
+                        threading.Thread(
+                            target=cfg.handler,
+                            args=(event,),
+                            name=f"event-listener-{cfg.name}",
+                            daemon=True,
+                        ).start()
+                    else:
+                        cfg.handler(event)
+                except Exception as exc:
+                    logger.exception(
+                        "[events] Error en listener '%s' para evento '%s'",
+                        cfg.name,
+                        event.type,
+                    )
+                    if cfg.required and raise_required_listener_errors:
+                        required_listener_errors.append(exc)
 
-        # 2) Dispatchers externos
-        with self._lock:
-            dispatchers = list(self._dispatchers)
+            if required_listener_errors:
+                raise required_listener_errors[0]
 
-        for dispatcher in dispatchers:
-            try:
-                dispatcher(event)
-            except Exception:
-                logger.exception(
-                    "[events] Error en dispatcher externo para evento '%s'",
-                    event.type,
-                )
+        if include_external:
+            with self._lock:
+                dispatchers = list(self._dispatchers)
+
+            dispatcher_errors = []
+            for dispatcher in dispatchers:
+                try:
+                    dispatcher(event)
+                except Exception as exc:
+                    dispatcher_errors.append(exc)
+                    logger.exception(
+                        "[events] Error en dispatcher externo para evento '%s'",
+                        event.type,
+                    )
+            if dispatcher_errors:
+                raise dispatcher_errors[0]
 
 
 # Instancia global (tipo singleton)
@@ -505,6 +563,9 @@ def publish_domain_event(
     priority: EventPriority = EventPriority.NORMAL,
     correlation_id: Optional[str] = None,
     causation_id: Optional[str] = None,
+    include_local: bool = True,
+    include_external: bool = True,
+    raise_required_listener_errors: bool = False,
 ) -> MindwalletDomainEvent:
     """
     Helper único para publicar eventos de Mindwallet.
@@ -536,7 +597,12 @@ def publish_domain_event(
         correlation_id=correlation_id,
         causation_id=causation_id,
     )
-    event_bus.publish(event)
+    event_bus.publish(
+        event,
+        include_local=include_local,
+        include_external=include_external,
+        raise_required_listener_errors=raise_required_listener_errors,
+    )
     return event
 
 
@@ -547,6 +613,7 @@ def subscribe(
     run_async: bool = False,
     contexts: Optional[List[EventContext]] = None,
     priority: EventPriority = EventPriority.NORMAL,
+    required: bool = False,
 ):
     """
     Decorador para listeners.
@@ -577,6 +644,7 @@ def subscribe(
             run_async=run_async,
             contexts=contexts,
             priority=priority,
+            required=required,
         )
         return fn
 

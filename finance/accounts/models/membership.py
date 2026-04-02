@@ -17,9 +17,9 @@ Analisis detallado:
 - `AccountAccess` todavia puede coexistir por compatibilidad, pero no deberia
   crecer como segundo sistema moderno; el camino correcto es consolidar reglas
   y flujos nuevos aqui
-- `invitation_token` sirve para arrancar el flujo de invitaciones; si luego
-  Vexxo necesita expiracion, reenvios, auditoria o multiples intentos, conviene
-  extraer ese ciclo de vida a un modelo `AccountInvitation`
+- el ciclo de vida social de la invitacion ahora vive en `AccountInvitation`;
+  los campos `invitation_*` de esta tabla sobreviven como compatibilidad de API
+  y espejo del intento vigente
 - `metadata` es util para contexto de invitacion, canal, origen o flags
   temporales de compatibilidad; no debe convertirse en una fuente informal de
   permisos o reglas de negocio
@@ -143,7 +143,38 @@ class AccountMembership(models.Model):
 
     @property
     def invitation_pending(self) -> bool:
+        invitation = self.current_invitation
+        if invitation is not None:
+            return invitation.is_pending and self.is_active is False
         return self.invitation_sent_at is not None and self.accepted_at is None and self.is_active is False
+
+    @property
+    def latest_invitation(self):
+        prefetched = getattr(self, "_prefetched_objects_cache", {}).get("invitations")
+        if prefetched is not None:
+            invitations = sorted(prefetched, key=lambda item: (item.attempt_number, item.created_at), reverse=True)
+            return invitations[0] if invitations else None
+        return self.invitations.order_by("-attempt_number", "-created_at").first()
+
+    @property
+    def current_invitation(self):
+        prefetched = getattr(self, "_prefetched_objects_cache", {}).get("invitations")
+        if prefetched is not None:
+            current = [item for item in prefetched if item.is_current]
+            if not current:
+                return None
+            current.sort(key=lambda item: (item.attempt_number, item.created_at), reverse=True)
+            return current[0]
+        return self.invitations.filter(is_current=True).order_by("-attempt_number", "-created_at").first()
+
+    @property
+    def invitation_status(self) -> str:
+        invitation = self.current_invitation or self.latest_invitation
+        if invitation is None:
+            return "none"
+        if invitation.is_expired and invitation.status not in {invitation.Status.ACCEPTED, invitation.Status.REVOKED}:
+            return invitation.Status.EXPIRED
+        return invitation.status
 
     def _normalize_permissions(self) -> None:
         if self.account_id and self.user_id and getattr(self.account, "owner_id", None) == self.user_id:
@@ -167,7 +198,9 @@ class AccountMembership(models.Model):
         if self.is_active and self.invitation_sent_at and self.accepted_at is None:
             self.accepted_at = self.joined_at or timezone.now()
 
-        if not self.is_active and self.revoked_at is None:
+        if not self.is_active and self.revoked_at is None and not (
+            self.invitation_sent_at and self.accepted_at is None
+        ):
             self.revoked_at = timezone.now()
 
         if self.is_active:
@@ -192,30 +225,25 @@ class AccountMembership(models.Model):
         if self.joined_at and self.accepted_at and self.joined_at < self.accepted_at:
             raise ValidationError({"joined_at": _("joined_at no puede ser anterior a accepted_at.")})
 
-    def rotate_invitation_token(self, *, sent_at=None, commit: bool = True):
-        self.invitation_token = uuid.uuid4()
-        self.invitation_sent_at = sent_at or timezone.now()
-        self.accepted_at = None
-        self.joined_at = None
-        self.revoked_at = None
-        self.is_active = False
+    def rotate_invitation_token(self, *, sent_at=None, ttl_days: int = 14, channel: str = "direct_link", commit: bool = True):
+        from finance.accounts.services.account_invitation_service import issue_membership_invitation
+
+        invitation = issue_membership_invitation(
+            membership=self,
+            invited_by=self.invited_by,
+            sent_at=sent_at,
+            ttl_days=ttl_days,
+            channel=channel,
+        )
         if commit:
-            self.save(
-                update_fields=[
-                    "invitation_token",
-                    "invitation_sent_at",
-                    "accepted_at",
-                    "joined_at",
-                    "revoked_at",
-                    "is_active",
-                ]
-            )
+            self.refresh_from_db()
+        return invitation
 
     def save(self, *args, **kwargs):
         self._normalize_permissions()
         super().save(*args, **kwargs)
 
-    def accept(self, *, accepted_at=None, joined_at=None, commit: bool = True):
+    def _apply_accept_state(self, *, accepted_at=None, joined_at=None, commit: bool = True):
         accepted_value = accepted_at or timezone.now()
         self.is_active = True
         self.revoked_at = None
@@ -224,16 +252,44 @@ class AccountMembership(models.Model):
         if commit:
             self.save(update_fields=["is_active", "revoked_at", "accepted_at", "joined_at"])
 
+    def accept(self, *, accepted_at=None, joined_at=None, commit: bool = True):
+        from finance.accounts.services.account_invitation_service import accept_membership_invitation
+
+        invitation = self.current_invitation or self.latest_invitation
+        invitation = accept_membership_invitation(
+            membership=self,
+            accepted_at=accepted_at,
+            joined_at=joined_at,
+            invitation=invitation,
+            commit=commit,
+        )
+        if commit:
+            self.refresh_from_db()
+        return invitation
+
     def activate(self, *, joined_at=None, commit: bool = True):
         accepted_value = self.accepted_at or timezone.now()
-        self.accept(
+        self._apply_accept_state(
             accepted_at=accepted_value,
             joined_at=joined_at or self.joined_at or accepted_value,
             commit=commit,
         )
 
-    def revoke(self, *, revoked_at=None, commit: bool = True):
+    def _apply_revoke_state(self, *, revoked_at=None, commit: bool = True):
         self.is_active = False
         self.revoked_at = revoked_at or timezone.now()
         if commit:
             self.save(update_fields=["is_active", "revoked_at"])
+
+    def revoke(self, *, revoked_at=None, commit: bool = True):
+        from finance.accounts.services.account_invitation_service import revoke_membership_invitation
+
+        invitation = revoke_membership_invitation(
+            membership=self,
+            revoked_at=revoked_at,
+            invitation=self.current_invitation or self.latest_invitation,
+            commit=commit,
+        )
+        if commit:
+            self.refresh_from_db()
+        return invitation

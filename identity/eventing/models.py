@@ -18,6 +18,7 @@ from __future__ import annotations
 import uuid
 
 from django.core.exceptions import ValidationError
+from django.conf import settings
 from django.db import models
 from django.db.models import Q
 from django.utils import timezone
@@ -125,3 +126,117 @@ class IdentityDomainEventOutbox(models.Model):
         self.release_lock(commit=False)
         if commit:
             self.save(update_fields=["status", "retry_count", "last_error", "locked_at", "locked_by"])
+
+
+class UserProductUsageProjection(models.Model):
+    """
+    Read model operativo de uso de producto por usuario.
+
+    Se alimenta desde eventos y productores internos para evitar que mobile y
+    el BFF hagan `count()`/`aggregate()` complejos contra OLTP en cada request.
+    """
+
+    owner = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="product_usage_projection",
+    )
+    usage_version = models.PositiveSmallIntegerField(default=1)
+    current_period_start = models.DateTimeField()
+    current_period_end = models.DateTimeField()
+    current_day_start = models.DateTimeField(null=True, blank=True)
+    current_day_end = models.DateTimeField(null=True, blank=True)
+
+    manual_accounts_count = models.PositiveIntegerField(default=0)
+    connected_accounts_count = models.PositiveIntegerField(default=0)
+    active_accounts_count = models.PositiveIntegerField(default=0)
+    rules_count = models.PositiveIntegerField(default=0)
+    ai_used_month = models.PositiveIntegerField(default=0)
+    payments_count_month = models.PositiveIntegerField(default=0)
+    payments_volume_month = models.DecimalField(max_digits=20, decimal_places=2, default=0)
+    payments_count_day = models.PositiveIntegerField(default=0)
+    payments_volume_day = models.DecimalField(max_digits=20, decimal_places=2, default=0)
+    payouts_count_month = models.PositiveIntegerField(default=0)
+    payouts_volume_month = models.DecimalField(max_digits=20, decimal_places=2, default=0)
+    payouts_count_day = models.PositiveIntegerField(default=0)
+    payouts_volume_day = models.DecimalField(max_digits=20, decimal_places=2, default=0)
+    ocr_used_month = models.PositiveIntegerField(default=0)
+    scheduled_payments_active_count = models.PositiveIntegerField(default=0)
+    shared_memberships_count = models.PositiveIntegerField(default=0)
+
+    last_source = models.CharField(max_length=128, blank=True, default="")
+    last_event_type = models.CharField(max_length=128, blank=True, default="")
+    last_correlation_id = models.CharField(max_length=64, blank=True, default="")
+    refreshed_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "User product usage projection"
+        verbose_name_plural = "User product usage projections"
+        indexes = [
+            models.Index(fields=["current_period_start", "current_period_end"]),
+            models.Index(fields=["last_event_type", "refreshed_at"]),
+        ]
+
+    def as_snapshot(self) -> dict:
+        return {
+            "usage_version": int(self.usage_version or 1),
+            "current_period_start": self.current_period_start.isoformat() if self.current_period_start else None,
+            "current_period_end": self.current_period_end.isoformat() if self.current_period_end else None,
+            "current_day_start": self.current_day_start.isoformat() if self.current_day_start else None,
+            "current_day_end": self.current_day_end.isoformat() if self.current_day_end else None,
+            "manual_accounts_count": int(self.manual_accounts_count or 0),
+            "connected_accounts_count": int(self.connected_accounts_count or 0),
+            "active_accounts_count": int(self.active_accounts_count or 0),
+            "rules_count": int(self.rules_count or 0),
+            "ai_used_month": int(self.ai_used_month or 0),
+            "payments_count_month": int(self.payments_count_month or 0),
+            "payments_volume_month": str(self.payments_volume_month or 0),
+            "payments_count_day": int(self.payments_count_day or 0),
+            "payments_volume_day": str(self.payments_volume_day or 0),
+            "payouts_count_month": int(self.payouts_count_month or 0),
+            "payouts_volume_month": str(self.payouts_volume_month or 0),
+            "payouts_count_day": int(self.payouts_count_day or 0),
+            "payouts_volume_day": str(self.payouts_volume_day or 0),
+            "ocr_used_month": int(self.ocr_used_month or 0),
+            "scheduled_payments_active_count": int(self.scheduled_payments_active_count or 0),
+            "shared_memberships_count": int(self.shared_memberships_count or 0),
+            "last_source": str(self.last_source or ""),
+            "last_event_type": str(self.last_event_type or ""),
+            "last_correlation_id": str(self.last_correlation_id or ""),
+            "refreshed_at": self.refreshed_at.isoformat() if self.refreshed_at else None,
+        }
+
+
+class UserProductUsageProjectionEvent(models.Model):
+    """
+    Checkpoint persistente de eventos ya aplicados a la proyeccion.
+
+    Permite endurecer idempotencia cuando el proyector usa deltas exactos sobre
+    eventos del bus y deja base para una proyeccion 100% incremental.
+    """
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="product_usage_projection_events",
+    )
+    event_id = models.CharField(max_length=64)
+    event_type = models.CharField(max_length=128, blank=True, default="")
+    correlation_id = models.CharField(max_length=64, blank=True, default="")
+    fingerprint = models.CharField(max_length=160, blank=True, default="")
+    source = models.CharField(max_length=128, blank=True, default="")
+    processed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "User product usage projection event"
+        verbose_name_plural = "User product usage projection events"
+        indexes = [
+            models.Index(fields=["owner", "processed_at"]),
+            models.Index(fields=["event_type", "processed_at"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["owner", "event_id"],
+                name="user_product_usage_projection_event_owner_event_id_uniq",
+            )
+        ]

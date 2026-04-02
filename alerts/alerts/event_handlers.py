@@ -15,7 +15,7 @@ from common.domain_events import (
 from finance.accounts.models.account import Account
 from alerts.alerts.models.alerts import Alert, AlertCategory, AlertSeverity, AlertType
 from alerts.alerts.services import create_alert, evaluate_balance_alerts_for_account  # servicio de alertas de dominio
-from alerts.alerts.ai_services import enrich_alert_with_ai  # hook de IA para enriquecer alertas
+from alerts.alerts.dispatch_service import dispatch_alert_ai_enrichment
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +162,7 @@ def handle_account_balance_updated(event: MindwalletDomainEvent) -> None:
 @subscribe(
     EventNames.ALERT_CREATED,
     name="alerts.handle_alert_created_ai",
-    run_async=True,                 # que la IA no bloquee el flujo normal
+    run_async=False,
     contexts=[EventContext.ALERTS],
     priority=EventPriority.LOW,     # primero se pueden procesar otras cosas críticas
 )
@@ -186,28 +186,21 @@ def handle_alert_created_ai(event: MindwalletDomainEvent) -> None:
         )
         return
 
-    from alerts.alerts.models.alerts import Alert  # import local para evitar ciclos
-
     try:
-        alert = Alert.objects.get(pk=alert_id)
-    except Alert.DoesNotExist:
-        logger.warning(
-            "[alerts][corr=%s] ALERT_CREATED para alert_id=%s que no existe",
-            correlation_id,
-            alert_id,
+        dispatch_result = dispatch_alert_ai_enrichment(
+            alert_id=alert_id,
+            correlation_id=correlation_id or "",
+            source="alerts.event_handlers.handle_alert_created_ai",
         )
-        return
-
-    try:
-        enrich_alert_with_ai(alert, correlation_id=correlation_id)
         logger.debug(
-            "[alerts][corr=%s] Alerta id=%s enriquecida con IA",
+            "[alerts][corr=%s] Enriquecimiento IA despachado alert_id=%s result=%s",
             correlation_id,
             alert_id,
+            dispatch_result.get("result"),
         )
     except Exception:
         logger.exception(
-            "[alerts][corr=%s] Error enriqueciendo alerta con IA id=%s",
+            "[alerts][corr=%s] Error despachando enriquecimiento IA id=%s",
             correlation_id,
             alert_id,
         )

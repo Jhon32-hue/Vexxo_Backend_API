@@ -1,10 +1,13 @@
-# alerts/views/alert_views.py
+import secrets
+
+from django.conf import settings
 from django.utils import timezone
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, views
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from alerts.alerts.ai_services import enrich_alert_with_ai
 from alerts.alerts.models.alerts import Alert, AlertStatus
 from alerts.alerts.serializers.alert_serializers import AlertaSerializer
 
@@ -78,3 +81,41 @@ class AlertaViewSet(viewsets.ModelViewSet):
         until = request.data.get("until") or timezone.now().isoformat()
         alert.snooze(until=until, commit=True)
         return Response({"detail": "Alerta pospuesta."}, status=status.HTTP_200_OK)
+
+
+class AlertAiWorkerView(views.APIView):
+    """
+    Endpoint interno para workers de IA.
+
+    Puede vivir detras del mismo servicio o de un Cloud Run interno dedicado.
+    La autenticacion es por token interno o por OIDC a nivel infraestructura.
+    """
+
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request, *args, **kwargs):
+        expected = str(getattr(settings, "ALERTS_AI_INTERNAL_TOKEN", "") or "").strip()
+        provided = str(request.headers.get("X-Vexxo-Internal-Token") or "").strip()
+        if expected and not secrets.compare_digest(expected, provided):
+            return Response({"detail": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        alert_id = request.data.get("alert_id")
+        if not alert_id:
+            return Response({"detail": "alert_id es requerido."}, status=status.HTTP_400_BAD_REQUEST)
+
+        alert = Alert.objects.filter(pk=alert_id).first()
+        if alert is None:
+            return Response({"detail": "Alert no encontrada."}, status=status.HTTP_404_NOT_FOUND)
+
+        enrich_alert_with_ai(
+            alert,
+            correlation_id=request.data.get("correlation_id"),
+        )
+        return Response(
+            {
+                "detail": "Alert enriched.",
+                "alert_id": str(alert.pk),
+            },
+            status=status.HTTP_200_OK,
+        )

@@ -17,13 +17,11 @@ from __future__ import annotations
 
 from typing import Iterable
 
+from django.db import transaction
+
 from finance.accounts.domain.events import AccountDomainEventTypes, build_account_lifecycle_payload
 from finance.accounts.models import Account, AccountRole, AccountStatus, AccountType, AccountVisibility
-from finance.accounts.services.intelligence_dispatch_service import (
-    account_intelligence_local_fallback_allowed,
-    enqueue_account_intelligence_refresh_task,
-)
-from finance.accounts.services.intelligence_service import refresh_account_intelligence_for_user
+from finance.accounts.services.intelligence_dispatch_service import dispatch_account_intelligence_refresh
 from finance.accounts.services.outbox_service import publish_account_lifecycle_event
 
 
@@ -41,32 +39,58 @@ def _publish_account_updated(account: Account, *, change: str, source: str, extr
 
 
 def _refresh_accounts_intelligence(owner_id, *, source: str) -> None:
-    response = enqueue_account_intelligence_refresh_task(
+    dispatch_account_intelligence_refresh(
         owner_id=owner_id,
         source=source,
         task_name_suffix=f"{owner_id}",
     )
-    if response is None and account_intelligence_local_fallback_allowed():
-        refresh_account_intelligence_for_user(owner_id)
 
 
 def ensure_user_financial_home(user) -> Account:
-    account, created = Account.objects.get_or_create(
-        owner=user,
-        name="Cuenta principal",
-        currency=user.preferred_currency or "COP",
-        defaults={
-            "type": AccountType.SAVINGS,
-            "role": AccountRole.SPENDING,
-            "visibility": AccountVisibility.PRIVATE,
-            "balance": "0.00",
-            "initial_balance": "0.00",
-            "base_currency": user.preferred_currency or "COP",
-            "institution": "Vexxo Starter",
-            "is_primary": True,
-            "status": AccountStatus.ACTIVE,
-        },
-    )
+    preferred_currency = user.preferred_currency or "COP"
+    created = False
+
+    with transaction.atomic():
+        account = (
+            Account.objects.select_for_update()
+            .filter(owner=user)
+            .exclude(status=AccountStatus.CLOSED)
+            .order_by("-is_primary", "created_at")
+            .first()
+        )
+        if account is None:
+            account = Account.objects.create(
+                owner=user,
+                name="Cuenta principal",
+                currency=preferred_currency,
+                type=AccountType.SAVINGS,
+                role=AccountRole.SPENDING,
+                visibility=AccountVisibility.PRIVATE,
+                balance="0.00",
+                initial_balance="0.00",
+                base_currency=preferred_currency,
+                institution="Vexxo Starter",
+                is_primary=True,
+                status=AccountStatus.ACTIVE,
+            )
+            created = True
+        else:
+            changed = False
+            if not account.is_primary and account.status == AccountStatus.ACTIVE:
+                account.is_primary = True
+                changed = True
+            if not account.base_currency:
+                account.base_currency = preferred_currency
+                changed = True
+            if not account.institution:
+                account.institution = "Vexxo Starter"
+                changed = True
+            if account.name == "":
+                account.name = "Cuenta principal"
+                changed = True
+            if changed:
+                account.save(update_fields=["is_primary", "base_currency", "institution", "name", "updated_at"])
+
     account.ensure_owner_membership()
 
     if created:

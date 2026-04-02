@@ -18,6 +18,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from identity.users.models import UserStatus
+from identity.users.domain.plan_matrix import resolve_plan_code
 from identity.users.serializers.user_serializer import UserAdminSerializer
 from identity.users.views.permissions import IsAdminUser
 
@@ -41,7 +42,14 @@ class UserAdminViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        user.plan = str(new_plan).strip().lower()
+        normalized_plan = resolve_plan_code(str(new_plan).strip().lower())
+        if normalized_plan not in {"free", "pro", "enterprise"}:
+            return Response(
+                {"detail": "Plan invalido. Usa free, pro o enterprise."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.plan = normalized_plan
         user.save(update_fields=["plan", "updated_at"])
         return Response(
             {

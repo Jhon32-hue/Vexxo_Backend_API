@@ -3,7 +3,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("permissions", "0001_initial"),
+        ("identity_permissions", "0001_initial"),
     ]
 
     operations = [

@@ -24,7 +24,6 @@ import hashlib
 import json
 from decimal import Decimal
 
-from django.db import transaction
 from django.utils import timezone
 
 from common.domain_events import EventContext
@@ -37,7 +36,6 @@ from finance.accounts.domain.events import (
 )
 
 from finance.accounts.services.event_service import enqueue_domain_event, publish_after_commit
-from finance.accounts.services.realtime_services import ping_account_changed
 
 
 def _stable_event_key(event_type: str, aggregate_id: str | int, payload: dict) -> str:
@@ -155,14 +153,6 @@ def publish_account_balance_updated(
         metadata=metadata,
     )
 
-    transaction.on_commit(
-        lambda: ping_account_changed(
-            owner_id=account.owner_id,
-            account_id=account.pk,
-            event="account.balance.changed",
-            extra={"reason": reason},
-        )
-    )
     publish_after_commit(event)
     return event
 

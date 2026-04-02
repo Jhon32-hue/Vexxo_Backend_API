@@ -21,17 +21,14 @@ import logging
 from common.domain_events import EventContext, EventNames, EventPriority, MindwalletDomainEvent, subscribe
 from django.utils import timezone
 
-from finance.accounts.services.intelligence_dispatch_service import (
-    account_intelligence_local_fallback_allowed,
-    enqueue_account_intelligence_refresh_task,
-)
-from finance.accounts.services.intelligence_service import refresh_account_intelligence_for_user
+from finance.accounts.services.intelligence_dispatch_service import dispatch_account_intelligence_refresh
 from finance.accounts.services.realtime_services import ping_account_changed
 from finance.accounts.services.sync_dispatch_service import enqueue_account_sync_task
 from finance.accounts.services.user_integration_service import (
     disable_auto_sync_for_user,
     ensure_user_financial_home,
     refresh_user_accounts_projection,
+    revoke_provider_integration_access_for_user,
     sync_user_currency_to_accounts,
 )
 
@@ -57,10 +54,27 @@ def _publish_owner_realtime_signal(event: MindwalletDomainEvent, *, signal_event
     )
 
 
+def _provider_from_permission_payload(payload: dict) -> str:
+    explicit_provider = str(payload.get("provider") or "").strip()
+    if explicit_provider:
+        return explicit_provider
+
+    scope_id = str(payload.get("scope_id") or "").strip()
+    if not scope_id:
+        return ""
+
+    parts = scope_id.split(":")
+    if len(parts) < 2:
+        return ""
+
+    provider = parts[1].strip()
+    return "" if provider == "global" else provider
+
+
 @subscribe(
     "accounts.*",
     name="accounts.refresh_owner_account_intelligence",
-    run_async=True,
+    run_async=False,
     contexts=[EventContext.ACCOUNTS],
     priority=EventPriority.LOW,
 )
@@ -70,13 +84,12 @@ def handle_any_account_event_refresh_intelligence(event: MindwalletDomainEvent) 
         return
     try:
         minute_bucket = timezone.now().strftime("%Y%m%d%H%M")
-        response = enqueue_account_intelligence_refresh_task(
+        dispatch_account_intelligence_refresh(
             event=event,
             owner_id=owner_id,
             task_name_suffix=f"{owner_id}-{minute_bucket}",
+            source="accounts.event_handlers.pattern_refresh",
         )
-        if response is None and account_intelligence_local_fallback_allowed():
-            refresh_account_intelligence_for_user(owner_id)
     except Exception:
         logger.exception(
             "[accounts.intelligence][corr=%s] Error recalculando proyecciones owner_id=%s event=%s",
@@ -89,9 +102,10 @@ def handle_any_account_event_refresh_intelligence(event: MindwalletDomainEvent) 
 @subscribe(
     EventNames.ACCOUNT_SYNC_SCHEDULED,
     name="accounts.enqueue_scheduled_sync_task",
-    run_async=True,
+    run_async=False,
     contexts=[EventContext.ACCOUNTS],
     priority=EventPriority.HIGH,
+    required=True,
 )
 def handle_account_sync_scheduled(event: MindwalletDomainEvent) -> None:
     try:
@@ -111,9 +125,36 @@ def handle_account_sync_scheduled(event: MindwalletDomainEvent) -> None:
 
 
 @subscribe(
+    EventNames.ACCOUNT_BALANCE_UPDATED,
+    name="accounts.publish_balance_updated_realtime_signal",
+    run_async=False,
+    contexts=[EventContext.ACCOUNTS],
+    priority=EventPriority.NORMAL,
+)
+def handle_account_balance_updated(event: MindwalletDomainEvent) -> None:
+    payload = event.payload or {}
+    owner_id = payload.get("owner_id")
+    account_id = payload.get("account_id")
+    if not owner_id or not account_id:
+        return
+
+    ping_account_changed(
+        owner_id=owner_id,
+        account_id=account_id,
+        event="account.balance.changed",
+        extra={
+            "reason": payload.get("reason"),
+            "transaction_id": payload.get("transaction_id"),
+            "domain_event_type": event.type,
+            "correlation_id": event.correlation_id,
+        },
+    )
+
+
+@subscribe(
     EventNames.ACCOUNT_DRIFT_DETECTED,
     name="accounts.log_account_drift_detected",
-    run_async=True,
+    run_async=False,
     contexts=[EventContext.ACCOUNTS],
     priority=EventPriority.HIGH,
 )
@@ -132,7 +173,7 @@ def handle_account_drift_detected(event: MindwalletDomainEvent) -> None:
 @subscribe(
     EventNames.ACCOUNT_PRIMARY_CHANGED,
     name="accounts.publish_primary_changed_realtime_signal",
-    run_async=True,
+    run_async=False,
     contexts=[EventContext.ACCOUNTS],
     priority=EventPriority.NORMAL,
 )
@@ -146,7 +187,7 @@ def handle_account_primary_changed(event: MindwalletDomainEvent) -> None:
 @subscribe(
     EventNames.ACCOUNT_ARCHIVED,
     name="accounts.publish_archived_realtime_signal",
-    run_async=True,
+    run_async=False,
     contexts=[EventContext.ACCOUNTS],
     priority=EventPriority.NORMAL,
 )
@@ -160,7 +201,7 @@ def handle_account_archived(event: MindwalletDomainEvent) -> None:
 @subscribe(
     EventNames.ACCOUNT_SYNC_SUCCEEDED,
     name="accounts.publish_sync_succeeded_realtime_signal",
-    run_async=True,
+    run_async=False,
     contexts=[EventContext.ACCOUNTS],
     priority=EventPriority.NORMAL,
 )
@@ -174,9 +215,10 @@ def handle_account_sync_succeeded(event: MindwalletDomainEvent) -> None:
 @subscribe(
     EventNames.USER_REGISTERED,
     name="accounts.bootstrap_user_financial_home",
-    run_async=True,
+    run_async=False,
     contexts=[EventContext.IDENTITY],
     priority=EventPriority.HIGH,
+    required=True,
 )
 def handle_user_registered(event: MindwalletDomainEvent) -> None:
     from django.contrib.auth import get_user_model
@@ -193,9 +235,10 @@ def handle_user_registered(event: MindwalletDomainEvent) -> None:
 @subscribe(
     EventNames.USER_PLAN_CHANGED,
     name="accounts.handle_user_plan_changed",
-    run_async=True,
+    run_async=False,
     contexts=[EventContext.IDENTITY],
     priority=EventPriority.NORMAL,
+    required=True,
 )
 def handle_user_plan_changed(event: MindwalletDomainEvent) -> None:
     from django.contrib.auth import get_user_model
@@ -212,9 +255,10 @@ def handle_user_plan_changed(event: MindwalletDomainEvent) -> None:
 @subscribe(
     EventNames.USER_CURRENCY_CHANGED,
     name="accounts.handle_user_currency_changed",
-    run_async=True,
+    run_async=False,
     contexts=[EventContext.IDENTITY],
     priority=EventPriority.HIGH,
+    required=True,
 )
 def handle_user_currency_changed(event: MindwalletDomainEvent) -> None:
     from django.contrib.auth import get_user_model
@@ -236,9 +280,10 @@ def handle_user_currency_changed(event: MindwalletDomainEvent) -> None:
 @subscribe(
     EventNames.USER_SUSPENDED,
     name="accounts.handle_user_suspended",
-    run_async=True,
+    run_async=False,
     contexts=[EventContext.IDENTITY],
     priority=EventPriority.HIGH,
+    required=True,
 )
 def handle_user_suspended(event: MindwalletDomainEvent) -> None:
     from django.contrib.auth import get_user_model
@@ -255,9 +300,10 @@ def handle_user_suspended(event: MindwalletDomainEvent) -> None:
 @subscribe(
     EventNames.USER_ACTIVATED,
     name="accounts.handle_user_activated",
-    run_async=True,
+    run_async=False,
     contexts=[EventContext.IDENTITY],
     priority=EventPriority.NORMAL,
+    required=True,
 )
 def handle_user_activated(event: MindwalletDomainEvent) -> None:
     from django.contrib.auth import get_user_model
@@ -269,3 +315,37 @@ def handle_user_activated(event: MindwalletDomainEvent) -> None:
     if user is None:
         return
     refresh_user_accounts_projection(user)
+
+
+@subscribe(
+    EventNames.USER_PERMISSION_REVOKED,
+    name="accounts.handle_user_permission_revoked",
+    run_async=False,
+    contexts=[EventContext.IDENTITY],
+    priority=EventPriority.HIGH,
+    required=True,
+)
+def handle_user_permission_revoked(event: MindwalletDomainEvent) -> None:
+    from django.contrib.auth import get_user_model
+
+    payload = event.payload or {}
+    user_id = payload.get("user_id")
+    if not user_id:
+        return
+
+    permission_code = str(payload.get("permission_code") or "").strip()
+    if permission_code not in {
+        "consents.open_banking_data.enabled",
+        "consents.open_banking_payments.enabled",
+    }:
+        return
+
+    user = get_user_model().objects.filter(pk=user_id).first()
+    if user is None:
+        return
+
+    revoke_provider_integration_access_for_user(
+        user=user,
+        provider=_provider_from_permission_payload(payload),
+        legal_reason="permission_revoked",
+    )

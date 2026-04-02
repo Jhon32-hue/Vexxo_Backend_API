@@ -203,6 +203,7 @@ class EmailOrUsernameTokenSerializer(TokenObtainPairSerializer):
         token["username"] = user.username
         token["email"] = user.email
         token["plan"] = user.plan
+        token["effective_plan"] = user.effective_plan
         token["status"] = user.status
         token["base_currency"] = user.base_currency
         token["display_name"] = user.display_name

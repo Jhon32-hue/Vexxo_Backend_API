@@ -11,15 +11,19 @@ Analisis detallado:
   explicables
 - el endpoint de refresh permite recalcular por demanda las proyecciones cuando
   soporte, producto o el propio usuario necesitan forzar consistencia
+- `worker_report` deja un callback explicito para materializadores externos que
+  necesitan cerrar o fallar corridas sin depender del refresh inline
 """
 
 from __future__ import annotations
 
 import logging
 
+from django.conf import settings
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import PermissionDenied
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from finance.accounts.models import (
@@ -33,6 +37,7 @@ from finance.accounts.models import (
 from finance.accounts.serializers.intelligence_serializers import (
     AccountCurrencyExposureSerializer,
     AccountIntelligenceRefreshSerializer,
+    AccountIntelligenceWorkerReportSerializer,
     AccountOwnerMetricsSerializer,
     AccountPortfolioSnapshotSerializer,
     AccountProductSignalSerializer,
@@ -43,6 +48,7 @@ from finance.accounts.services.intelligence_dispatch_service import (
     account_intelligence_local_fallback_allowed,
     enqueue_account_intelligence_refresh_task,
     get_account_intelligence_projection_status,
+    report_account_intelligence_worker_status,
 )
 from finance.accounts.services.intelligence_health_service import get_account_intelligence_operational_health
 from finance.accounts.services.intelligence_service import refresh_account_intelligence_for_user
@@ -60,6 +66,14 @@ class _ReadOnlyIntelligenceViewSet(mixins.ListModelMixin, mixins.RetrieveModelMi
 class AccountPortfolioSnapshotViewSet(_ReadOnlyIntelligenceViewSet):
     queryset = AccountPortfolioSnapshot.objects.select_related("owner", "primary_account")
     serializer_class = AccountPortfolioSnapshotSerializer
+
+    def _assert_internal_worker_token(self, request) -> None:
+        expected = str(getattr(settings, "ACCOUNTS_INTELLIGENCE_INTERNAL_TOKEN", "") or "").strip()
+        if not expected:
+            raise PermissionDenied("El token interno de inteligencia no esta configurado.")
+        provided = str(request.headers.get("X-Vexxo-Internal-Token", "") or "").strip()
+        if provided != expected:
+            raise PermissionDenied("Token interno invalido.")
 
     @action(detail=False, methods=["post"])
     def refresh(self, request):
@@ -185,6 +199,21 @@ class AccountPortfolioSnapshotViewSet(_ReadOnlyIntelligenceViewSet):
             },
             status=status.HTTP_200_OK,
         )
+
+    @action(detail=False, methods=["post"], permission_classes=[AllowAny], url_path="worker-report")
+    def worker_report(self, request):
+        self._assert_internal_worker_token(request)
+        serializer = AccountIntelligenceWorkerReportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        report = report_account_intelligence_worker_status(
+            owner_id=serializer.validated_data["owner_id"],
+            status=serializer.validated_data["status"],
+            task_name=serializer.validated_data.get("task_name", ""),
+            result=serializer.validated_data.get("result", ""),
+            error_message=serializer.validated_data.get("error_message", ""),
+        )
+        return Response(report, status=status.HTTP_200_OK if report.get("applied") else status.HTTP_202_ACCEPTED)
 
 
 class AccountRiskSnapshotViewSet(_ReadOnlyIntelligenceViewSet):

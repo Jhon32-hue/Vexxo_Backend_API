@@ -28,12 +28,12 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from finance.fx.models import Currency
-from identity.users.domain.plan_matrix import get_plan_capabilities
+from identity.users.domain.plan_matrix import get_plan_capabilities, resolve_plan_code
 
 
 class PlanType(models.TextChoices):
     FREE = "free", _("Plan Gratis")
-    PLUS = "plus", _("Plan Plus")
+    PLUS = "plus", _("Plan Plus (legacy)")
     PRO = "pro", _("Plan Pro")
     ENTERPRISE = "enterprise", _("Plan Enterprise")
 
@@ -213,12 +213,16 @@ class User(AbstractUser):
     def is_premium(self) -> bool:
         return self.has_paid_plan
 
+    @property
+    def effective_plan(self) -> str:
+        return resolve_plan_code(self.plan)
+
     def full_name(self) -> str:
         return self.display_name
 
     @property
     def has_paid_plan(self) -> bool:
-        return self.plan in {PlanType.PLUS, PlanType.PRO, PlanType.ENTERPRISE}
+        return self.effective_plan in {PlanType.PRO, PlanType.ENTERPRISE}
 
     @property
     def is_plus(self) -> bool:
@@ -226,11 +230,11 @@ class User(AbstractUser):
 
     @property
     def is_pro(self) -> bool:
-        return self.plan == PlanType.PRO
+        return self.effective_plan == PlanType.PRO
 
     @property
     def is_enterprise(self) -> bool:
-        return self.plan == PlanType.ENTERPRISE
+        return self.effective_plan == PlanType.ENTERPRISE
 
     def mark_seen(self, request=None, save: bool = True) -> None:
         self.last_seen = timezone.now()
@@ -249,11 +253,12 @@ class User(AbstractUser):
         Todos los límites del sistema deben salir de aquí o de un servicio que use esta matriz.
         """
 
-        cfg = get_plan_capabilities(self.plan)
+        cfg = get_plan_capabilities(self.effective_plan)
 
         if self.max_accounts_override is not None:
             cfg["max_accounts"] = self.max_accounts_override
             cfg["max_active_accounts"] = self.max_accounts_override
+            cfg["max_manual_accounts"] = self.max_accounts_override
 
         if self.max_observed_accounts_override is not None:
             cfg["max_observed_accounts"] = self.max_observed_accounts_override
@@ -263,6 +268,7 @@ class User(AbstractUser):
 
         if self.max_api_connections_override is not None:
             cfg["max_api_connections"] = self.max_api_connections_override
+            cfg["max_connected_accounts"] = self.max_api_connections_override
 
         if self.max_monthly_reports_override is not None:
             cfg["max_monthly_reports"] = self.max_monthly_reports_override
@@ -273,7 +279,7 @@ class User(AbstractUser):
         from finance.accounts.models.account import Account, AccountStatus
 
         cfg = self.get_plan_config()
-        limit = cfg.get("max_active_accounts", cfg.get("max_accounts"))
+        limit = cfg.get("max_manual_accounts", cfg.get("max_active_accounts", cfg.get("max_accounts")))
 
         if limit is None:
             return True
@@ -281,6 +287,8 @@ class User(AbstractUser):
         current = Account.objects.filter(
             owner=self,
             status__in=[AccountStatus.ACTIVE, AccountStatus.FROZEN],
+            provider="",
+            external_id="",
         ).count()
         return current < limit
 
@@ -304,10 +312,22 @@ class User(AbstractUser):
         try:
             from integrations_stub.banks.models import FinancialConnection
         except Exception:
-            return True
+            from finance.accounts.models.account import Account, AccountStatus
+
+            cfg = self.get_plan_config()
+            limit = cfg.get("max_connected_accounts", cfg.get("max_api_connections"))
+            if limit is None:
+                return True
+            current = (
+                Account.objects.filter(owner=self, status__in=[AccountStatus.ACTIVE, AccountStatus.FROZEN])
+                .exclude(provider="")
+                .exclude(external_id="")
+                .count()
+            )
+            return current < limit
 
         cfg = self.get_plan_config()
-        limit = cfg.get("max_api_connections")
+        limit = cfg.get("max_connected_accounts", cfg.get("max_api_connections"))
 
         if limit is None:
             return True

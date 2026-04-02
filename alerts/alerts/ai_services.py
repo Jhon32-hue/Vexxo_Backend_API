@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from alerts.alerts.models.alerts import Alert, AlertCategory, AlertSeverity
 from common.domain_events import publish_domain_event, EventNames, EventContext
+from identity.users.services.product_access_service import allow_ai_request
 
 logger = logging.getLogger(__name__)
 
@@ -211,6 +212,18 @@ def enrich_alert_with_ai(alert: Alert, correlation_id: Optional[str] = None) -> 
         )
         return
 
+    if not allow_ai_request(
+        alert.owner,
+        source="alerts.ai.enrich_alert_with_ai",
+        feature=f"alert:{alert.type}",
+    ):
+        logger.info(
+            "[alerts.ai] Limite de IA alcanzado para user_id=%s alert_id=%s",
+            alert.owner_id,
+            alert.pk,
+        )
+        return
+
     try:
         payload = _build_alert_ai_payload(alert, correlation_id=correlation_id)
 
@@ -280,6 +293,7 @@ def enrich_alert_with_ai(alert: Alert, correlation_id: Optional[str] = None) -> 
             metadata={
                 "source": "alerts.ai_services",
                 "correlation_id": correlation_id,
+                "projection_event_key": f"alert-ai:{alert.pk}",
             },
         )
 

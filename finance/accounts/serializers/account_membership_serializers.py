@@ -24,12 +24,14 @@ Que se puede hacer despues:
 from __future__ import annotations
 
 from django.contrib.auth import get_user_model
-from django.utils import timezone
-from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
-from finance.accounts.domain.enums import AccountMembershipRole
-from finance.accounts.models import Account, AccountMembership
+from finance.accounts.models import AccountMembership
+from finance.accounts.serializers.account_membership_support import (
+    create_account_membership,
+    update_account_membership,
+    validate_account_membership_payload,
+)
 
 User = get_user_model()
 
@@ -48,8 +50,13 @@ class AccountMembershipSerializer(serializers.ModelSerializer):
     effective_can_manage_members = serializers.BooleanField(read_only=True)
     effective_can_manage_account_settings = serializers.BooleanField(read_only=True)
     invitation_pending = serializers.BooleanField(read_only=True)
+    invitation_status = serializers.CharField(read_only=True)
     is_owner = serializers.BooleanField(read_only=True)
     is_admin_or_higher = serializers.BooleanField(read_only=True)
+    current_invitation_id = serializers.SerializerMethodField(read_only=True)
+    invitation_expires_at = serializers.SerializerMethodField(read_only=True)
+    invitation_opened_at = serializers.SerializerMethodField(read_only=True)
+    invitation_attempt_number = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = AccountMembership
@@ -79,11 +86,32 @@ class AccountMembershipSerializer(serializers.ModelSerializer):
             "revoked_at",
             "is_active",
             "invitation_pending",
+            "invitation_status",
+            "current_invitation_id",
+            "invitation_expires_at",
+            "invitation_opened_at",
+            "invitation_attempt_number",
             "is_owner",
             "is_admin_or_higher",
             "metadata",
         ]
         read_only_fields = fields
+
+    def get_current_invitation_id(self, obj):
+        invitation = obj.current_invitation or obj.latest_invitation
+        return invitation.id if invitation else None
+
+    def get_invitation_expires_at(self, obj):
+        invitation = obj.current_invitation or obj.latest_invitation
+        return invitation.expires_at if invitation else None
+
+    def get_invitation_opened_at(self, obj):
+        invitation = obj.current_invitation or obj.latest_invitation
+        return invitation.opened_at if invitation else None
+
+    def get_invitation_attempt_number(self, obj):
+        invitation = obj.current_invitation or obj.latest_invitation
+        return invitation.attempt_number if invitation else None
 
 
 class AccountMembershipWriteSerializer(serializers.ModelSerializer):
@@ -92,6 +120,9 @@ class AccountMembershipWriteSerializer(serializers.ModelSerializer):
     """
 
     send_invitation = serializers.BooleanField(write_only=True, required=False, default=True)
+    invitation_ttl_days = serializers.IntegerField(write_only=True, required=False, min_value=1, max_value=90, default=14)
+    invitation_channel = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=32, default="direct_link")
+    invitation_metadata = serializers.JSONField(write_only=True, required=False, default=dict)
 
     class Meta:
         model = AccountMembership
@@ -107,62 +138,20 @@ class AccountMembershipWriteSerializer(serializers.ModelSerializer):
             "is_active",
             "metadata",
             "send_invitation",
+            "invitation_ttl_days",
+            "invitation_channel",
+            "invitation_metadata",
         ]
 
     def validate(self, attrs):
-        instance = getattr(self, "instance", None)
-        account = attrs.get("account", getattr(instance, "account", None))
-        user = attrs.get("user", getattr(instance, "user", None))
-        role = attrs.get("role", getattr(instance, "role", None))
-
-        if not account:
-            raise serializers.ValidationError({"account": _("La cuenta es requerida.")})
-        if not user:
-            raise serializers.ValidationError({"user": _("El usuario es requerido.")})
-
-        if instance:
-            if "account" in attrs and attrs["account"].pk != instance.account_id:
-                raise serializers.ValidationError({"account": _("No puedes mover una membresia a otra cuenta.")})
-            if "user" in attrs and attrs["user"].pk != instance.user_id:
-                raise serializers.ValidationError({"user": _("No puedes cambiar el usuario de una membresia existente.")})
-
-        duplicate_qs = AccountMembership.objects.filter(account=account, user=user)
-        if instance:
-            duplicate_qs = duplicate_qs.exclude(pk=instance.pk)
-        if duplicate_qs.exists():
-            raise serializers.ValidationError({"user": _("Ese usuario ya tiene una membresia para esta cuenta.")})
-
-        if user.id == account.owner_id and not instance:
-            raise serializers.ValidationError(
-                {"user": _("El owner de la cuenta no debe crearse por este flujo; usa ensure_owner_membership().")}
-            )
-
-        if role == AccountMembershipRole.OWNER and user.id != account.owner_id:
-            raise serializers.ValidationError(
-                {"role": _("Solo el owner real de la cuenta puede tener rol owner.")}
-            )
-
-        return attrs
+        return validate_account_membership_payload(attrs=attrs, instance=getattr(self, "instance", None))
 
     def create(self, validated_data):
-        send_invitation = validated_data.pop("send_invitation", True)
         request = self.context.get("request")
-        validated_data.setdefault("invited_by", getattr(request, "user", None))
-
-        membership = AccountMembership(**validated_data)
-        if not membership.is_active and send_invitation and membership.invitation_sent_at is None:
-            membership.invitation_sent_at = timezone.now()
-        membership.full_clean()
-        membership.save()
-        return membership
+        return create_account_membership(validated_data=validated_data, request_user=getattr(request, "user", None))
 
     def update(self, instance, validated_data):
-        validated_data.pop("send_invitation", None)
-        for field, value in validated_data.items():
-            setattr(instance, field, value)
-        instance.full_clean()
-        instance.save()
-        return instance
+        return update_account_membership(instance=instance, validated_data=validated_data)
 
 
 class AccountMembershipAcceptSerializer(serializers.Serializer):
@@ -170,6 +159,7 @@ class AccountMembershipAcceptSerializer(serializers.Serializer):
     Aceptacion de invitacion o activacion controlada de membresia.
     """
 
+    invitation_token = serializers.UUIDField(required=True)
     accepted_at = serializers.DateTimeField(required=False)
     joined_at = serializers.DateTimeField(required=False)
 
@@ -188,3 +178,5 @@ class AccountMembershipRotateInvitationSerializer(serializers.Serializer):
     """
 
     sent_at = serializers.DateTimeField(required=False)
+    ttl_days = serializers.IntegerField(required=False, min_value=1, max_value=90, default=14)
+    channel = serializers.CharField(required=False, allow_blank=True, max_length=32, default="direct_link")

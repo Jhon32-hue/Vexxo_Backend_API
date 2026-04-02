@@ -10,6 +10,7 @@ Analisis detallado:
 """
 
 from .account_views import AccountViewSet
+from .fallback_views import AccountBalanceFallbackViewSet
 from .intelligence_views import (
     AccountCurrencyExposureViewSet,
     AccountOwnerMetricsViewSet,
@@ -24,6 +25,7 @@ from .snapshot_views import BalanceSnapshotViewSet
 
 __all__ = [
     "AccountCurrencyExposureViewSet",
+    "AccountBalanceFallbackViewSet",
     "AccountMembershipViewSet",
     "AccountOwnerMetricsViewSet",
     "AccountPortfolioSnapshotViewSet",

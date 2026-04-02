@@ -170,7 +170,10 @@ ACCOUNT_EVENT_CATALOG = [
             "accounts.views.recalc_balance",
             "accounts.services.reconcile_service",
         ],
-        "current_local_listeners": ["alerts.handle_account_balance_updated"],
+        "current_local_listeners": [
+            "alerts.handle_account_balance_updated",
+            "accounts.publish_balance_updated_realtime_signal",
+        ],
         "intended_consumers": ["alerts", "reports", "notifications", "wealth"],
     },
     {
@@ -361,23 +364,23 @@ ACCOUNT_EVENT_GOVERNANCE = {
         "required_fields": ["account_id", "owner_id", "change"],
     },
     AccountDomainEventTypes.ACCOUNT_SYNC_SCHEDULED: {
-        "payload_fields": ["account_id", "owner_id", "provider", "change", "next_sync_at", "sync_status", "sync_health"],
+        "payload_fields": ["account_id", "owner_id", "provider", "change", "next_sync_at", "sync_status", "sync_health", "sync_run_id"],
         "required_fields": ["account_id", "owner_id", "change", "next_sync_at"],
     },
     AccountDomainEventTypes.ACCOUNT_SYNC_STATUS_CHANGED: {
-        "payload_fields": ["account_id", "owner_id", "provider", "change", "sync_status", "sync_health", "last_sync_at", "next_sync_at"],
+        "payload_fields": ["account_id", "owner_id", "provider", "change", "sync_status", "sync_health", "last_sync_at", "next_sync_at", "sync_run_id"],
         "required_fields": ["account_id", "owner_id", "change", "sync_status", "sync_health"],
     },
     AccountDomainEventTypes.ACCOUNT_SYNC_STARTED: {
-        "payload_fields": ["account_id", "owner_id", "provider", "change", "sync_cursor"],
+        "payload_fields": ["account_id", "owner_id", "provider", "change", "sync_cursor", "sync_run_id"],
         "required_fields": ["account_id", "owner_id", "change"],
     },
     AccountDomainEventTypes.ACCOUNT_SYNC_SUCCEEDED: {
-        "payload_fields": ["account_id", "owner_id", "provider", "change", "duration_ms", "last_sync_at"],
+        "payload_fields": ["account_id", "owner_id", "provider", "change", "duration_ms", "last_sync_at", "sync_run_id"],
         "required_fields": ["account_id", "owner_id", "change"],
     },
     AccountDomainEventTypes.ACCOUNT_SYNC_FAILED: {
-        "payload_fields": ["account_id", "owner_id", "provider", "change", "message", "next_sync_at"],
+        "payload_fields": ["account_id", "owner_id", "provider", "change", "message", "next_sync_at", "sync_run_id"],
         "required_fields": ["account_id", "owner_id", "change", "message"],
     },
     AccountDomainEventTypes.ACCOUNT_MEMBERSHIP_CREATED: {
@@ -458,12 +461,12 @@ def get_account_event_runtime() -> dict:
             "finance.accounts.services.outbox_service",
             "finance.accounts.services.event_service.enqueue_domain_event",
             "finance.accounts.models.outbox.DomainEventOutbox",
-            "transaction.on_commit -> publish_outbox_event",
-            "common.domain_events.publish_domain_event",
+            "management command / worker accounts_publish_outbox -> publish_outbox_event",
+            "common.domain_events.publish_domain_event (fase local requerida / best-effort)",
             "local listeners registrados con @subscribe",
-            "listener pattern finance.accounts.event_handlers -> refresh_account_intelligence_for_user",
+            "common.domain_events.publish_domain_event (fase external dispatchers)",
             "dispatcher opcional common.gcp.pubsub_dispatcher",
-            "listener opcional finance.accounts.event_handlers -> Cloud Tasks",
+            "listeners opcionales finance.accounts.event_handlers -> Cloud Tasks / realtime / proyecciones",
         ],
         "current_dispatch_mode": "local_event_bus_with_outbox_plus_optional_pubsub_and_cloud_tasks",
         "prepared_for": [
@@ -568,6 +571,7 @@ def build_account_sync_payload(
 
 
 def build_account_membership_payload(*, membership, change: str, extra: dict | None = None) -> dict:
+    invitation = getattr(membership, "current_invitation", None) or getattr(membership, "latest_invitation", None)
     payload = {
         "membership_id": _stringify_id(membership.pk),
         "account_id": _stringify_id(membership.account_id),
@@ -580,6 +584,9 @@ def build_account_membership_payload(*, membership, change: str, extra: dict | N
         "accepted_at": membership.accepted_at.isoformat() if membership.accepted_at else None,
         "joined_at": membership.joined_at.isoformat() if membership.joined_at else None,
         "revoked_at": membership.revoked_at.isoformat() if membership.revoked_at else None,
+        "invitation_id": _stringify_id(getattr(invitation, "pk", None)),
+        "invitation_status": getattr(invitation, "status", None),
+        "invitation_expires_at": invitation.expires_at.isoformat() if getattr(invitation, "expires_at", None) else None,
     }
     if extra:
         payload.update(extra)

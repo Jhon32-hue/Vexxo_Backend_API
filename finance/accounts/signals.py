@@ -28,6 +28,7 @@ from django.dispatch import receiver
 
 from finance.accounts.domain.enums import BalanceChangeReason
 from finance.accounts.models.account import Account
+from finance.accounts.services.account_balance_fallback_service import record_account_balance_fallback
 from finance.accounts.services.outbox_service import publish_account_balance_updated
 from finance.accounts.use_cases import (
     TransactionBalanceState,
@@ -128,6 +129,21 @@ def _fallback_recalc(tx, *, reason: str) -> None:
 
         old_balance = account.balance
         new_balance = account.recalc_balance(reason=reason)
+        fallback_metadata = {
+            "source": "accounts.signals.fallback_recalc",
+            "reason": reason,
+        }
+        record_account_balance_fallback(
+            account=account,
+            transaction_id=getattr(tx, "pk", None),
+            reason=reason,
+            old_state_present=old_state is not None,
+            affected_account_ids=fallback_context["affected_account_ids"],
+            old_balance=old_balance,
+            new_balance=new_balance,
+            recalculated=bool(new_balance != old_balance),
+            metadata=fallback_metadata,
+        )
         if new_balance == old_balance:
             continue
 
@@ -137,7 +153,7 @@ def _fallback_recalc(tx, *, reason: str) -> None:
             new_balance=new_balance,
             reason=reason,
             transaction_id=getattr(tx, "pk", None),
-            metadata={"source": "accounts.signals.fallback_recalc"},
+            metadata=fallback_metadata,
         )
 
         logger.warning(

@@ -12,6 +12,9 @@ from finance.transactions.Models.transacciones import Transaction, ScheduledPaym
 from finance.transactions.Models.transacciones import TransactionParticipant
 from contacts.models.contact import Contact
 from finance.transactions.utils_limits import account_month_expense_total
+from identity.users.services.product_usage_projection_service import (
+    sync_scheduled_payments_slice,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -249,6 +252,20 @@ def _recalc_contact_balances_for_tx(instance: Transaction):
                 )
 
 
+def _sync_scheduled_payment_usage(owner_id, *, source: str):
+    if not owner_id:
+        return
+    try:
+        sync_scheduled_payments_slice(owner_id, source=source)
+    except Exception as e:
+        logger.error(
+            "[transactions] Error sincronizando scheduled payment usage owner_id=%s: %s",
+            owner_id,
+            e,
+            exc_info=True,
+        )
+
+
 # ================== SIGNALS SOBRE TRANSACTION ==================
 
 
@@ -269,6 +286,11 @@ def on_transaction_post_save(sender, instance: Transaction, created: bool, **kwa
         _apply_debt_payment_if_any(instance)
         _raise_monthly_limit_alert_if_needed(instance)
         _recalc_contact_balances_for_tx(instance)
+        if instance.scheduled_payment_id:
+            _sync_scheduled_payment_usage(
+                instance.owner_id,
+                source="finance.transactions.signals.on_transaction_post_save.scheduled_payment",
+            )
     except Exception as e:
         logger.error(
             "[transactions] Error en on_transaction_post_save para tx id=%s: %s",
@@ -295,6 +317,11 @@ def on_transaction_post_delete(sender, instance: Transaction, **kwargs):
     )
     try:
         _recalc_contact_balances_for_tx(instance)
+        if instance.scheduled_payment_id:
+            _sync_scheduled_payment_usage(
+                instance.owner_id,
+                source="finance.transactions.signals.on_transaction_post_delete.scheduled_payment",
+            )
     except Exception as e:
         logger.error(
             "[transactions] Error recalculando net_balance tras delete tx id=%s: %s",
@@ -343,3 +370,19 @@ def on_participant_post_delete(sender, instance: TransactionParticipant, **kwarg
             e,
             exc_info=True,
         )
+
+
+@receiver(post_save, sender=ScheduledPayment)
+def on_scheduled_payment_post_save(sender, instance: ScheduledPayment, **kwargs):
+    _sync_scheduled_payment_usage(
+        instance.owner_id,
+        source="finance.transactions.signals.on_scheduled_payment_post_save",
+    )
+
+
+@receiver(post_delete, sender=ScheduledPayment)
+def on_scheduled_payment_post_delete(sender, instance: ScheduledPayment, **kwargs):
+    _sync_scheduled_payment_usage(
+        instance.owner_id,
+        source="finance.transactions.signals.on_scheduled_payment_post_delete",
+    )

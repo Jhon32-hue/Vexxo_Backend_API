@@ -258,6 +258,7 @@ def build_user_core_payload(user) -> dict[str, Any]:
         "first_name": user.first_name,
         "last_name": user.last_name,
         "plan": user.plan,
+        "effective_plan": getattr(user, "effective_plan", user.plan),
         "status": user.status,
         "is_active": bool(user.is_active),
         "is_verified": bool(user.is_verified),

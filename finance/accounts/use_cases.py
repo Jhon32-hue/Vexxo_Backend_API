@@ -30,7 +30,6 @@ from django.utils import timezone
 
 from finance.accounts.services.event_service import publish_after_commit
 from finance.accounts.services.outbox_service import enqueue_account_balance_updated_event
-from finance.accounts.services.permission_service import legacy_owner_read_only
 from finance.accounts.services.realtime_services import ping_account_changed
 from finance.transactions.constants import CREDIT_TYPES, DEBIT_TYPES, POSTED_STATUSES
 
@@ -140,11 +139,6 @@ def apply_account_balance_deltas(
             account = accounts.get(account_id)
             if account is None or account.is_closed:
                 continue
-            # TODO: legacy compatibility. Remove when AccountMembership becomes
-            # the sole source of access control for shared/observed accounts.
-            if legacy_owner_read_only(account):
-                continue
-
             old_balance = _decimal(account.balance)
             new_balance = (old_balance + _decimal(delta)).quantize(PREC)
             if new_balance == old_balance:

@@ -59,6 +59,7 @@ class TransactionViewSet(OwnerScopedMixin, viewsets.ModelViewSet):
             "installment",
             "income_source",
             "scheduled_payment",
+            "payment_intent",
         )
         .prefetch_related("tags", "participants")
         .all()
@@ -279,7 +280,12 @@ class ScheduledPaymentViewSet(OwnerScopedMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def generar_transaccion(self, request, pk=None):
         """
-        Genera una Transaction a partir de un ScheduledPayment pendiente.
+        Genera una Transaction contable a partir de un ScheduledPayment pendiente.
+
+        Este flujo representa materializacion local del ledger, no la ejecucion
+        de un rail externo. El gating de pagos embebidos vive en
+        `payments.payment_intents`, que sera el punto de entrada para retailers,
+        PSPs o integradores externos.
         """
         sp = self.get_object()
 

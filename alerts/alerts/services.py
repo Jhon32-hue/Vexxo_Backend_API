@@ -14,7 +14,6 @@ from alerts.alerts.models.alerts import (
     AlertSeverity,
     AlertStatus,
 )
-from alerts.alerts.ai_services import enrich_alert_with_ai
 from common.domain_events import (
     publish_domain_event,
     EventContext,
@@ -126,14 +125,6 @@ def create_alert(
     #      - Mover esto a un listener de ALERT_CREATED (desacoplar IA del core).
     #      - Delegarlo a un microservicio LLM que escuche en Kafka/cola
     #        y luego llame a PATCH /alerts/{id}/enrich/.
-    try:
-        enrich_alert_with_ai(alert, correlation_id=correlation_id)
-    except Exception:
-        logger.exception(
-            "[alerts] Error intentando enriquecer con IA la alerta id=%s",
-            alert.pk,
-        )
-
     return alert
 
 

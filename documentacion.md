@@ -4,6 +4,10 @@ Este archivo centraliza avances funcionales y tecnicos del proyecto. La idea es
 ir agregando aqui, por secciones o entradas nuevas, los cambios relevantes del
 backend para que equipos tecnicos y no tecnicos tengan una referencia comun.
 
+Nota para `finance.accounts`:
+- la documentacion canonica del bounded context ahora vive en [finance/accounts/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/README.md)
+- este archivo global queda como indice transversal del proyecto y no como detalle interno completo de `accounts`
+
 ## Avance: Accounts, Eventos, Realtime, Notificaciones, Sync Interno Y Cloud
 
 ### 1. Vision General
@@ -1268,5 +1272,15 @@ Resultado:
 - si una proyeccion async queda demasiado tiempo pendiente o stale
 - el sistema ya no depende solo de logs manuales
 - ahora expone salud operativa y puede dejar alerta persistente para seguimiento
+
+### 18.17. Documentacion Canonica De Accounts
+
+Referencia actual:
+- [finance/accounts/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/README.md)
+
+Alcance:
+- describe la forma actual del bounded context `finance.accounts`
+- documenta modelo de negocio, arquitectura interna, flujos, invariantes y relaciones con otros modulos
+- reemplaza la necesidad de seguir detallando internamente `accounts` en este archivo global
 
 

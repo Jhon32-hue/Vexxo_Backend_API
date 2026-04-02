@@ -16,8 +16,9 @@ Analisis detallado:
   permisos operativos importantes: administrar configuracion de la cuenta y
   administrar colaboradores
 - decision oficial del modulo: `AccountMembership` es la fuente canonica para
-  cuentas compartidas; `read_only`, `shared_from_user` y `AccountAccess`
-  sobreviven solo como compatibilidad temporal del modelo legacy
+  cuentas compartidas; `read_only` y `shared_from_user` ya no afectan
+  autorizacion operativa y `AccountAccess` queda solo para migracion o lectura
+  legacy controlada
 
 Que se puede hacer despues:
 - mover aqui reglas mas finas de limites por plan o producto
@@ -42,13 +43,13 @@ ROLE_WEIGHT = {
 
 def legacy_owner_read_only(account) -> bool:
     """
-    Compatibilidad temporal del modelo legacy.
+    Compatibilidad pasiva del modelo legacy.
 
-    Solo debe influir mientras existan flujos antiguos que aun escriben
-    `Account.read_only`. El camino moderno de permisos compartidos es
-    `AccountMembership`.
+    `Account.read_only` ya no participa en decisiones operativas de permisos ni
+    de balance. La bandera sobrevive solo como dato representacional para
+    clientes o migraciones que aun necesiten inspeccionarla.
     """
-    return bool(getattr(account, "read_only", False))
+    return False
 
 
 def membership_for_user(user, account):
@@ -80,7 +81,7 @@ def user_can_post_transactions(user, account) -> bool:
     if not user or not user.is_authenticated:
         return False
     if account.owner_id == user.id:
-        return not legacy_owner_read_only(account)
+        return True
 
     membership = membership_for_user(user, account)
     if not membership:

@@ -14,8 +14,6 @@ Analisis detallado:
 
 from .account import (
     Account,
-    AccountAccess,
-    AccountAccessRole,
     AccountDataOrigin,
     AccountOwnership,
     AccountRole,
@@ -30,9 +28,13 @@ from .account import (
     SharedScopeType,
     SyncStatus,
 )
+from .account_access import AccountAccess, AccountAccessRole
 from .balance_snapshot import BalanceSnapshot
+from .fallback import AccountBalanceFallback
+from .invitation import AccountInvitation
 from .intelligence import (
     AccountCurrencyExposure,
+    AccountIntelligenceDispatchState,
     AccountOwnerMetrics,
     AccountPortfolioSnapshot,
     AccountProductSignal,
@@ -46,7 +48,9 @@ __all__ = [
     "Account",
     "AccountAccess",
     "AccountAccessRole",
+    "AccountBalanceFallback",
     "AccountDataOrigin",
+    "AccountInvitation",
     "AccountMembership",
     "AccountOwnership",
     "AccountOwnerMetrics",
@@ -57,6 +61,7 @@ __all__ = [
     "AccountSensitivityLevel",
     "AccountSourcePriority",
     "AccountCurrencyExposure",
+    "AccountIntelligenceDispatchState",
     "AccountTypeDistribution",
     "AccountStatus",
     "AccountType",

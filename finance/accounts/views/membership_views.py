@@ -18,15 +18,16 @@ Que se puede hacer despues:
 
 from __future__ import annotations
 
+from django.db.models import Q
 from django.db import transaction
-from rest_framework import mixins, status, viewsets
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from finance.accounts.domain.events import AccountDomainEventTypes
-from finance.accounts.models import AccountMembership
+from finance.accounts.models import AccountInvitation, AccountMembership
 from finance.accounts.serializers import (
     AccountMembershipAcceptSerializer,
     AccountMembershipRevokeSerializer,
@@ -34,13 +35,103 @@ from finance.accounts.serializers import (
     AccountMembershipSerializer,
     AccountMembershipWriteSerializer,
 )
-from finance.accounts.services.permission_service import account_scope_for_user, user_can_manage_members
+from finance.accounts.services.account_invitation_service import mark_membership_invitation_opened
+from finance.accounts.services.account_policy_service import validate_membership_invitation_state
 from finance.accounts.services.outbox_service import publish_account_membership_event
+from finance.accounts.services.permission_service import account_scope_for_user, user_can_manage_members
 from support.audit.helpers import audit_log
 
 
-def _truthy(value: str | None) -> bool:
+def truthy(value: str | None) -> bool:
     return (value or "").strip().lower() in {"1", "true", "yes", "si"}
+
+
+def build_membership_queryset(*, user, query_params, account_queryset):
+    scoped_accounts = account_scope_for_user(user, account_queryset)
+    qs = AccountMembership.objects.select_related("account", "account__owner", "user", "invited_by").prefetch_related(
+        "invitations"
+    ).filter(
+        account__in=scoped_accounts
+    )
+
+    account_id = query_params.get("account")
+    role = query_params.get("role")
+    active = query_params.get("active")
+    mine = query_params.get("mine")
+    invitation_pending = query_params.get("invitation_pending")
+
+    if account_id:
+        qs = qs.filter(account_id=account_id)
+    if role:
+        qs = qs.filter(role=role)
+    if active is not None:
+        qs = qs.filter(is_active=truthy(active))
+    if truthy(mine):
+        qs = qs.filter(user=user)
+    if invitation_pending is not None:
+        pending_filter = (
+            Q(invitations__is_current=True, invitations__status__in=[AccountInvitation.Status.PENDING, AccountInvitation.Status.OPENED])
+            | Q(invitations__isnull=True, invitation_sent_at__isnull=False, accepted_at__isnull=True, is_active=False)
+        )
+        if truthy(invitation_pending):
+            qs = qs.filter(pending_filter)
+        else:
+            qs = qs.exclude(pending_filter)
+
+    return qs.distinct().order_by("-is_active", "-invitation_sent_at", "user__username")
+
+
+def assert_can_manage_membership(*, acting_user, membership: AccountMembership) -> None:
+    if not user_can_manage_members(acting_user, membership.account):
+        raise PermissionDenied("No puedes administrar miembros en esta cuenta.")
+
+
+def can_manage_account_members(*, acting_user, account) -> bool:
+    return user_can_manage_members(acting_user, account)
+
+
+def can_manage_or_self(*, acting_user, membership: AccountMembership) -> bool:
+    return membership.user_id == acting_user.id or user_can_manage_members(acting_user, membership.account)
+
+
+def audit_membership_action(
+    *,
+    acting_user,
+    action_name: str,
+    membership: AccountMembership,
+    description: str,
+    metadata: dict | None = None,
+):
+    audit_log(
+        user=acting_user,
+        module="accounts",
+        action=action_name,
+        entity="AccountMembership",
+        entity_id=membership.id,
+        description=description,
+        metadata=metadata or {},
+        silent=True,
+    )
+
+
+def membership_counts_as_shared(membership: AccountMembership) -> bool:
+    if membership.user_id == membership.account.owner_id:
+        return False
+    if membership.is_active:
+        return True
+    invitation = membership.current_invitation or membership.latest_invitation
+    if invitation is None:
+        return bool(
+            not membership.is_active
+            and membership.invitation_sent_at
+            and membership.accepted_at is None
+            and membership.revoked_at is None
+        )
+    return bool(
+        invitation.status in {AccountInvitation.Status.PENDING, AccountInvitation.Status.OPENED}
+        and membership.accepted_at is None
+        and membership.revoked_at is None
+    )
 
 
 class AccountMembershipViewSet(viewsets.ModelViewSet):
@@ -52,32 +143,11 @@ class AccountMembershipViewSet(viewsets.ModelViewSet):
     serializer_class = AccountMembershipSerializer
 
     def get_queryset(self):
-        scoped_accounts = account_scope_for_user(self.request.user, self._account_base_queryset())
-        qs = AccountMembership.objects.select_related("account", "account__owner", "user", "invited_by").filter(
-            account__in=scoped_accounts
+        return build_membership_queryset(
+            user=self.request.user,
+            query_params=self.request.query_params,
+            account_queryset=self._account_base_queryset(),
         )
-
-        account_id = self.request.query_params.get("account")
-        role = self.request.query_params.get("role")
-        active = self.request.query_params.get("active")
-        mine = self.request.query_params.get("mine")
-        invitation_pending = self.request.query_params.get("invitation_pending")
-
-        if account_id:
-            qs = qs.filter(account_id=account_id)
-        if role:
-            qs = qs.filter(role=role)
-        if active is not None:
-            qs = qs.filter(is_active=_truthy(active))
-        if _truthy(mine):
-            qs = qs.filter(user=self.request.user)
-        if invitation_pending is not None:
-            if _truthy(invitation_pending):
-                qs = qs.filter(invitation_sent_at__isnull=False, accepted_at__isnull=True, is_active=False)
-            else:
-                qs = qs.exclude(invitation_sent_at__isnull=False, accepted_at__isnull=True, is_active=False)
-
-        return qs.order_by("-is_active", "-invitation_sent_at", "user__username")
 
     def _account_base_queryset(self):
         from finance.accounts.models import Account
@@ -96,25 +166,21 @@ class AccountMembershipViewSet(viewsets.ModelViewSet):
         return AccountMembershipSerializer
 
     def _assert_can_manage_membership(self, membership: AccountMembership) -> None:
-        if not user_can_manage_members(self.request.user, membership.account):
-            raise PermissionDenied("No puedes administrar miembros en esta cuenta.")
+        assert_can_manage_membership(acting_user=self.request.user, membership=membership)
 
     def _audit(self, *, action_name: str, membership: AccountMembership, description: str, metadata: dict | None = None):
-        audit_log(
-            user=self.request.user,
-            module="accounts",
-            action=action_name,
-            entity="AccountMembership",
-            entity_id=membership.id,
+        audit_membership_action(
+            acting_user=self.request.user,
+            action_name=action_name,
+            membership=membership,
             description=description,
-            metadata=metadata or {},
-            silent=True,
+            metadata=metadata,
         )
 
     @transaction.atomic
     def perform_create(self, serializer):
         account = serializer.validated_data["account"]
-        if not user_can_manage_members(self.request.user, account):
+        if not can_manage_account_members(acting_user=self.request.user, account=account):
             raise PermissionDenied("No puedes invitar miembros a esta cuenta.")
 
         membership = serializer.save()
@@ -147,7 +213,9 @@ class AccountMembershipViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         membership = self.get_object()
         self._assert_can_manage_membership(membership)
+        before_counted = membership_counts_as_shared(membership)
         updated = serializer.save()
+        after_counted = membership_counts_as_shared(updated)
         self._audit(
             action_name="membership_update",
             membership=updated,
@@ -158,12 +226,14 @@ class AccountMembershipViewSet(viewsets.ModelViewSet):
             membership=updated,
             event_type=AccountDomainEventTypes.ACCOUNT_MEMBERSHIP_UPDATED,
             change="membership_update",
+            extra={"projection_transition": {"before_counted": before_counted, "after_counted": after_counted}},
             metadata={"source": "accounts.views.membership_update"},
         )
 
     @transaction.atomic
     def perform_destroy(self, instance):
         self._assert_can_manage_membership(instance)
+        before_counted = membership_counts_as_shared(instance)
         instance.revoke(commit=True)
         self._audit(
             action_name="membership_revoke",
@@ -174,23 +244,38 @@ class AccountMembershipViewSet(viewsets.ModelViewSet):
             membership=instance,
             event_type=AccountDomainEventTypes.ACCOUNT_MEMBERSHIP_REVOKED,
             change="membership_destroy",
+            extra={"projection_transition": {"before_counted": before_counted, "after_counted": False}},
             metadata={"source": "accounts.views.membership_destroy"},
         )
 
     @action(detail=True, methods=["post"])
     def accept_invitation(self, request, pk=None):
         membership = self.get_object()
-        if membership.user_id != request.user.id and not user_can_manage_members(request.user, membership.account):
+        if not can_manage_or_self(acting_user=request.user, membership=membership):
             raise PermissionDenied("No puedes aceptar esta invitacion.")
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        invitation_resolution = validate_membership_invitation_state(
+            membership=membership,
+            action="accept",
+            invitation_token=serializer.validated_data.get("invitation_token"),
+        )
+        if invitation_resolution["already_applied"]:
+            return Response(
+                AccountMembershipSerializer(membership, context=self.get_serializer_context()).data,
+                status=status.HTTP_200_OK,
+            )
+        invitation = invitation_resolution["invitation"]
+        mark_membership_invitation_opened(membership=membership, invitation=invitation)
 
+        before_counted = membership_counts_as_shared(membership)
         membership.accept(
             accepted_at=serializer.validated_data.get("accepted_at"),
             joined_at=serializer.validated_data.get("joined_at"),
             commit=True,
         )
+        after_counted = membership_counts_as_shared(membership)
         self._audit(
             action_name="membership_accept",
             membership=membership,
@@ -200,6 +285,7 @@ class AccountMembershipViewSet(viewsets.ModelViewSet):
             membership=membership,
             event_type=AccountDomainEventTypes.ACCOUNT_MEMBERSHIP_ACCEPTED,
             change="membership_accept",
+            extra={"projection_transition": {"before_counted": before_counted, "after_counted": after_counted}},
             metadata={"source": "accounts.views.membership_accept"},
         )
         return Response(
@@ -210,13 +296,14 @@ class AccountMembershipViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def revoke(self, request, pk=None):
         membership = self.get_object()
-        can_revoke = membership.user_id == request.user.id or user_can_manage_members(request.user, membership.account)
+        can_revoke = can_manage_or_self(acting_user=request.user, membership=membership)
         if not can_revoke:
             raise PermissionDenied("No puedes revocar esta membresia.")
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        before_counted = membership_counts_as_shared(membership)
         membership.revoke(revoked_at=serializer.validated_data.get("revoked_at"), commit=True)
         self._audit(
             action_name="membership_revoke",
@@ -227,6 +314,7 @@ class AccountMembershipViewSet(viewsets.ModelViewSet):
             membership=membership,
             event_type=AccountDomainEventTypes.ACCOUNT_MEMBERSHIP_REVOKED,
             change="membership_revoke",
+            extra={"projection_transition": {"before_counted": before_counted, "after_counted": False}},
             metadata={"source": "accounts.views.membership_revoke"},
         )
         return Response(
@@ -238,14 +326,19 @@ class AccountMembershipViewSet(viewsets.ModelViewSet):
     def rotate_invitation(self, request, pk=None):
         membership = self.get_object()
         self._assert_can_manage_membership(membership)
+        validate_membership_invitation_state(membership=membership, action="reissue")
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        before_counted = membership_counts_as_shared(membership)
         membership.rotate_invitation_token(
             sent_at=serializer.validated_data.get("sent_at"),
+            ttl_days=serializer.validated_data.get("ttl_days", 14),
+            channel=serializer.validated_data.get("channel", "direct_link"),
             commit=True,
         )
+        after_counted = membership_counts_as_shared(membership)
         self._audit(
             action_name="membership_rotate_invitation",
             membership=membership,
@@ -255,6 +348,7 @@ class AccountMembershipViewSet(viewsets.ModelViewSet):
             membership=membership,
             event_type=AccountDomainEventTypes.ACCOUNT_MEMBERSHIP_UPDATED,
             change="membership_rotate_invitation",
+            extra={"projection_transition": {"before_counted": before_counted, "after_counted": after_counted}},
             metadata={"source": "accounts.views.membership_rotate_invitation"},
         )
         publish_account_membership_event(

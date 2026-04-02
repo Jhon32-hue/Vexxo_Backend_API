@@ -8,19 +8,23 @@ Descripcion general:
 Analisis detallado:
 - esta capa existe como receptor temporal dentro del monolito mientras el
   `integrations_service` externo todavia no esta separado
-- el objetivo es mantener el contrato del sistema listo: una task llega, se
-  procesa, la cuenta cambia de estado y el dominio emite eventos
+- delega el lifecycle real del sync al servicio canonico de `accounts` para no
+  duplicar reglas ni idempotencia
 """
 
 from __future__ import annotations
 
 from django.db import transaction
 
-from finance.accounts.domain.events import AccountDomainEventTypes, build_account_sync_payload
 from finance.accounts.models import Account
-from finance.accounts.services import publish_account_event, publish_account_sync_event
-from finance.accounts.services import revoke_provider_integration_access_for_user
+from finance.accounts.services.account_sync_service import (
+    mark_account_sync_error,
+    mark_account_sync_running,
+    mark_account_sync_stale,
+    mark_account_sync_success,
+)
 from finance.accounts.services.intelligence_service import refresh_account_intelligence_for_user
+from finance.accounts.services.user_integration_service import revoke_provider_integration_access_for_user
 
 
 @transaction.atomic
@@ -37,114 +41,55 @@ def process_stub_account_sync(
     retry_in_minutes: int | None = None,
 ) -> Account:
     upstream_event = dict(event or {})
+    upstream_payload = dict(upstream_event.get("payload") or {})
     upstream_metadata = {
         "source": "integrations_stub.banks.process_stub_account_sync",
         "trigger_event_type": upstream_event.get("type", ""),
         "correlation_id": upstream_event.get("correlation_id"),
         "causation_id": upstream_event.get("id"),
+        "request_id": upstream_event.get("request_id"),
+        "sync_run_id": upstream_payload.get("sync_run_id") or upstream_event.get("sync_run_id"),
     }
 
     if not account.has_external_link:
         raise ValueError("La cuenta no esta vinculada a un proveedor externo.")
 
-    if sync_cursor:
-        account.sync_cursor = sync_cursor
-    if next_sync_at is not None:
-        account.next_sync_at = next_sync_at
-
-    account.mark_sync_running(commit=False)
-    account.save(update_fields=["sync_cursor", "next_sync_at", "sync_status", "last_sync_status_at", "updated_at"])
-    publish_account_sync_event(
+    mark_account_sync_running(
         account=account,
-        event_type=AccountDomainEventTypes.ACCOUNT_SYNC_STATUS_CHANGED,
-        change="mark_sync_running",
-        extra={"sync_cursor": account.sync_cursor},
-        metadata=upstream_metadata,
-    )
-    publish_account_event(
-        account=account,
-        event_type=AccountDomainEventTypes.ACCOUNT_SYNC_STARTED,
-        payload=build_account_sync_payload(
-            account=account,
-            change="sync_started",
-            extra={"sync_cursor": account.sync_cursor},
-        ),
+        data={
+            "sync_cursor": sync_cursor,
+            "next_sync_at": next_sync_at,
+            "sync_run_id": upstream_payload.get("sync_run_id") or upstream_event.get("sync_run_id"),
+        },
         metadata=upstream_metadata,
     )
 
     if mode == "success":
-        if provider_metadata:
-            merged = dict(account.provider_metadata or {})
-            merged.update(provider_metadata)
-            account.provider_metadata = merged
-        account.mark_sync_ok(commit=False, duration_ms=duration_ms)
-        account.save(
-            update_fields=[
-                "sync_status",
-                "sync_error_message",
-                "last_sync_at",
-                "last_sync_status_at",
-                "sync_attempts",
-                "last_sync_duration_ms",
-                "sync_cursor",
-                "provider_metadata",
-                "next_sync_at",
-                "updated_at",
-            ]
-        )
-        publish_account_sync_event(
+        mark_account_sync_success(
             account=account,
-            event_type=AccountDomainEventTypes.ACCOUNT_SYNC_STATUS_CHANGED,
-            change="mark_sync_success",
-            extra={"duration_ms": account.last_sync_duration_ms},
-            metadata=upstream_metadata,
-        )
-        publish_account_event(
-            account=account,
-            event_type=AccountDomainEventTypes.ACCOUNT_SYNC_SUCCEEDED,
-            payload=build_account_sync_payload(
-                account=account,
-                change="sync_succeeded",
-                extra={"duration_ms": account.last_sync_duration_ms},
-            ),
+            data={
+                "sync_cursor": sync_cursor,
+                "next_sync_at": next_sync_at,
+                "duration_ms": duration_ms,
+                "provider_metadata": provider_metadata or {},
+                "sync_run_id": upstream_payload.get("sync_run_id") or upstream_event.get("sync_run_id"),
+            },
             metadata=upstream_metadata,
         )
         return account
 
     if mode == "stale":
-        account.mark_sync_stale(commit=True)
-        publish_account_sync_event(
-            account=account,
-            event_type=AccountDomainEventTypes.ACCOUNT_SYNC_STATUS_CHANGED,
-            change="mark_sync_stale",
-            metadata=upstream_metadata,
-        )
+        mark_account_sync_stale(account, metadata=upstream_metadata)
         return account
 
-    account.mark_sync_error(message=message or "sync_failed", commit=False)
-    if next_sync_at is not None:
-        account.next_sync_at = next_sync_at
-    elif retry_in_minutes:
-        account.schedule_next_sync(delay_minutes=retry_in_minutes, commit=False)
-    account.save(update_fields=["sync_status", "sync_error_message", "last_sync_status_at", "sync_attempts", "next_sync_at", "updated_at"])
-    publish_account_sync_event(
+    mark_account_sync_error(
         account=account,
-        event_type=AccountDomainEventTypes.ACCOUNT_SYNC_STATUS_CHANGED,
-        change="mark_sync_error",
-        extra={"message": account.sync_error_message, "next_sync_at": account.next_sync_at.isoformat() if account.next_sync_at else None},
-        metadata=upstream_metadata,
-    )
-    publish_account_event(
-        account=account,
-        event_type=AccountDomainEventTypes.ACCOUNT_SYNC_FAILED,
-        payload=build_account_sync_payload(
-            account=account,
-            change="sync_failed",
-            extra={
-                "message": account.sync_error_message,
-                "next_sync_at": account.next_sync_at.isoformat() if account.next_sync_at else None,
-            },
-        ),
+        data={
+            "message": message or "sync_failed",
+            "next_sync_at": next_sync_at,
+            "retry_in_minutes": retry_in_minutes,
+            "sync_run_id": upstream_payload.get("sync_run_id") or upstream_event.get("sync_run_id"),
+        },
         metadata=upstream_metadata,
     )
     return account

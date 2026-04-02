@@ -576,6 +576,10 @@ def refresh_account_intelligence_for_user(user_or_id) -> dict | None:
             expires_at=now,
         )
 
+    from finance.accounts.services.intelligence_dispatch_service import mark_account_intelligence_refresh_completed
+
+    mark_account_intelligence_refresh_completed(owner_id=user.pk, result="materialized")
+
     return {
         "portfolio_snapshot": portfolio_snapshot,
         "risk_snapshot": risk_snapshot,

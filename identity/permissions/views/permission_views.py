@@ -16,6 +16,7 @@ from identity.permissions.services import (
     permission_summary_for_user,
     revoke_permission,
 )
+from identity.users.services.product_access_service import capabilities_for_user, effective_plan_for_user, get_user_usage_snapshot
 from identity.users.views.permissions import IsAdminUser
 
 
@@ -74,6 +75,10 @@ class UserPermissionGrantViewSet(viewsets.ModelViewSet):
         return Response(
             {
                 "user_id": str(request.user.pk),
+                "plan": request.user.plan,
+                "effective_plan": effective_plan_for_user(request.user),
+                "capabilities": capabilities_for_user(request.user),
+                "usage": get_user_usage_snapshot(request.user),
                 "permission_codes": get_effective_permission_codes(request.user),
                 "resolution": get_effective_permission_resolution(request.user),
             }

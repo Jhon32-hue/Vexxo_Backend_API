@@ -32,9 +32,11 @@ from .account_serializers import (
     AccountWriteSerializer,
 )
 from .balance_snapshot_serializers import BalanceSnapshotCreateSerializer, BalanceSnapshotSerializer
+from .fallback_serializers import AccountBalanceFallbackSerializer
 from .intelligence_serializers import (
     AccountCurrencyExposureSerializer,
     AccountIntelligenceRefreshSerializer,
+    AccountIntelligenceWorkerReportSerializer,
     AccountOwnerMetricsSerializer,
     AccountPortfolioSnapshotSerializer,
     AccountProductSignalSerializer,
@@ -45,7 +47,9 @@ from .outbox_serializers import DomainEventOutboxSerializer, OutboxActionSeriali
 
 __all__ = [
     "AccountCurrencyExposureSerializer",
+    "AccountBalanceFallbackSerializer",
     "AccountIntelligenceRefreshSerializer",
+    "AccountIntelligenceWorkerReportSerializer",
     "AccountDetailSerializer",
     "AccountExternalLinkSerializer",
     "AccountListSerializer",
