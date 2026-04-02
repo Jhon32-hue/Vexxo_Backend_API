@@ -7,6 +7,15 @@ Ledger transaccional y pagos programados locales.
 Este modulo registra movimientos financieros y side effects contables
 relacionados. No debe asumir por si mismo la orquestacion del rail externo.
 
+## Rol En El Producto
+
+Este contexto sostiene:
+
+- historial financiero visible al usuario
+- calculo de balances y categorias
+- base de reportes, alertas y analitica
+- reflejo final de pagos externos ya confirmados
+
 ## Regla principal
 
 `Transaction` es el reflejo contable final.
@@ -51,6 +60,20 @@ La regla sigue siendo:
 - `payments.payment_intents`: origen canonico de pagos externos
 - `payments.scheduled_payments`: planificacion nueva
 
+## Encaje Con GCP
+
+`finance.transactions` debe seguir siendo un contexto OLTP claro:
+
+- Cloud SQL guarda el ledger y sus relaciones
+- `accounts` consume cambios para mantener balance operativo
+- BigQuery debe alimentarse desde pipelines o CDC, no desde queries analiticas
+  pesadas contra OLTP en caliente
+
+La regla operativa sigue siendo:
+
+- registrar primero bien el hecho contable
+- derivar proyecciones y analytics despues
+
 ## Estado actual
 
 `Transaction` ahora puede referenciar opcionalmente un `PaymentIntent`.
@@ -69,4 +92,5 @@ Todavia falta:
 
 - exponer mejor la relacion `Transaction <-> PaymentIntent` en serializers/API
 - migrar gradualmente la planificacion hacia `payments.scheduled_payments`
-- enriquecer conciliacion entre rail externo y ledger
+- enriquecer conciliacion entre rail externo y ledger usando settlement y
+  operational cases de `payments.payment_intents`

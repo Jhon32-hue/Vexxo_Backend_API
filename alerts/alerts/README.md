@@ -11,6 +11,21 @@ No deberia resolver IA pesada dentro del request path principal. La regla es:
 - despachar enriquecimiento IA a worker/cola
 - publicar `alerts.ai.enriched.v1` cuando termina
 
+## Rol En El Producto
+
+Este modulo es la capa que convierte eventos financieros y operativos en
+mensajes accionables para el usuario.
+
+De cara al cliente:
+
+- ayuda a detectar cambios relevantes
+- resume anomalias, riesgo o friccion operativa
+- complementa dashboard, cuentas y pagos con contexto util
+- prepara explicaciones e insights que luego pueden mostrarse en mobile/web
+
+No reemplaza el ledger ni a `accounts`; interpreta lo que otros contextos ya
+registraron.
+
 ## Flujo actual
 
 ### Creacion
@@ -29,11 +44,55 @@ No deberia resolver IA pesada dentro del request path principal. La regla es:
 
 El endpoint interno ejecuta `alerts.alerts.ai_services.enrich_alert_with_ai()`.
 
+### Consumo por mobile/web
+
+1. `accounts`, `transactions` o `payments` emiten eventos
+2. `alerts` decide si crear una alerta o enriquecer una existente
+3. la alerta queda persistida
+4. otras superficies como notificaciones, inbox o dashboard consumen ese
+   resultado
+
+## Casos De Uso
+
+- saldo anomalo o movimiento relevante
+- cuenta con sync fallido o stale
+- drift o recalculo relevante de balance
+- friccion de pago o fallo externo
+- insight resumido a partir de patrones o IA
+
 ## Relacion con otros modulos
 
 - `finance.accounts`: produce eventos de balance/sync que disparan alertas
+- `finance.transactions`: puede aportar hechos contables para alertas
+- `payments.payment_intents`: aporta eventos operativos de pagos externos
 - `identity.users`: consume `alerts.*` para refrescar usage projection
+- `notifications`: puede convertir alertas o eventos relacionados en inbox
+- `realtime`: puede ayudar a reflejar cambios interactivos de bajo costo
 - futuro `llm_gateway`: destino natural de este flujo cuando salga del monolito
+
+## Encaje Con GCP
+
+La forma esperada de operar en GCP es:
+
+- API Gateway / BFF crea o consulta alertas rapido
+- Cloud Run worker o Cloud Tasks ejecuta enriquecimiento asincrono
+- `llm_gateway` puede vivir como servicio separado en Cloud Run
+- Gemini u otro modelo se consume fuera del request principal
+- Pub/Sub puede distribuir eventos relevantes a analytics o pipelines
+
+El principio es:
+
+- request corto
+- enriquecimiento pesado fuera del request path
+- eventos claros para trazabilidad y producto
+
+## Politicas Del Modulo
+
+- una alerta puede existir sin IA; la IA es enriquecimiento, no precondicion
+- el listener no debe bloquear el request original del dominio fuente
+- si la infraestructura async no esta lista, solo se permite fallback local
+  controlado
+- el futuro `llm_gateway` debe respetar la misma frontera publica del modulo
 
 ## Esqueleto/futuro
 

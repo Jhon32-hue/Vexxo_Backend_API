@@ -12,6 +12,16 @@ No ejecuta integraciones largas ni rails externos. Su responsabilidad es:
 - publicar eventos `users.*`
 - entregar a la app capacidades, permisos derivados y usage operativo
 
+## Rol En El Producto
+
+De cara al usuario, este modulo responde:
+
+- quien soy en Vexxo
+- que plan tengo
+- que funciones deberia ver desbloqueadas
+- cuanto uso llevo frente a mis limites
+- que mensajes de upgrade o bloqueo son validos
+
 ## Flujos principales
 
 ### Plan y capabilities
@@ -81,6 +91,10 @@ Ejemplo:
 - pero Vexxo puede bloquear igual por `platform_daily_payment_cap`
   si ese rail o proveedor ya llego al volumen operativo seguro del dia
 
+Hoy esos caps operativos son configurables por `settings` y pueden no existir
+por defecto. La idea es no acoplar el producto a un PSP unico ni a limites
+hardcodeados de un proveedor puntual.
+
 Eso evita confundir capacidad de infraestructura con capacidad operativa real.
 
 ## Relacion con otros modulos
@@ -91,6 +105,17 @@ Eso evita confundir capacidad de infraestructura con capacidad operativa real.
 - `alerts.alerts`: emite eventos de enriquecimiento IA
 - `payments.payment_intents`: emite eventos de pagos externos
 - `payments.scheduled_payments`: representa planificacion futura
+
+## Encaje Con GCP
+
+`identity.users` funciona bien como capa ligera en Cloud Run:
+
+- el BFF responde auth, perfil, dashboard y capabilities
+- el uso no se recalcula contra OLTP en cada request; se lee desde proyeccion
+- los eventos `users.*` se persisten y publican por outbox
+- futuros servicios de growth, billing o analytics pueden consumir esos eventos
+
+Esto evita convertir al API Gateway o al BFF en un coordinador pesado.
 
 ## Esqueleto/futuro
 

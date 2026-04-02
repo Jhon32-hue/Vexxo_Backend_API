@@ -4,8 +4,8 @@ Servicios de orquestacion de payment intents.
 Estado actual:
 - este modulo define el punto canonico donde debe vivir el gating comercial de
   pagos embebidos
-- hoy el dominio de `payment_intents` sigue en esqueleto; por eso aqui se deja
-  la politica y el contrato para que futuras APIs o workers lo reutilicen
+- coordina intents persistentes, pricing, outbox y transiciones de estado para
+  que futuras APIs o workers reutilicen el mismo flujo
 
 Relaciones:
 - usa `identity.users.services.product_access_service` para aplicar limites y
@@ -68,6 +68,7 @@ def _counts_for_usage(status: str) -> bool:
         PaymentIntent.Status.REQUIRES_ACTION,
         PaymentIntent.Status.SUCCEEDED,
         PaymentIntent.Status.SETTLED,
+        PaymentIntent.Status.DISPUTED,
     }
 
 
@@ -84,6 +85,8 @@ def _publish_payment_intent_event(
         payload=build_payment_intent_payload(payment_intent, change=change, extra=extra),
         metadata={
             "source": "payments.payment_intents.services",
+            "aggregate_type": "payment",
+            "aggregate_id": str(payment_intent.pk),
             "projection_event_key": f"payment-intent:{payment_intent.pk}:{event_type}:{change}",
             **(metadata or {}),
         },
@@ -173,8 +176,7 @@ def build_payment_intent_command(
     Construye un comando estable para un integrador externo.
 
     Este helper no persiste nada todavia; sirve como esqueleto comun mientras
-    `payments.payment_intents` termina de materializar modelos, vistas y
-    callbacks de proveedor.
+    adapters o integradores externos se conectan al bounded context.
     """
     validate_payment_intent_allowed_for_route(
         user=user,
@@ -315,7 +317,12 @@ def create_payment_intent(
         publish_payment_event_after_commit(
             event_type=PaymentDomainEventTypes.PAYMENT_FEE_CALCULATED,
             payload=build_payment_fee_payload(payment_intent=payment_intent, pricing_snapshot=pricing_snapshot),
-            metadata={"source": source, "projection_event_key": f"payment-fee:{payment_intent.pk}"},
+            metadata={
+                "source": source,
+                "aggregate_type": "payment",
+                "aggregate_id": str(payment_intent.pk),
+                "projection_event_key": f"payment-fee:{payment_intent.pk}",
+            },
             priority=EventPriority.LOW,
         )
         _publish_payment_usage_transition(
@@ -469,6 +476,52 @@ def mark_payment_intent_cancelled(
         before_status=before_status,
         after_status=updated.status,
         metadata={"source": "payments.payment_intents.mark_cancelled"},
+    )
+    return updated
+
+
+def mark_payment_intent_reversed(
+    payment_intent: PaymentIntent,
+    *,
+    failure_message: str = "",
+    provider_metadata: dict | None = None,
+):
+    before_status = payment_intent.status
+    updated = payment_intent.mark_reversed(
+        failure_message=failure_message,
+        provider_metadata=provider_metadata,
+        commit=True,
+    )
+    _publish_payment_usage_transition(
+        payment_intent=updated,
+        event_type=PaymentDomainEventTypes.PAYMENT_INTENT_REVERSED,
+        change="payment_intent_reversed",
+        before_status=before_status,
+        after_status=updated.status,
+        metadata={"source": "payments.payment_intents.mark_reversed"},
+    )
+    return updated
+
+
+def mark_payment_intent_disputed(
+    payment_intent: PaymentIntent,
+    *,
+    failure_message: str = "",
+    provider_metadata: dict | None = None,
+):
+    before_status = payment_intent.status
+    updated = payment_intent.mark_disputed(
+        failure_message=failure_message,
+        provider_metadata=provider_metadata,
+        commit=True,
+    )
+    _publish_payment_usage_transition(
+        payment_intent=updated,
+        event_type=PaymentDomainEventTypes.PAYMENT_INTENT_DISPUTED,
+        change="payment_intent_disputed",
+        before_status=before_status,
+        after_status=updated.status,
+        metadata={"source": "payments.payment_intents.mark_disputed"},
     )
     return updated
 

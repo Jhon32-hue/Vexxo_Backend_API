@@ -112,8 +112,12 @@ class EventNames:
     PAYMENT_INTENT_FAILED = "payments.intent.failed.v1"
     PAYMENT_INTENT_CANCELLED = "payments.intent.cancelled.v1"
     PAYMENT_INTENT_SETTLED = "payments.intent.settled.v1"
+    PAYMENT_INTENT_REVERSED = "payments.intent.reversed.v1"
+    PAYMENT_INTENT_DISPUTED = "payments.intent.disputed.v1"
     PAYMENT_FEE_CALCULATED = "payments.fee.calculated.v1"
     PAYMENT_PROVIDER_REFERENCE_RECORDED = "payments.provider.reference.recorded.v1"
+    PAYMENT_CALLBACK_RECEIVED = "payments.callback.received.v1"
+    PAYMENT_SETTLEMENT_RECORDED = "payments.settlement.recorded.v1"
     PAYMENT_RECURRING_TEMPLATE_CREATED = "payments.recurring.template.created.v1"
     PAYMENT_RECURRING_TEMPLATE_UPDATED = "payments.recurring.template.updated.v1"
     PAYMENT_RECURRING_RUN_REQUESTED = "payments.recurring.run.requested.v1"
@@ -222,8 +226,12 @@ KNOWN_EVENT_TYPES: Dict[str, str] = {
     EventNames.PAYMENT_INTENT_FAILED: "Intent de pago fallido",
     EventNames.PAYMENT_INTENT_CANCELLED: "Intent de pago cancelado",
     EventNames.PAYMENT_INTENT_SETTLED: "Intent de pago liquidado",
+    EventNames.PAYMENT_INTENT_REVERSED: "Intent de pago revertido",
+    EventNames.PAYMENT_INTENT_DISPUTED: "Intent de pago en disputa",
     EventNames.PAYMENT_FEE_CALCULATED: "Fee de pago calculado",
     EventNames.PAYMENT_PROVIDER_REFERENCE_RECORDED: "Referencia del proveedor registrada",
+    EventNames.PAYMENT_CALLBACK_RECEIVED: "Callback de proveedor recibido",
+    EventNames.PAYMENT_SETTLEMENT_RECORDED: "Settlement de pago registrado",
     EventNames.PAYMENT_RECURRING_TEMPLATE_CREATED: "Template recurrente de pago creado",
     EventNames.PAYMENT_RECURRING_TEMPLATE_UPDATED: "Template recurrente de pago actualizado",
     EventNames.PAYMENT_RECURRING_RUN_REQUESTED: "Corrida recurrente de pago solicitada",

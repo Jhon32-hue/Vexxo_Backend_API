@@ -10,6 +10,19 @@ Preguntas que responde este modulo:
 - que cuentas son primarias, compartidas, observadas o externas
 - que lectura consolidada de cuentas describe hoy al owner
 
+## Rol En El Producto
+
+De cara al cliente, este modulo cumple funciones visibles y criticas:
+
+- mostrar cuentas y saldos en mobile/web
+- permitir tracking manual sin romper el loop base del producto
+- habilitar colaboracion simple o avanzada segun plan
+- servir como base para sync, alertas, pagos y automatizaciones
+- explicar la salud operativa de conexiones, balances y sharing
+
+Sin `accounts`, Vexxo no sabe de donde sale el dinero ni sobre que superficie
+debe interpretar, alertar o ejecutar.
+
 ## Principios Del Modulo
 - `Account` es el agregado operativo principal.
 - `AccountMembership` es la fuente canonica del sharing moderno.
@@ -259,6 +272,111 @@ Vistas adicionales:
 5. Un worker externo puede cerrar la corrida via callback interno `worker_report` sin depender del refresh inline actual.
 6. `intelligence_views.py` expone snapshots, signals, overview, health y el callback interno de worker.
 
+## Relacion Con Otros Bounded Contexts
+
+- `identity.users`
+  provee plan efectivo, capabilities y lifecycle base del usuario.
+- `identity.permissions`
+  deriva entitlements booleanos que complementan guards del dominio.
+- `identity.eventing`
+  consume eventos para materializar usage projection.
+- `finance.transactions`
+  provee el ledger real que alimenta balance incremental y reconciliacion.
+- `payments`
+  usa cuentas como origen contable y luego refleja pagos confirmados en ledger.
+- `alerts`
+  escucha cambios de cuentas, balances, drift y health para enriquecer la UX.
+- `notifications` y `realtime`
+  convierten eventos y cambios operativos en feedback persistente o liviano.
+- `integrations_stub` o futuro `integrations_service`
+  ejecuta sync externo, rails y callbacks operativos fuera del request path.
+
+## Encaje Con GCP
+
+`finance.accounts` esta pensado para operar asi en la nube:
+
+- API Gateway recibe mobile/web y pasa al BFF Django/DRF en Cloud Run.
+- Cloud SQL guarda el agregado `Account`, memberships, outbox y snapshots.
+- Los eventos del modulo salen por outbox y pueden terminar en Pub/Sub.
+- Cloud Tasks o workers de Cloud Run ejecutan sync, inteligencia y retry del outbox.
+- BigQuery recibe metricas y datasets derivados, no lecturas OLTP en caliente.
+- Cloud Logging/Monitoring/Trace observan:
+  - sync lag
+  - drift de balance
+  - fallback rate
+  - outbox lag
+  - health de inteligencia
+
+El principio operativo es:
+
+- request corto
+- persistencia transaccional local
+- evento confiable
+- trabajo pesado fuera del request path
+
+## Casos De Uso Rapidos
+
+### Usuario free
+
+- crea cuentas manuales sin depender de open banking
+- consulta saldo y movimientos derivados del ledger
+- comparte una cuenta con colaboracion simple
+- recibe una lectura coherente aunque el sync externo sea limitado
+
+### Usuario pro
+
+- conecta mas cuentas externas
+- comparte mas ampliamente
+- recibe mejor sync y mas inteligencia derivada
+- sirve de base para automatizacion y ejecucion financiera
+
+### Soporte u operaciones
+
+- revisa fallbacks del balance incremental
+- inspecciona snapshots y drift
+- consulta outbox y retries
+- revisa membresias, invitaciones y health de sync
+
+## Documento Canonico Del Dominio
+
+Este README es el documento principal de `finance.accounts`.
+
+La documentacion global del proyecto ya no replica internamente este modulo.
+El README raiz solo resume arquitectura y apunta a este archivo.
+
+## Vistas Del Modulo Segun El Actor
+
+### Usuario final
+
+Ve este contexto como:
+
+- lista de cuentas
+- saldo por cuenta
+- cuenta principal
+- cuentas compartidas
+- estado de sync o conectividad
+- capa base para alertas, pagos y automatizacion
+
+### Soporte y operaciones
+
+Lo ve como:
+
+- outbox y retries
+- fallbacks de balance
+- drift de snapshots
+- memberships e invitaciones
+- estado monotono de sync
+- salud de inteligencia derivada
+
+### Producto y growth
+
+Lo ve como:
+
+- base del loop financiero
+- superficie para sharing
+- punto de friccion controlado entre tracking manual y cuentas conectadas
+- origen de señales para upgrade, engagement y automatizacion
+
 ### Lifecycle Del Usuario
 `identity.users` emite eventos y `accounts` los materializa asi:
 - `users.registered.v1`
@@ -330,6 +448,18 @@ Rutas principales:
 - El lifecycle de sync debe avanzar monotonicamente por `sync_run_id`; un terminal de una corrida vieja no debe pisar la corrida activa.
 - Los workers de inteligencia externos deben poder reportar `started/completed/failed` con token interno y sin depender del proceso web que origino la solicitud.
 - Las respuestas de limite excedido deben devolver una estructura estable para mobile (`detail` + `error` con `metric`, `limit`, `current`, `upgrade_plan` y `permission_code`).
+
+## Politicas De Diseño Del Contexto
+
+- `accounts` no debe convertirse en ledger; solo coordina la superficie de
+  cuentas y su estado operativo
+- el sharing se resuelve por memberships, no por banderas legacy
+- un request de API no debe ejecutar integraciones largas ni publicar
+  transportes externos directamente
+- la reconciliacion y la observabilidad son parte del negocio, no un detalle
+  de soporte
+- la documentacion canonica del contexto debe vivir aqui, no en un documento
+  global mezclado con otros dominios
 
 ## Mejoras Recomendadas
 - Formalizar esquemas JSON o OpenAPI para `accounts.*` si habra consumidores externos.

@@ -7,8 +7,12 @@ comando a un PSP/retailer externo y recibir callbacks posteriores.
 
 from __future__ import annotations
 
+import uuid
+
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 
 
@@ -41,6 +45,8 @@ class PaymentIntent(models.Model):
         SETTLED = "settled", "Settled"
         FAILED = "failed", "Failed"
         CANCELLED = "cancelled", "Cancelled"
+        REVERSED = "reversed", "Reversed"
+        DISPUTED = "disputed", "Disputed"
 
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -234,6 +240,42 @@ class PaymentIntent(models.Model):
             self.save(update_fields=["status", "completed_at", "failure_message", "provider_metadata", "updated_at"])
         return self
 
+    def mark_reversed(
+        self,
+        *,
+        failure_message: str = "",
+        provider_metadata: dict | None = None,
+        commit: bool = True,
+    ):
+        self.status = self.Status.REVERSED
+        self.completed_at = self.completed_at or timezone.now()
+        self.failure_message = str(failure_message or "")[:2000]
+        if provider_metadata:
+            merged = dict(self.provider_metadata or {})
+            merged.update(provider_metadata or {})
+            self.provider_metadata = merged
+        if commit:
+            self.save(update_fields=["status", "completed_at", "failure_message", "provider_metadata", "updated_at"])
+        return self
+
+    def mark_disputed(
+        self,
+        *,
+        failure_message: str = "",
+        provider_metadata: dict | None = None,
+        commit: bool = True,
+    ):
+        self.status = self.Status.DISPUTED
+        self.completed_at = self.completed_at or timezone.now()
+        self.failure_message = str(failure_message or "")[:2000]
+        if provider_metadata:
+            merged = dict(self.provider_metadata or {})
+            merged.update(provider_metadata or {})
+            self.provider_metadata = merged
+        if commit:
+            self.save(update_fields=["status", "completed_at", "failure_message", "provider_metadata", "updated_at"])
+        return self
+
 
 class PayoutBatch(models.Model):
     class Status(models.TextChoices):
@@ -307,4 +349,251 @@ class PayoutInstruction(models.Model):
         indexes = [
             models.Index(fields=["status", "created_at"]),
             models.Index(fields=["provider_reference"]),
+        ]
+
+
+class PaymentDomainEventOutbox(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        PROCESSING = "processing", "Processing"
+        PUBLISHED = "published", "Published"
+        FAILED = "failed", "Failed"
+        DEAD_LETTER = "dead_letter", "Dead letter"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    aggregate_type = models.CharField(max_length=64)
+    aggregate_id = models.CharField(max_length=64)
+    event_type = models.CharField(max_length=128)
+    idempotency_key = models.CharField(max_length=160, unique=True)
+    correlation_id = models.CharField(max_length=64, blank=True, default="")
+    causation_id = models.CharField(max_length=64, blank=True, default="")
+    request_id = models.CharField(max_length=64, blank=True, default="")
+    payload = models.JSONField(default=dict)
+    metadata = models.JSONField(default=dict)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
+    occurred_at = models.DateTimeField(auto_now_add=True)
+    published_at = models.DateTimeField(null=True, blank=True)
+    retry_count = models.PositiveIntegerField(default=0)
+    next_attempt_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True, default="")
+    locked_at = models.DateTimeField(null=True, blank=True)
+    locked_by = models.CharField(max_length=64, blank=True, default="")
+    dead_lettered_at = models.DateTimeField(null=True, blank=True)
+    dead_letter_reason = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["occurred_at"]
+        indexes = [
+            models.Index(fields=["status", "occurred_at"]),
+            models.Index(fields=["status", "next_attempt_at"]),
+            models.Index(fields=["event_type", "occurred_at"]),
+            models.Index(fields=["aggregate_type", "aggregate_id"]),
+            models.Index(fields=["correlation_id"]),
+            models.Index(fields=["request_id"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=Q(retry_count__gte=0),
+                name="payment_outbox_retry_count_non_negative",
+            )
+        ]
+
+    def clean(self):
+        super().clean()
+        self.aggregate_type = (self.aggregate_type or "").strip()
+        self.aggregate_id = (self.aggregate_id or "").strip()
+        self.event_type = (self.event_type or "").strip()
+        self.idempotency_key = (self.idempotency_key or "").strip()
+        if not self.aggregate_type:
+            raise ValidationError({"aggregate_type": "aggregate_type es requerido."})
+        if not self.aggregate_id:
+            raise ValidationError({"aggregate_id": "aggregate_id es requerido."})
+        if not self.event_type:
+            raise ValidationError({"event_type": "event_type es requerido."})
+
+    def save(self, *args, **kwargs):
+        self.aggregate_type = (self.aggregate_type or "").strip()
+        self.aggregate_id = (self.aggregate_id or "").strip()
+        self.event_type = (self.event_type or "").strip()
+        self.idempotency_key = (self.idempotency_key or "").strip()
+        if self.published_at and self.status != self.Status.PUBLISHED:
+            self.status = self.Status.PUBLISHED
+        if self.dead_lettered_at and self.status != self.Status.DEAD_LETTER:
+            self.status = self.Status.DEAD_LETTER
+        super().save(*args, **kwargs)
+
+    def mark_published(self, commit: bool = True):
+        self.status = self.Status.PUBLISHED
+        self.published_at = timezone.now()
+        self.next_attempt_at = None
+        self.last_error = ""
+        self.dead_lettered_at = None
+        self.dead_letter_reason = ""
+        self.locked_at = None
+        self.locked_by = ""
+        if commit:
+            self.save(
+                update_fields=[
+                    "status",
+                    "published_at",
+                    "next_attempt_at",
+                    "last_error",
+                    "dead_lettered_at",
+                    "dead_letter_reason",
+                    "locked_at",
+                    "locked_by",
+                ]
+            )
+
+    def mark_failed(self, error: str, *, max_retries: int = 10, commit: bool = True):
+        self.retry_count = int(self.retry_count or 0) + 1
+        self.last_error = (error or "")[:2000]
+        self.locked_at = None
+        self.locked_by = ""
+        if self.retry_count >= max(1, int(max_retries or 10)):
+            self.status = self.Status.DEAD_LETTER
+            self.dead_lettered_at = timezone.now()
+            self.dead_letter_reason = self.last_error
+            self.next_attempt_at = None
+            if commit:
+                self.save(
+                    update_fields=[
+                        "status",
+                        "retry_count",
+                        "last_error",
+                        "locked_at",
+                        "locked_by",
+                        "dead_lettered_at",
+                        "dead_letter_reason",
+                        "next_attempt_at",
+                    ]
+                )
+            return
+        self.status = self.Status.FAILED
+        self.next_attempt_at = timezone.now()
+        if commit:
+            self.save(
+                update_fields=[
+                    "status",
+                    "retry_count",
+                    "last_error",
+                    "locked_at",
+                    "locked_by",
+                    "next_attempt_at",
+                ]
+            )
+
+
+class PaymentProviderCallbackReceipt(models.Model):
+    class Status(models.TextChoices):
+        RECEIVED = "received", "Received"
+        PROCESSED = "processed", "Processed"
+        FAILED = "failed", "Failed"
+
+    provider = models.CharField(max_length=64)
+    callback_type = models.CharField(max_length=64, blank=True, default="status")
+    external_reference = models.CharField(max_length=128, blank=True, default="")
+    provider_intent_id = models.CharField(max_length=128, blank=True, default="")
+    provider_reference = models.CharField(max_length=128, blank=True, default="")
+    payment_intent = models.ForeignKey(
+        PaymentIntent,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="callback_receipts",
+    )
+    signature_valid = models.BooleanField(default=False)
+    idempotency_key = models.CharField(max_length=160, unique=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.RECEIVED)
+    raw_payload = models.JSONField(default=dict, blank=True)
+    normalized_payload = models.JSONField(default=dict, blank=True)
+    raw_headers = models.JSONField(default=dict, blank=True)
+    error_message = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["provider", "created_at"]),
+            models.Index(fields=["status", "created_at"]),
+            models.Index(fields=["provider_reference"]),
+            models.Index(fields=["external_reference"]),
+            models.Index(fields=["provider_intent_id"]),
+        ]
+
+
+class PaymentSettlementRecord(models.Model):
+    class Status(models.TextChoices):
+        RECORDED = "recorded", "Recorded"
+        RECONCILED = "reconciled", "Reconciled"
+        MISMATCH = "mismatch", "Mismatch"
+
+    payment_intent = models.ForeignKey(
+        PaymentIntent,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="settlement_records",
+    )
+    provider = models.CharField(max_length=64)
+    rail = models.CharField(max_length=24, blank=True, default="")
+    settlement_reference = models.CharField(max_length=128, blank=True, default="")
+    provider_reference = models.CharField(max_length=128, blank=True, default="")
+    provider_cus = models.CharField(max_length=64, blank=True, default="")
+    amount = models.DecimalField(max_digits=20, decimal_places=2, default=0)
+    fee_snapshot = models.JSONField(default=dict, blank=True)
+    settlement_payload = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.RECORDED)
+    settled_at = models.DateTimeField(null=True, blank=True)
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-recorded_at"]
+        indexes = [
+            models.Index(fields=["provider", "recorded_at"]),
+            models.Index(fields=["status", "recorded_at"]),
+            models.Index(fields=["settlement_reference"]),
+            models.Index(fields=["provider_reference"]),
+        ]
+
+
+class PaymentOperationalCase(models.Model):
+    class Kind(models.TextChoices):
+        ERROR = "error", "Error"
+        REVERSAL = "reversal", "Reversal"
+        DISPUTE = "dispute", "Dispute"
+        REFUND = "refund", "Refund"
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Open"
+        INVESTIGATING = "investigating", "Investigating"
+        RESOLVED = "resolved", "Resolved"
+        CLOSED = "closed", "Closed"
+
+    payment_intent = models.ForeignKey(
+        PaymentIntent,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="operational_cases",
+    )
+    provider = models.CharField(max_length=64)
+    kind = models.CharField(max_length=24, choices=Kind.choices, default=Kind.ERROR)
+    status = models.CharField(max_length=24, choices=Status.choices, default=Status.OPEN)
+    provider_reference = models.CharField(max_length=128, blank=True, default="")
+    provider_case_reference = models.CharField(max_length=128, blank=True, default="")
+    amount = models.DecimalField(max_digits=20, decimal_places=2, default=0)
+    currency = models.CharField(max_length=12, default="COP")
+    details = models.JSONField(default=dict, blank=True)
+    opened_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-opened_at"]
+        indexes = [
+            models.Index(fields=["provider", "kind", "opened_at"]),
+            models.Index(fields=["status", "opened_at"]),
+            models.Index(fields=["provider_reference"]),
+            models.Index(fields=["provider_case_reference"]),
         ]

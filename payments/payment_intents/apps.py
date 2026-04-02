@@ -8,3 +8,4 @@ class PaymentIntentsConfig(AppConfig):
 
     def ready(self):
         from payments.payment_intents import signals  # noqa: F401
+        from payments.payment_intents import event_handlers  # noqa: F401

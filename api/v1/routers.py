@@ -35,6 +35,8 @@ urlpatterns = [
     # -------------------
     # PAYMENTS
     # -------------------
+    path("payments/intents/", include("payments.payment_intents.urls")),
+    path("payments/scheduled/", include("payments.scheduled_payments.urls")),
 
     # -------------------
     # DOCUMENTS
