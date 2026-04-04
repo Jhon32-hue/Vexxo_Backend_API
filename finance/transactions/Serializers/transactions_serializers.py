@@ -1,33 +1,31 @@
-from decimal import Decimal
-
-from django.contrib.auth import get_user_model
-from identity.users.models import User
 from django.utils import timezone
+from django.db import models
 from rest_framework import serializers
 
 from finance.transactions.Models.transacciones import (
-    Transaction,
-    Tag,
     IncomeSource,
     ScheduledPayment,
+    Tag,
+    Transaction,
     TransactionParticipant,
 )
-from finance.transactions.utils_limits import account_month_expense_total, user_month_tx_count
-from identity.users.domain.plan_matrix import get_plan_capabilities
+from finance.transactions.transaction_validation_service import (
+    apply_tag_selection,
+    assert_ledger_owner,
+    assert_owner,
+    resolve_transaction_ledger_owner,
+    validate_transaction_payload,
+)
 from identity.users.services.product_access_service import validate_scheduled_payments_limit
 
-class BaseOwnerSerializer(serializers.ModelSerializer):
-    """Asegura owner=request.user en create y valida pertenencia en FKs."""
 
+class BaseOwnerSerializer(serializers.ModelSerializer):
     def _assert_owner(self, obj, field):
         user = self.context["request"].user
-        if obj and getattr(obj, "owner_id", None) and obj.owner_id != user.id:
-            raise serializers.ValidationError(
-                {field: "No pertenece al usuario autenticado."}
-            )
+        assert_owner(user, obj, field)
 
     def create(self, validated_data):
-        validated_data["owner"] = self.context["request"].user
+        validated_data.setdefault("owner", self.context["request"].user)
         return super().create(validated_data)
 
 
@@ -52,6 +50,12 @@ class ScheduledPaymentSerializer(BaseOwnerSerializer):
         read_only_fields = ("owner", "created_at")
 
     def validate(self, attrs):
+        account = attrs.get("account", getattr(self.instance, "account", None))
+        ledger_owner = resolve_transaction_ledger_owner(
+            user=self.context["request"].user,
+            account=account,
+            instance=self.instance,
+        )
         activating_pending = (
             self.instance is not None
             and attrs.get("status") == ScheduledPayment.Status.PENDING
@@ -60,16 +64,26 @@ class ScheduledPaymentSerializer(BaseOwnerSerializer):
         if self.instance is None or activating_pending:
             validate_scheduled_payments_limit(
                 self.context["request"].user,
-                source="transactions.scheduled_payments.create" if self.instance is None else "transactions.scheduled_payments.reactivate",
+                source=(
+                    "transactions.scheduled_payments.create"
+                    if self.instance is None
+                    else "transactions.scheduled_payments.reactivate"
+                ),
             )
-        for f in ["account", "category", "vendor", "debt", "installment"]:
-            self._assert_owner(attrs.get(f), f)
+        for field in ["category", "vendor", "debt", "installment"]:
+            assert_ledger_owner(ledger_owner, attrs.get(field) or getattr(self.instance, field, None), field)
         return attrs
 
+    def create(self, validated_data):
+        account = validated_data.get("account")
+        if account is not None:
+            validated_data["owner"] = account.owner
+        return super().create(validated_data)
 
-# ====== PARTICIPANTES ======
 
 class TransactionParticipantSerializer(BaseOwnerSerializer):
+    contact_name = serializers.CharField(source="contact.name", read_only=True)
+    contact_nickname = serializers.CharField(source="contact.nickname", read_only=True)
     pending_amount = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -77,9 +91,13 @@ class TransactionParticipantSerializer(BaseOwnerSerializer):
         fields = [
             "id",
             "transaction",
+            "contact",
+            "contact_name",
+            "contact_nickname",
             "display_name",
             "email",
             "phone",
+            "direction",
             "role",
             "status",
             "invite_status",
@@ -96,18 +114,58 @@ class TransactionParticipantSerializer(BaseOwnerSerializer):
         return obj.pending_amount
 
     def validate(self, attrs):
-        self._assert_owner(attrs.get("transaction"), "transaction")
+        tx = attrs.get("transaction") or getattr(self.instance, "transaction", None)
+        if tx:
+            resolve_transaction_ledger_owner(
+                user=self.context["request"].user,
+                account=getattr(tx, "account", None),
+                instance=tx,
+            )
+        ledger_owner = getattr(tx, "owner", self.context["request"].user)
+        assert_ledger_owner(ledger_owner, tx, "transaction")
+        assert_ledger_owner(ledger_owner, attrs.get("contact") or getattr(self.instance, "contact", None), "contact")
+        contact = attrs.get("contact") or getattr(self.instance, "contact", None)
+        share_amount = attrs.get("share_amount", getattr(self.instance, "share_amount", None))
+        paid_amount = attrs.get("paid_amount", getattr(self.instance, "paid_amount", None))
+
+        if share_amount is None or share_amount <= 0:
+            raise serializers.ValidationError({"share_amount": "El monto de la participación debe ser mayor a 0."})
+
+        if paid_amount is not None:
+            if paid_amount < 0:
+                raise serializers.ValidationError({"paid_amount": "El monto pagado no puede ser negativo."})
+            if paid_amount > share_amount:
+                raise serializers.ValidationError({"paid_amount": "El monto pagado no puede ser mayor al share asignado."})
+
+        if tx:
+            qs = TransactionParticipant.objects.filter(transaction=tx)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            total_existing = qs.aggregate(total=models.Sum("share_amount"))["total"] or 0
+            projected = total_existing + share_amount
+            if projected > tx.amount:
+                raise serializers.ValidationError(
+                    {"share_amount": "La suma de las participaciones excede el monto de la transacción."}
+                )
+
+        if contact and not (attrs.get("display_name") or getattr(self.instance, "display_name", "")):
+            effective_name = getattr(contact, "effective_name", None)
+            attrs["display_name"] = effective_name() if callable(effective_name) else (contact.nickname or contact.name)
         return attrs
 
+    def create(self, validated_data):
+        tx = validated_data.get("transaction")
+        if tx is not None:
+            validated_data["owner"] = tx.owner
+        participant = super().create(validated_data)
+        participant._event_actor_id = getattr(self.context.get("request"), "user", None).id if self.context.get("request") else ""
+        return participant
 
-# ====== TRANSACTION ======
 
 class TransactionSerializer(BaseOwnerSerializer):
     account_name = serializers.CharField(source="account.name", read_only=True)
     category_name = serializers.CharField(source="category.name", read_only=True)
     vendor_name = serializers.CharField(source="vendor.name", read_only=True)
-
-    # Solo lectura en la respuesta; escritura vía create/update con initial_data
     participants = TransactionParticipantSerializer(many=True, read_only=True)
 
     class Meta:
@@ -122,183 +180,28 @@ class TransactionSerializer(BaseOwnerSerializer):
             "reimbursement_transaction",
         )
 
-    # ======== PLAN HELPERS ========
-
-    # ======== VALIDACIÓN PRINCIPAL ========
-
     def validate(self, attrs):
-        user = self.context["request"].user
-        instance = self.instance
-
-        # 1) monto
-        amount = attrs.get("amount", getattr(instance, "amount", None))
-        if amount is None or Decimal(amount) <= 0:
-            raise serializers.ValidationError(
-                {"amount": "El monto debe ser mayor a 0."}
-            )
-
-        # 2) owner-consistency en FKs
-        for f in [
-            "account",
-            "category",
-            "vendor",
-            "income_source",
-            "debt",
-            "installment",
-            "scheduled_payment",
-            "payment_intent",
-        ]:
-            self._assert_owner(attrs.get(f) or getattr(instance, f, None), f)
-
-        tx_type = attrs.get("type", getattr(instance, "type", None))
-        account = attrs.get("account", getattr(instance, "account", None))
-        date = attrs.get("date", getattr(instance, "date", None))
-        category = attrs.get("category", getattr(instance, "category", None))
-        income_source = attrs.get(
-            "income_source", getattr(instance, "income_source", None)
+        return validate_transaction_payload(
+            user=self.context["request"].user,
+            attrs=attrs,
+            instance=self.instance,
         )
-        debt = attrs.get("debt", getattr(instance, "debt", None))
-        installment = attrs.get(
-            "installment", getattr(instance, "installment", None)
-        )
-        scheduled_payment = attrs.get(
-            "scheduled_payment",
-            getattr(instance, "scheduled_payment", None),
-        )
-
-        # 3.a) categoría coherente
-        if category and hasattr(category, "type"):
-            if tx_type == "expense" and category.type != "expense":
-                raise serializers.ValidationError(
-                    {"category": "La categoría debe ser de gasto."}
-                )
-            if tx_type == "income" and category.type != "income":
-                raise serializers.ValidationError(
-                    {"category": "La categoría debe ser de ingreso."}
-                )
-
-        # 3.b) income_source solo en ingresos
-        if income_source and tx_type != "income":
-            raise serializers.ValidationError(
-                {
-                    "income_source": "Solo puedes asociar una fuente de ingreso "
-                    "a transacciones de tipo 'income'."
-                }
-            )
-
-        # 3.c) deudas/cuotas solo en gastos
-        if (debt or installment) and tx_type != "expense":
-            raise serializers.ValidationError(
-                {
-                    "debt": "Las deudas/cuotas solo deben asociarse a transacciones de gasto."
-                }
-            )
-
-        # 3.d) coherencia debt vs installment
-        if installment and not debt:
-            if hasattr(installment, "debt") and installment.debt:
-                attrs["debt"] = installment.debt
-            else:
-                raise serializers.ValidationError(
-                    {
-                        "installment": "La cuota debe estar asociada a una deuda válida."
-                    }
-                )
-        if debt and installment and getattr(installment, "debt_id", None) != debt.id:
-            raise serializers.ValidationError(
-                {
-                    "installment": "La cuota no pertenece a la deuda seleccionada."
-                }
-            )
-
-        # 3.e) scheduled_payment coherente
-        if scheduled_payment and getattr(
-            scheduled_payment, "status", None
-        ) == ScheduledPayment.Status.PAID:
-            raise serializers.ValidationError(
-                {
-                    "scheduled_payment": (
-                        "Este pago programado ya está marcado como pagado."
-                    )
-                }
-            )
-
-        # 3.f) reembolsables: solo gastos
-        is_reimbursable = attrs.get(
-            "is_reimbursable",
-            getattr(instance, "is_reimbursable", False),
-        )
-        if is_reimbursable and tx_type != "expense":
-            raise serializers.ValidationError(
-                {"is_reimbursable": "Solo los gastos pueden ser reembolsables."}
-            )
-
-        # 4) límite mensual por cuenta
-        if tx_type == "expense" and account and date:
-            monthly_limit = getattr(account, "monthly_expense_limit", None)
-            lock_on_limit = getattr(account, "lock_on_limit", False)
-
-            if monthly_limit:
-                month_total = account_month_expense_total(account, date)
-                projected = month_total + Decimal(amount)
-                if projected > Decimal(monthly_limit) and lock_on_limit:
-                    raise serializers.ValidationError(
-                        {
-                            "amount": "Límite mensual de gasto para la cuenta excedido."
-                        }
-                    )
-
-        # 5) límite por plan (solo en creación)
-        if instance is None and user and date:
-            max_monthly_tx = get_plan_capabilities(getattr(user, "plan", "free")).get(
-                "max_monthly_tx_per_account"
-            )
-
-            if max_monthly_tx is not None:
-                current_count = user_month_tx_count(user, date)
-                if current_count >= max_monthly_tx:
-                    raise serializers.ValidationError(
-                        {
-                            "non_field_errors": (
-                                "Has alcanzado el máximo de transacciones permitidas "
-                                f"en este mes para tu plan ({max_monthly_tx})."
-                            )
-                        }
-                    )
-
-        # 6) splits: si es hija, no anidamos más de un nivel
-        parent = attrs.get("parent", getattr(instance, "parent", None))
-        if parent and parent.parent_id:
-            raise serializers.ValidationError(
-                {"parent": "No puedes anidar splits a más de un nivel."}
-            )
-
-        return attrs
-
-    # ======== CREATE/UPDATE ========
 
     def create(self, validated_data):
-        tags_data = self.initial_data.get("tags")
+        account = validated_data.get("account")
+        if account is not None:
+            validated_data["owner"] = account.owner
         tx = super().create(validated_data)
-        if isinstance(tags_data, list):
-            tx.tags.set(
-                Tag.objects.filter(owner=tx.owner, id__in=tags_data)
-            )
-        return tx
+        tx._event_actor_id = getattr(self.context.get("request"), "user", None).id if self.context.get("request") else ""
+        return apply_tag_selection(tx, self.initial_data.get("tags"))
 
     def update(self, instance, validated_data):
-        tags_data = self.initial_data.get("tags")
         tx = super().update(instance, validated_data)
-        if isinstance(tags_data, list):
-            tx.tags.set(
-                Tag.objects.filter(owner=tx.owner, id__in=tags_data)
-            )
-        return tx
-
-    # ======== HELPER PARA COMENTARIOS ========
+        tx._event_actor_id = getattr(self.context.get("request"), "user", None).id if self.context.get("request") else ""
+        return apply_tag_selection(tx, self.initial_data.get("tags"))
 
     @staticmethod
-    def add_comment(tx: Transaction, text: str, user: User):
+    def add_comment(tx: Transaction, text: str, user):
         comments = list(tx.comments or [])
         comments.append(
             {
@@ -308,5 +211,5 @@ class TransactionSerializer(BaseOwnerSerializer):
             }
         )
         tx.comments = comments
-        tx.save(update_fields=["comments"])
+        tx.save(update_fields=["comments", "updated_at"])
         return tx

@@ -1,2 +1,17 @@
-from finance.transactions.Models.transacciones import Tag, IncomeSource, Transaction, ScheduledPayment
-__all__ = ["Transaction", "Tag", "IncomeSource", "ScheduledPayment"]
+from finance.transactions.Models.outbox import TransactionDomainEventOutbox
+from finance.transactions.Models.transacciones import (
+    IncomeSource,
+    ScheduledPayment,
+    Tag,
+    Transaction,
+    TransactionParticipant,
+)
+
+__all__ = [
+    "Transaction",
+    "TransactionParticipant",
+    "Tag",
+    "IncomeSource",
+    "ScheduledPayment",
+    "TransactionDomainEventOutbox",
+]

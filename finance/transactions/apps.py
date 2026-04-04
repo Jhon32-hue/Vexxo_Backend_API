@@ -9,3 +9,4 @@ class TransactionsConfig(AppConfig):
 
     def ready(self):
         import finance.transactions.signals  # noqa
+        import finance.transactions.event_handlers  # noqa

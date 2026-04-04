@@ -21,7 +21,7 @@ from django.core.management import call_command
 from django.test import TestCase, override_settings
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from common.domain_events import EventContext, EventNames, MindwalletDomainEvent
+from common.domain_events import EventContext, EventNames, VexxoAppDomainEvent
 from finance.accounts.domain.events import (
     build_account_balance_payload,
     build_account_lifecycle_payload,
@@ -719,7 +719,7 @@ class AccountIdentityIntegrationHardeningTests(TestCase):
             provider_metadata={"existing": True},
         )
 
-        event = MindwalletDomainEvent(
+        event = VexxoAppDomainEvent(
             type=EventNames.USER_PERMISSION_REVOKED,
             context=EventContext.IDENTITY,
             payload={

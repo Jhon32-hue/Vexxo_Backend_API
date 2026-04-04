@@ -322,11 +322,6 @@ class Migration(migrations.Migration):
             name='locked_by',
             field=models.CharField(blank=True, default='', max_length=64),
         ),
-        migrations.AddField(
-            model_name='domaineventoutbox',
-            name='status',
-            field=models.CharField(choices=[('pending', 'Pending'), ('processing', 'Processing'), ('published', 'Published'), ('failed', 'Failed'), ('dead_letter', 'Dead letter')], default='pending', max_length=16),
-        ),
         migrations.AlterField(
             model_name='account',
             name='allow_auto_sync',

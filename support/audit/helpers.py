@@ -22,7 +22,7 @@ def audit_log(
     silent: bool = False,
 ) -> Optional[AuditLog]:
     """
-    Punto único para registrar auditoría en MindWallet.
+    Punto único para registrar auditoría en Vexxo_app.
 
     - Centraliza toda la creación de AuditLog
     - Evita duplicación de lógica

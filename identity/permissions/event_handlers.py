@@ -9,7 +9,7 @@ Descripcion general:
 
 from __future__ import annotations
 
-from common.domain_events import EventContext, EventNames, EventPriority, MindwalletDomainEvent, subscribe
+from common.domain_events import EventContext, EventNames, EventPriority, VexxoAppDomainEvent, subscribe
 from identity.permissions.services import sync_consent_permissions_for_user, sync_plan_permissions_for_user
 
 
@@ -20,7 +20,7 @@ from identity.permissions.services import sync_consent_permissions_for_user, syn
     contexts=[EventContext.IDENTITY],
     priority=EventPriority.NORMAL,
 )
-def handle_user_registered(event: MindwalletDomainEvent) -> None:
+def handle_user_registered(event: VexxoAppDomainEvent) -> None:
     from django.contrib.auth import get_user_model
 
     user_id = (event.payload or {}).get("user_id")
@@ -39,7 +39,7 @@ def handle_user_registered(event: MindwalletDomainEvent) -> None:
     contexts=[EventContext.IDENTITY],
     priority=EventPriority.NORMAL,
 )
-def handle_user_plan_changed(event: MindwalletDomainEvent) -> None:
+def handle_user_plan_changed(event: VexxoAppDomainEvent) -> None:
     from django.contrib.auth import get_user_model
 
     user_id = (event.payload or {}).get("user_id")
@@ -58,7 +58,7 @@ def handle_user_plan_changed(event: MindwalletDomainEvent) -> None:
     contexts=[EventContext.IDENTITY],
     priority=EventPriority.NORMAL,
 )
-def handle_user_consent_granted(event: MindwalletDomainEvent) -> None:
+def handle_user_consent_granted(event: VexxoAppDomainEvent) -> None:
     from django.contrib.auth import get_user_model
 
     payload = event.payload or {}
@@ -84,7 +84,7 @@ def handle_user_consent_granted(event: MindwalletDomainEvent) -> None:
     contexts=[EventContext.IDENTITY],
     priority=EventPriority.NORMAL,
 )
-def handle_user_consent_revoked(event: MindwalletDomainEvent) -> None:
+def handle_user_consent_revoked(event: VexxoAppDomainEvent) -> None:
     from django.contrib.auth import get_user_model
 
     payload = event.payload or {}

@@ -12,6 +12,17 @@ from finance.transactions.Models.transacciones import Transaction
 logger = logging.getLogger(__name__)
 
 
+def _coerce_date(value):
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value)
+        except ValueError:
+            return None
+    return None
+
+
 # ============================================================
 # 1️⃣ Generar cuotas automáticamente cuando se crea una deuda
 # ============================================================
@@ -74,7 +85,8 @@ def mark_overdue_installments(sender, instance: DebtInstallment, **kwargs):
     se marca como 'overdue' automáticamente.
     """
     today = date.today()
-    if instance.status == "due" and instance.due_date < today:
+    due_date = _coerce_date(instance.due_date)
+    if instance.status == "due" and due_date and due_date < today:
         instance.status = "overdue"
         instance.save(update_fields=["status"])
         logger.info(f"[debts] ⏰ Cuota #{instance.number} de '{instance.debt.name}' marcada como VENCIDA.")

@@ -2,7 +2,7 @@
 Dispatcher opcional de eventos de dominio hacia Google Cloud Pub/Sub.
 
 Descripcion general:
-- publica cada `MindwalletDomainEvent` en un topic de Pub/Sub
+- publica cada `VexxoAppDomainEvent` en un topic de Pub/Sub
 - se activa solo si la configuracion y dependencias estan disponibles
 
 Analisis detallado:

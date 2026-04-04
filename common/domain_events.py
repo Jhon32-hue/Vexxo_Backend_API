@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 class EventContext(str, Enum):
     """
-    Bounded contexts principales de Mindwallet.
+    Bounded contexts principales de Vexxo_app.
     Sirven para clasificar y enrutar eventos entre módulos.
     """
     IDENTITY = "identity"
@@ -48,7 +48,7 @@ class EventPriority(IntEnum):
 
 class EventNames:
     """
-    Catálogo de eventos “oficiales” de Mindwallet.
+    Catálogo de eventos “oficiales” de Vexxo_app.
     Aquí se documenta y versionan los eventos de dominio.
     """
 
@@ -128,8 +128,20 @@ class EventNames:
     # --- TRANSACTIONS ---
     TRANSACTION_CREATED = "transactions.created.v1"
     TRANSACTION_UPDATED = "transactions.updated.v1"
+    TRANSACTION_FINANCIAL_UPDATED = "transactions.financial.updated.v1"
     TRANSACTION_DELETED = "transactions.deleted.v1"
     TRANSACTION_IMPORTED = "transactions.imported.v1"
+    TRANSACTION_CONFIRMED = "transactions.confirmed.v1"
+    TRANSACTION_ACCOUNT_REASSIGNED = "transactions.account.reassigned.v1"
+    TRANSACTION_REIMBURSEMENT_RECORDED = "transactions.reimbursement.recorded.v1"
+    TRANSACTION_PARTICIPANT_CREATED = "transactions.participant.created.v1"
+    TRANSACTION_PARTICIPANT_UPDATED = "transactions.participant.updated.v1"
+    TRANSACTION_PARTICIPANT_DELETED = "transactions.participant.deleted.v1"
+    TRANSACTION_PARTICIPANT_SETTLED = "transactions.participant.settled.v1"
+    TRANSACTION_SCHEDULED_PAYMENT_CREATED = "transactions.scheduled_payment.created.v1"
+    TRANSACTION_SCHEDULED_PAYMENT_UPDATED = "transactions.scheduled_payment.updated.v1"
+    TRANSACTION_SCHEDULED_PAYMENT_DELETED = "transactions.scheduled_payment.deleted.v1"
+    TRANSACTION_SCHEDULED_PAYMENT_PAID = "transactions.scheduled_payment.paid.v1"
 
     # --- ALERTS ---
     ALERT_CREATED = "alerts.created.v1"
@@ -170,6 +182,7 @@ class EventNames:
 
 
 KNOWN_EVENT_TYPES: Dict[str, str] = {
+    EventNames.TRANSACTION_FINANCIAL_UPDATED: "Actualizacion financiera material de transaccion",
     EventNames.USER_REGISTERED: "Usuario registrado",
     EventNames.USER_PROFILE_UPDATED: "Perfil de usuario actualizado",
     EventNames.USER_PLAN_CHANGED: "Plan de usuario actualizado",
@@ -242,6 +255,17 @@ KNOWN_EVENT_TYPES: Dict[str, str] = {
     EventNames.TRANSACTION_UPDATED: "Transacción actualizada",
     EventNames.TRANSACTION_DELETED: "Transacción eliminada",
     EventNames.TRANSACTION_IMPORTED: "Transacción importada desde proveedor externo",
+    EventNames.TRANSACTION_CONFIRMED: "Transaccion confirmada",
+    EventNames.TRANSACTION_ACCOUNT_REASSIGNED: "Cuenta de transaccion reasignada",
+    EventNames.TRANSACTION_REIMBURSEMENT_RECORDED: "Reembolso registrado sobre transaccion",
+    EventNames.TRANSACTION_PARTICIPANT_CREATED: "Participante de transaccion creado",
+    EventNames.TRANSACTION_PARTICIPANT_UPDATED: "Participante de transaccion actualizado",
+    EventNames.TRANSACTION_PARTICIPANT_DELETED: "Participante de transaccion eliminado",
+    EventNames.TRANSACTION_PARTICIPANT_SETTLED: "Participante de transaccion liquidado",
+    EventNames.TRANSACTION_SCHEDULED_PAYMENT_CREATED: "Pago programado legacy creado",
+    EventNames.TRANSACTION_SCHEDULED_PAYMENT_UPDATED: "Pago programado legacy actualizado",
+    EventNames.TRANSACTION_SCHEDULED_PAYMENT_DELETED: "Pago programado legacy eliminado",
+    EventNames.TRANSACTION_SCHEDULED_PAYMENT_PAID: "Pago programado legacy marcado como pagado",
     EventNames.ALERT_CREATED: "Alerta creada",
     #Recientemente agregado
     EventNames.ALERT_AI_ENRICHED: "Alerta enriquecida con IA",
@@ -255,9 +279,9 @@ KNOWN_EVENT_TYPES: Dict[str, str] = {
 
 
 @dataclass
-class MindwalletDomainEvent:
+class VexxoAppDomainEvent:
     """
-    Evento de dominio de Mindwallet.
+    Evento de dominio de Vexxo_app.
 
     type:
       - Nombre versionado del evento (ver EventNames).
@@ -310,9 +334,9 @@ class MindwalletDomainEvent:
 
 # ========= BUS EN MEMORIA (LOCAL) =========
 
-EventHandler = Callable[[MindwalletDomainEvent], None]
-EventDispatcher = Callable[[MindwalletDomainEvent], None]
-EventMiddleware = Callable[[MindwalletDomainEvent], Optional[MindwalletDomainEvent]]
+EventHandler = Callable[[VexxoAppDomainEvent], None]
+EventDispatcher = Callable[[VexxoAppDomainEvent], None]
+EventMiddleware = Callable[[VexxoAppDomainEvent], Optional[VexxoAppDomainEvent]]
 
 
 @dataclass
@@ -335,7 +359,7 @@ class ListenerConfig:
 
 class DomainEventBus:
     """
-    Bus de eventos en memoria para Mindwallet.
+    Bus de eventos en memoria para Vexxo_app.
 
     - Registra listeners por tipo de evento (exacto) y por patrón ("accounts.*").
     - Ejecuta middlewares antes de despachar (pueden mutar o cancelar el evento).
@@ -427,7 +451,7 @@ class DomainEventBus:
 
     # ---- Publicación ----
 
-    def _apply_middlewares(self, event: MindwalletDomainEvent) -> Optional[MindwalletDomainEvent]:
+    def _apply_middlewares(self, event: VexxoAppDomainEvent) -> Optional[VexxoAppDomainEvent]:
         with self._lock:
             middlewares = list(self._middlewares)
 
@@ -451,7 +475,7 @@ class DomainEventBus:
                 )
         return event
 
-    def _resolve_listeners(self, event: MindwalletDomainEvent) -> List[ListenerConfig]:
+    def _resolve_listeners(self, event: VexxoAppDomainEvent) -> List[ListenerConfig]:
         with self._lock:
             exact_listeners = list(self._listeners.get(event.type, []))
             pattern_items = list(self._pattern_listeners.items())
@@ -478,7 +502,7 @@ class DomainEventBus:
 
     def publish(
         self,
-        event: MindwalletDomainEvent,
+        event: VexxoAppDomainEvent,
         *,
         include_local: bool = True,
         include_external: bool = True,
@@ -574,9 +598,9 @@ def publish_domain_event(
     include_local: bool = True,
     include_external: bool = True,
     raise_required_listener_errors: bool = False,
-) -> MindwalletDomainEvent:
+) -> VexxoAppDomainEvent:
     """
-    Helper único para publicar eventos de Mindwallet.
+    Helper único para publicar eventos de Vexxo_app.
 
     Ejemplo:
 
@@ -596,7 +620,7 @@ def publish_domain_event(
     else:
         _metadata["correlation_id"] = correlation_id
 
-    event = MindwalletDomainEvent(
+    event = VexxoAppDomainEvent(
         type=event_type,
         context=context,
         payload=payload,
@@ -630,17 +654,17 @@ def subscribe(
 
         # Listener simple
         @subscribe(EventNames.ACCOUNT_BALANCE_UPDATED)
-        def handle_balance_updated(event: MindwalletDomainEvent):
+        def handle_balance_updated(event: VexxoAppDomainEvent):
             ...
 
         # Listener solo para eventos de accounts.* en background y alta prioridad
         @subscribe("accounts.*", run_async=True, priority=EventPriority.HIGH)
-        def handle_any_account_event(event: MindwalletDomainEvent):
+        def handle_any_account_event(event: VexxoAppDomainEvent):
             ...
 
         # Listener que solo escucha eventos de TRANSACTIONS dentro del contexto TRANSACTIONS
         @subscribe(EventNames.TRANSACTION_CREATED, contexts=[EventContext.TRANSACTIONS])
-        def handle_tx_created(event: MindwalletDomainEvent):
+        def handle_tx_created(event: VexxoAppDomainEvent):
             ...
     """
 

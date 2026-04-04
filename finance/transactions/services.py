@@ -5,6 +5,7 @@ from django.db.models import Sum
 
 from finance.transactions.Models.transacciones import Transaction
 from .utils_limits import month_range, account_month_expense_total
+from finance.transactions.transaction_state_service import LEDGER_COUNTABLE_STATUSES
 
 
 __all__ = [
@@ -25,7 +26,7 @@ def user_monthly_expense_total(user, when: date) -> Decimal:
         Transaction.objects.filter(
             owner=user,
             type=Transaction.Type.EXPENSE,
-            status__in=[Transaction.Status.POSTED, Transaction.Status.RECONCILED],
+            status__in=LEDGER_COUNTABLE_STATUSES,
             confirmed=True,
             date__gte=start,
             date__lt=end,
@@ -45,7 +46,7 @@ def user_category_expense_summary(user, when: date):
         Transaction.objects.filter(
             owner=user,
             type=Transaction.Type.EXPENSE,
-            status__in=[Transaction.Status.POSTED, Transaction.Status.RECONCILED],
+            status__in=LEDGER_COUNTABLE_STATUSES,
             confirmed=True,
             date__gte=start,
             date__lt=end,

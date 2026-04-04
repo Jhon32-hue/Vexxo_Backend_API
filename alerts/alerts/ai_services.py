@@ -30,7 +30,7 @@ def _is_ai_enrichment_enabled() -> bool:
 def _get_user_locale(alert: Alert) -> str:
     """
     Devuelve el idioma preferido del usuario, si lo tienes en algún perfil.
-    Fallback a 'es' (Mindwallet Colombia/Latam).
+    Fallback a 'es' (Vexxo_app Colombia/Latam).
     """
     user = alert.owner
     # Si en algún momento usamos user.profile.language o settings propios:
@@ -73,7 +73,7 @@ def _build_alert_ai_payload(alert: Alert, correlation_id: Optional[str]) -> Dict
         },
         "now": timezone.now().isoformat(),
         "context_hints": [
-            "Mindwallet es una aplicación de finanzas personales.",
+            "Vexxo_app es una aplicación de finanzas personales.",
             "Esta aplicación ayuda a usuarios a centralizar, normalizar, interpretar, optimizar y ejecutar acciones sobre sus finanzas.",
             "El usuario es una persona, freelancer o pyme, no un banco. Por tanto, la comunicación debe ser cercana y empática.",
             "También, la explicación debe ser clara, empática y accionable para evitar confusiones.",
@@ -199,7 +199,7 @@ def enrich_alert_with_ai(alert: Alert, correlation_id: Optional[str] = None) -> 
 
     Flujo actual (stub):
     1) Verifica si la IA está habilitada.
-    2) Construye un payload rico con contexto de Mindwallet.
+    2) Construye un payload rico con contexto de Vexxo_app.
     3) Llama al provider stub.
     4) Actualiza ai_summary, risk_score, ai_tags en la alerta.
     5) Publica ALERT_AI_ENRICHED para que otros módulos reaccionen.
@@ -302,7 +302,7 @@ def enrich_alert_with_ai(alert: Alert, correlation_id: Optional[str] = None) -> 
         # 1) Actualizar dashboards
         #
         #   @subscribe(EventNames.ALERT_AI_ENRICHED, name="dashboards.on_alert_ai")
-        #   def on_alert_ai(event: MindwalletDomainEvent):
+        #   def on_alert_ai(event: VexxoAppDomainEvent):
         #       # recalcular KPIs y refrescar widgets para ese usuario
         #       # (por ejemplo, emitir un WebSocket o notificación interna)
         #       ...
@@ -310,7 +310,7 @@ def enrich_alert_with_ai(alert: Alert, correlation_id: Optional[str] = None) -> 
         # 2) Notificar al usuario
         #
         #   @subscribe(EventNames.ALERT_AI_ENRICHED, name="notifications.on_alert_ai")
-        #   def notify_user(event: MindwalletDomainEvent):
+        #   def notify_user(event: VexxoAppDomainEvent):
         #       # usar event.payload["alert_id"] y ["owner_id"]
         #       # para enviar push/email/WhatsApp con alert.ai_summary
         #       ...
@@ -318,7 +318,7 @@ def enrich_alert_with_ai(alert: Alert, correlation_id: Optional[str] = None) -> 
         # 3) Generar insights secundarios
         #
         #   @subscribe(EventNames.ALERT_AI_ENRICHED, name="insights.on_alert_ai")
-        #   def build_secondary_insights(event: MindwalletDomainEvent):
+        #   def build_secondary_insights(event: VexxoAppDomainEvent):
         #       # alimentar un modelo que agrupa alertas y genera historias:
         #       # "este mes gastaste más en transporte, comida, etc."
         #       ...
@@ -326,7 +326,7 @@ def enrich_alert_with_ai(alert: Alert, correlation_id: Optional[str] = None) -> 
         # 4) Alimentar un “CFO virtual”
         #
         #   @subscribe(EventNames.ALERT_AI_ENRICHED, name="cfo_virtual.on_alert_ai")
-        #   def cfo_reasoning(event: MindwalletDomainEvent):
+        #   def cfo_reasoning(event: VexxoAppDomainEvent):
         #       # combinar alertas enriquecidas + transacciones + budgets
         #       # para generar recomendaciones tipo:
         #       # "baja tus gastos recurrentes en X"

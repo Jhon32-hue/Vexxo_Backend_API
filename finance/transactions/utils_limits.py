@@ -4,6 +4,7 @@ from decimal import Decimal
 from django.db.models import Sum
 
 from finance.transactions.Models.transacciones import Transaction
+from finance.transactions.transaction_state_service import LEDGER_COUNTABLE_STATUSES
 
 
 def month_range(d: date):
@@ -30,7 +31,7 @@ def account_month_expense_total(account, when: date) -> Decimal:
             owner=account.owner,
             account=account,
             type=Transaction.Type.EXPENSE,
-            status__in=[Transaction.Status.POSTED, Transaction.Status.RECONCILED],
+            status__in=LEDGER_COUNTABLE_STATUSES,
             confirmed=True,
             date__gte=start,
             date__lt=end,

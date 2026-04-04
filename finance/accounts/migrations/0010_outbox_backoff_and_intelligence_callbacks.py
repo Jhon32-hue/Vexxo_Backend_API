@@ -29,6 +29,21 @@ class Migration(migrations.Migration):
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
+            model_name="domaineventoutbox",
+            name="status",
+            field=models.CharField(
+                choices=[
+                    ("pending", "Pending"),
+                    ("processing", "Processing"),
+                    ("published", "Published"),
+                    ("failed", "Failed"),
+                    ("dead_letter", "Dead letter"),
+                ],
+                default="pending",
+                max_length=16,
+            ),
+        ),
+        migrations.AddField(
             model_name="accountintelligencedispatchstate",
             name="last_error_message",
             field=models.TextField(blank=True, default=""),

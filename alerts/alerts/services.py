@@ -41,7 +41,7 @@ def create_alert(
     risk_score: Optional[Decimal] = None,
 ) -> Alert:
     """
-    Punto único para crear alertas en Mindwallet.
+    Punto único para crear alertas en Vexxo_app.
 
     Flujo actual:
       1) Crea la alerta en DB con un estado inicial (NEW / activa).

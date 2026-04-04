@@ -20,7 +20,7 @@ import logging
 
 from django.contrib.auth import get_user_model
 
-from common.domain_events import EventContext, EventNames, EventPriority, MindwalletDomainEvent, subscribe
+from common.domain_events import EventContext, EventNames, EventPriority, VexxoAppDomainEvent, subscribe
 from identity.users.services.bootstrap_service import bootstrap_registered_user, ensure_welcome_alerts
 from identity.users.services.product_usage_projection_service import (
     apply_account_usage_event_delta,
@@ -34,11 +34,11 @@ from identity.users.services.product_usage_projection_service import (
 logger = logging.getLogger(__name__)
 
 
-def _refresh_usage_projection(user_id, *, event: MindwalletDomainEvent, source: str) -> None:
+def _refresh_usage_projection(user_id, *, event: VexxoAppDomainEvent, source: str) -> None:
     refresh_user_usage_projection_from_event(user_id, event=event, source=source)
 
 
-def _refresh_usage_projection_incremental(user_id, *, event: MindwalletDomainEvent, source: str) -> None:
+def _refresh_usage_projection_incremental(user_id, *, event: VexxoAppDomainEvent, source: str) -> None:
     event_type = str(event.type or "")
 
     if event_type in {
@@ -75,7 +75,7 @@ def _refresh_usage_projection_incremental(user_id, *, event: MindwalletDomainEve
     contexts=[EventContext.IDENTITY],
     priority=EventPriority.HIGH,
 )
-def handle_user_registered(event: MindwalletDomainEvent) -> None:
+def handle_user_registered(event: VexxoAppDomainEvent) -> None:
     user_id = (event.payload or {}).get("user_id")
     if not user_id:
         return
@@ -97,7 +97,7 @@ def handle_user_registered(event: MindwalletDomainEvent) -> None:
     contexts=[EventContext.IDENTITY],
     priority=EventPriority.NORMAL,
 )
-def handle_user_onboarding_completed(event: MindwalletDomainEvent) -> None:
+def handle_user_onboarding_completed(event: VexxoAppDomainEvent) -> None:
     user_id = (event.payload or {}).get("user_id")
     if not user_id:
         return
@@ -115,7 +115,7 @@ def handle_user_onboarding_completed(event: MindwalletDomainEvent) -> None:
     contexts=[EventContext.ACCOUNTS],
     priority=EventPriority.LOW,
 )
-def handle_accounts_event_refresh_usage_projection(event: MindwalletDomainEvent) -> None:
+def handle_accounts_event_refresh_usage_projection(event: VexxoAppDomainEvent) -> None:
     owner_id = (event.payload or {}).get("owner_id")
     if not owner_id:
         return
@@ -133,7 +133,7 @@ def handle_accounts_event_refresh_usage_projection(event: MindwalletDomainEvent)
     contexts=[EventContext.ALERTS],
     priority=EventPriority.LOW,
 )
-def handle_alert_ai_enriched_refresh_usage_projection(event: MindwalletDomainEvent) -> None:
+def handle_alert_ai_enriched_refresh_usage_projection(event: VexxoAppDomainEvent) -> None:
     owner_id = (event.payload or {}).get("owner_id")
     if not owner_id:
         return
@@ -151,7 +151,7 @@ def handle_alert_ai_enriched_refresh_usage_projection(event: MindwalletDomainEve
     contexts=[EventContext.PAYMENTS],
     priority=EventPriority.LOW,
 )
-def handle_payments_event_refresh_usage_projection(event: MindwalletDomainEvent) -> None:
+def handle_payments_event_refresh_usage_projection(event: VexxoAppDomainEvent) -> None:
     owner_id = (event.payload or {}).get("owner_id")
     if not owner_id:
         return

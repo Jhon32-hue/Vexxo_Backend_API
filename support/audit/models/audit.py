@@ -4,7 +4,7 @@ from django.conf import settings
 
 class AuditLog(models.Model):
     """
-    Registro central de auditoría explicable para MindWallet.
+    Registro central de auditoría explicable para Vexxo_app.
     """
 
     class Source(models.TextChoices):

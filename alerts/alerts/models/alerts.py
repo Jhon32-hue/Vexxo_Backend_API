@@ -37,7 +37,7 @@ class AlertStatus(models.TextChoices):
 
 class Alert(models.Model):
     """
-    Alerta generada por el motor de reglas + IA de Mindwallet.
+    Alerta generada por el motor de reglas + IA de Vexxo_app.
 
     Es el objeto base para:
     - alertas de saldo / gasto,

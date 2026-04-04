@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 
-from common.domain_events import EventContext, EventNames, EventPriority, MindwalletDomainEvent, subscribe
+from common.domain_events import EventContext, EventNames, EventPriority, VexxoAppDomainEvent, subscribe
 from finance.accounts.services.user_integration_service import (
     disable_auto_sync_for_user,
     disable_auto_sync_for_user_provider,
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
     contexts=[EventContext.IDENTITY],
     priority=EventPriority.NORMAL,
 )
-def handle_user_consent_granted(event: MindwalletDomainEvent) -> None:
+def handle_user_consent_granted(event: VexxoAppDomainEvent) -> None:
     from django.contrib.auth import get_user_model
 
     user_id = (event.payload or {}).get("user_id")
@@ -54,7 +54,7 @@ def handle_user_consent_granted(event: MindwalletDomainEvent) -> None:
     contexts=[EventContext.IDENTITY],
     priority=EventPriority.HIGH,
 )
-def handle_user_consent_revoked(event: MindwalletDomainEvent) -> None:
+def handle_user_consent_revoked(event: VexxoAppDomainEvent) -> None:
     from django.contrib.auth import get_user_model
 
     payload = event.payload or {}

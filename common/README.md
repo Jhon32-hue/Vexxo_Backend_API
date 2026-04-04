@@ -51,7 +51,7 @@ Ahí se define:
 - `EventPriority`
 - `EventNames`
 - `KNOWN_EVENT_TYPES`
-- `MindwalletDomainEvent`
+- `VexxoAppDomainEvent`
 - registro de listeners via `@subscribe`
 - bus local y dispatchers externos
 

@@ -9,7 +9,7 @@ from support.audit.serializers.audit_serializers import AuditoriaSerializer
 
 class AuditoriaViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    Auditoría central explicable de MindWallet.
+    Auditoría central explicable de Vexxo_app.
     """
 
     serializer_class = AuditoriaSerializer

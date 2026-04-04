@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from common.domain_events import (
     subscribe,
-    MindwalletDomainEvent,
+    VexxoAppDomainEvent,
     EventNames,
     EventContext,
     EventPriority,
@@ -62,7 +62,7 @@ def _has_recent_system_alert(*, owner_id, source: str, account_id, minutes: int 
     contexts=[EventContext.ACCOUNTS],  # por si en el futuro reusamos el mismo tipo en otro contexto
     priority=EventPriority.HIGH,       # que las alertas se procesen pronto
 )
-def handle_account_balance_updated(event: MindwalletDomainEvent) -> None:
+def handle_account_balance_updated(event: VexxoAppDomainEvent) -> None:
     """
     Listener de alertas para cambios de balance en cuentas.
 
@@ -166,7 +166,7 @@ def handle_account_balance_updated(event: MindwalletDomainEvent) -> None:
     contexts=[EventContext.ALERTS],
     priority=EventPriority.LOW,     # primero se pueden procesar otras cosas críticas
 )
-def handle_alert_created_ai(event: MindwalletDomainEvent) -> None:
+def handle_alert_created_ai(event: VexxoAppDomainEvent) -> None:
     """
     Listener que enriquece las alertas con IA cuando se crean.
 
@@ -213,7 +213,7 @@ def handle_alert_created_ai(event: MindwalletDomainEvent) -> None:
     contexts=[EventContext.ACCOUNTS],
     priority=EventPriority.HIGH,
 )
-def handle_account_sync_failed(event: MindwalletDomainEvent) -> None:
+def handle_account_sync_failed(event: VexxoAppDomainEvent) -> None:
     payload = event.payload or {}
     account_id = payload.get("account_id")
     correlation_id = event.correlation_id
@@ -273,7 +273,7 @@ def handle_account_sync_failed(event: MindwalletDomainEvent) -> None:
     contexts=[EventContext.ACCOUNTS],
     priority=EventPriority.HIGH,
 )
-def handle_account_drift_detected(event: MindwalletDomainEvent) -> None:
+def handle_account_drift_detected(event: VexxoAppDomainEvent) -> None:
     payload = event.payload or {}
     account_id = payload.get("account_id")
     correlation_id = event.correlation_id

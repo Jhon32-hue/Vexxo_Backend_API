@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 
-from common.domain_events import EventContext, EventNames, EventPriority, MindwalletDomainEvent, subscribe
+from common.domain_events import EventContext, EventNames, EventPriority, VexxoAppDomainEvent, subscribe
 from identity.sessions.services import (
     revoke_all_active_sessions_for_user,
     revoke_device_sessions,
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
     contexts=[EventContext.IDENTITY],
     priority=EventPriority.HIGH,
 )
-def handle_user_suspended(event: MindwalletDomainEvent) -> None:
+def handle_user_suspended(event: VexxoAppDomainEvent) -> None:
     from django.contrib.auth import get_user_model
 
     user_id = (event.payload or {}).get("user_id")
@@ -57,7 +57,7 @@ def handle_user_suspended(event: MindwalletDomainEvent) -> None:
     contexts=[EventContext.IDENTITY],
     priority=EventPriority.HIGH,
 )
-def handle_device_revoked(event: MindwalletDomainEvent) -> None:
+def handle_device_revoked(event: VexxoAppDomainEvent) -> None:
     device_id = (event.payload or {}).get("entity_id")
     if not device_id:
         return
@@ -77,7 +77,7 @@ def handle_device_revoked(event: MindwalletDomainEvent) -> None:
     contexts=[EventContext.IDENTITY],
     priority=EventPriority.HIGH,
 )
-def handle_social_unlinked(event: MindwalletDomainEvent) -> None:
+def handle_social_unlinked(event: VexxoAppDomainEvent) -> None:
     from django.contrib.auth import get_user_model
 
     payload = event.payload or {}

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 
-from common.domain_events import EventContext, EventNames, EventPriority, MindwalletDomainEvent, subscribe
+from common.domain_events import EventContext, EventNames, EventPriority, VexxoAppDomainEvent, subscribe
 from django.utils import timezone
 
 from finance.accounts.services.intelligence_dispatch_service import dispatch_account_intelligence_refresh
@@ -35,7 +35,7 @@ from finance.accounts.services.user_integration_service import (
 logger = logging.getLogger(__name__)
 
 
-def _publish_owner_realtime_signal(event: MindwalletDomainEvent, *, signal_event: str) -> None:
+def _publish_owner_realtime_signal(event: VexxoAppDomainEvent, *, signal_event: str) -> None:
     payload = event.payload or {}
     owner_id = payload.get("owner_id")
     account_id = payload.get("account_id")
@@ -78,7 +78,7 @@ def _provider_from_permission_payload(payload: dict) -> str:
     contexts=[EventContext.ACCOUNTS],
     priority=EventPriority.LOW,
 )
-def handle_any_account_event_refresh_intelligence(event: MindwalletDomainEvent) -> None:
+def handle_any_account_event_refresh_intelligence(event: VexxoAppDomainEvent) -> None:
     owner_id = (event.payload or {}).get("owner_id")
     if not owner_id:
         return
@@ -107,7 +107,7 @@ def handle_any_account_event_refresh_intelligence(event: MindwalletDomainEvent) 
     priority=EventPriority.HIGH,
     required=True,
 )
-def handle_account_sync_scheduled(event: MindwalletDomainEvent) -> None:
+def handle_account_sync_scheduled(event: VexxoAppDomainEvent) -> None:
     try:
         payload = event.payload or {}
         next_sync_at = str(payload.get("next_sync_at") or "immediate")
@@ -131,7 +131,7 @@ def handle_account_sync_scheduled(event: MindwalletDomainEvent) -> None:
     contexts=[EventContext.ACCOUNTS],
     priority=EventPriority.NORMAL,
 )
-def handle_account_balance_updated(event: MindwalletDomainEvent) -> None:
+def handle_account_balance_updated(event: VexxoAppDomainEvent) -> None:
     payload = event.payload or {}
     owner_id = payload.get("owner_id")
     account_id = payload.get("account_id")
@@ -158,7 +158,7 @@ def handle_account_balance_updated(event: MindwalletDomainEvent) -> None:
     contexts=[EventContext.ACCOUNTS],
     priority=EventPriority.HIGH,
 )
-def handle_account_drift_detected(event: MindwalletDomainEvent) -> None:
+def handle_account_drift_detected(event: VexxoAppDomainEvent) -> None:
     payload = event.payload or {}
     logger.warning(
         "[accounts.drift][corr=%s] account_id=%s drift_abs=%s source=%s threshold=%s",
@@ -177,7 +177,7 @@ def handle_account_drift_detected(event: MindwalletDomainEvent) -> None:
     contexts=[EventContext.ACCOUNTS],
     priority=EventPriority.NORMAL,
 )
-def handle_account_primary_changed(event: MindwalletDomainEvent) -> None:
+def handle_account_primary_changed(event: VexxoAppDomainEvent) -> None:
     _publish_owner_realtime_signal(
         event,
         signal_event="account.primary.changed",
@@ -191,7 +191,7 @@ def handle_account_primary_changed(event: MindwalletDomainEvent) -> None:
     contexts=[EventContext.ACCOUNTS],
     priority=EventPriority.NORMAL,
 )
-def handle_account_archived(event: MindwalletDomainEvent) -> None:
+def handle_account_archived(event: VexxoAppDomainEvent) -> None:
     _publish_owner_realtime_signal(
         event,
         signal_event="account.archived",
@@ -205,7 +205,7 @@ def handle_account_archived(event: MindwalletDomainEvent) -> None:
     contexts=[EventContext.ACCOUNTS],
     priority=EventPriority.NORMAL,
 )
-def handle_account_sync_succeeded(event: MindwalletDomainEvent) -> None:
+def handle_account_sync_succeeded(event: VexxoAppDomainEvent) -> None:
     _publish_owner_realtime_signal(
         event,
         signal_event="account.sync.succeeded",
@@ -220,7 +220,7 @@ def handle_account_sync_succeeded(event: MindwalletDomainEvent) -> None:
     priority=EventPriority.HIGH,
     required=True,
 )
-def handle_user_registered(event: MindwalletDomainEvent) -> None:
+def handle_user_registered(event: VexxoAppDomainEvent) -> None:
     from django.contrib.auth import get_user_model
 
     owner_id = (event.payload or {}).get("user_id")
@@ -240,7 +240,7 @@ def handle_user_registered(event: MindwalletDomainEvent) -> None:
     priority=EventPriority.NORMAL,
     required=True,
 )
-def handle_user_plan_changed(event: MindwalletDomainEvent) -> None:
+def handle_user_plan_changed(event: VexxoAppDomainEvent) -> None:
     from django.contrib.auth import get_user_model
 
     owner_id = (event.payload or {}).get("user_id")
@@ -260,7 +260,7 @@ def handle_user_plan_changed(event: MindwalletDomainEvent) -> None:
     priority=EventPriority.HIGH,
     required=True,
 )
-def handle_user_currency_changed(event: MindwalletDomainEvent) -> None:
+def handle_user_currency_changed(event: VexxoAppDomainEvent) -> None:
     from django.contrib.auth import get_user_model
 
     payload = event.payload or {}
@@ -285,7 +285,7 @@ def handle_user_currency_changed(event: MindwalletDomainEvent) -> None:
     priority=EventPriority.HIGH,
     required=True,
 )
-def handle_user_suspended(event: MindwalletDomainEvent) -> None:
+def handle_user_suspended(event: VexxoAppDomainEvent) -> None:
     from django.contrib.auth import get_user_model
 
     owner_id = (event.payload or {}).get("user_id")
@@ -305,7 +305,7 @@ def handle_user_suspended(event: MindwalletDomainEvent) -> None:
     priority=EventPriority.NORMAL,
     required=True,
 )
-def handle_user_activated(event: MindwalletDomainEvent) -> None:
+def handle_user_activated(event: VexxoAppDomainEvent) -> None:
     from django.contrib.auth import get_user_model
 
     owner_id = (event.payload or {}).get("user_id")
@@ -325,7 +325,7 @@ def handle_user_activated(event: MindwalletDomainEvent) -> None:
     priority=EventPriority.HIGH,
     required=True,
 )
-def handle_user_permission_revoked(event: MindwalletDomainEvent) -> None:
+def handle_user_permission_revoked(event: VexxoAppDomainEvent) -> None:
     from django.contrib.auth import get_user_model
 
     payload = event.payload or {}

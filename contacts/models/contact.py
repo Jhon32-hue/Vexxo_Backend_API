@@ -23,7 +23,7 @@ class Contact(models.Model):
         help_text=_("Usuario dueño del registro de este contacto."),
     )
 
-    # Si en algún momento ese contacto se registra como usuario real de Mindwallet
+    # Si en algún momento ese contacto se registra como usuario real de Vexxo_app
     linked_user = models.ForeignKey(
         User,
         null=True,
@@ -128,7 +128,11 @@ class Contact(models.Model):
             TransactionParticipant.objects.filter(
                 owner=self.owner,
                 contact=self,
-                status=TransactionParticipant.Status.ACTIVE,
+                status__in=[
+                    TransactionParticipant.Status.ACTIVE,
+                    TransactionParticipant.Status.PENDING,
+                    TransactionParticipant.Status.PARTIAL,
+                ],
                 transaction__confirmed=True,
             )
             .select_related("transaction")

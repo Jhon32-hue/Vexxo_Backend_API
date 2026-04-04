@@ -208,6 +208,63 @@ carpetas operativas de soporte.
 - `logs/`, `media/`, `staticfiles/`
   artefactos locales del entorno de ejecucion.
 
+## Scripts locales vs despliegue en GCP
+
+El directorio `scripts/` puede contener wrappers utiles para desarrollo local,
+pero esos archivos no definen el flujo de despliegue cloud.
+
+### Scripts locales
+
+Wrappers como:
+
+- `scripts/run_manage_vexxo_app.cmd`
+- `scripts/migrate_vexxo_app.cmd`
+- `scripts/test_transactions_vexxo_app.cmd`
+
+existen para:
+
+- correr `manage.py` contra PostgreSQL local
+- validar migraciones rapidamente en Windows
+- ejecutar pruebas locales sin tocar el `.env` cloud
+
+Estos scripts:
+
+- pueden quedarse versionados en el repo
+- son tooling de desarrollo
+- no son artefactos de produccion
+- no deben ejecutarse en Cloud Run ni en pipelines de despliegue
+
+### Staging y produccion
+
+En entornos cloud el flujo correcto no usa esos `.cmd`.
+
+Lo esperado es ejecutar directamente comandos Django dentro del contexto del
+contenedor, job o pipeline correspondiente, por ejemplo:
+
+- `python manage.py migrate --noinput`
+- `python manage.py check`
+- la suite de tests en CI antes del deploy
+
+La configuracion de produccion debe venir de:
+
+- variables de entorno del servicio
+- Secret Manager
+- configuracion del pipeline o job
+- conexion a Cloud SQL segun `backend.settings`
+
+### Regla operativa
+
+Si el objetivo es:
+
+- desarrollo local o debugging en Windows
+  usa los wrappers de `scripts/`
+- staging o produccion en GCP
+  usa `manage.py` directo dentro del flujo de despliegue
+
+La razon es simple: los `.cmd` encapsulan un entorno local concreto
+(`127.0.0.1`, PostgreSQL local, variables por sesion) y no representan la
+topologia real de produccion.
+
 ## Mapa funcional por dominio
 
 El sistema esta organizado para que cada bloque responda a una responsabilidad
@@ -1003,6 +1060,9 @@ documentar su estado actual, flujos, casos de uso y relaciones.
 
 Documentos principales:
 
+- [Flujo de dtos.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/Flujo%20de%20dtos.md)
+  Estructura de datos, tablas, dependencias, endpoints y ciclo de vida del
+  dato dentro de Vexxo.
 - [backend/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/backend/README.md)
   Configuracion global de Django, settings, URLs y entrypoints del proyecto.
 - [common/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/common/README.md)

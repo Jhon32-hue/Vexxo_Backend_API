@@ -118,3 +118,43 @@ def apply_payment_to_debt(
     else:
         debt.status = "active"
     debt.save(update_fields=["status"])
+
+
+@transaction.atomic
+def reconcile_debt_payments(debt: Debt) -> None:
+    """
+    Recalcula el estado de cuotas/pagos de una deuda a partir del ledger real.
+
+    Se usa cuando una transaccion ya contable cambia de monto, fecha, deuda,
+    cuota o estado y el flujo incremental ya no es suficiente para garantizar
+    consistencia.
+    """
+    installments = list(DebtInstallment.objects.select_for_update().filter(debt=debt).order_by("number"))
+    if not installments:
+        debt.status = "active"
+        debt.save(update_fields=["status"])
+        return
+
+    for inst in installments:
+        inst.paid_amount = Decimal("0.00")
+        inst.paid_date = None
+        inst.status = "due"
+        inst.save(update_fields=["paid_amount", "paid_date", "status"])
+
+    from finance.transactions.Models.transacciones import Transaction
+    from finance.transactions.transaction_state_service import is_transaction_countable_for_ledger
+
+    txs = (
+        Transaction.objects.filter(debt=debt, type=Transaction.Type.EXPENSE)
+        .select_related("installment")
+        .order_by("date", "id")
+    )
+    for tx in txs:
+        if not is_transaction_countable_for_ledger(tx):
+            continue
+        apply_payment_to_debt(
+            debt=debt,
+            amount=Decimal(tx.amount),
+            pay_date=tx.date,
+            installment=tx.installment if tx.installment_id else None,
+        )

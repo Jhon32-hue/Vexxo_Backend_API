@@ -14,7 +14,7 @@ from alerts.alerts.serializers.alert_serializers import AlertaSerializer
 
 class AlertaViewSet(viewsets.ModelViewSet):
     """
-    API de alertas de Mindwallet.
+    API de alertas de Vexxo_app.
 
     - Listado y detalle de alertas del usuario autenticado.
     - Acciones para marcar como leída, resuelta o posponer (snooze).

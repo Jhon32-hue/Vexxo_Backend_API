@@ -18,7 +18,7 @@ import logging
 
 from django.contrib.auth import get_user_model
 
-from common.domain_events import EventContext, EventNames, EventPriority, MindwalletDomainEvent, subscribe
+from common.domain_events import EventContext, EventNames, EventPriority, VexxoAppDomainEvent, subscribe
 from notifications.deliveries.services import create_notification_delivery
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ def _load_user(user_id):
     return User.objects.filter(pk=user_id).first()
 
 
-def _notify_user(*, user_id, title: str, message: str, event: MindwalletDomainEvent, payload: dict):
+def _notify_user(*, user_id, title: str, message: str, event: VexxoAppDomainEvent, payload: dict):
     user = _load_user(user_id)
     if not user:
         return
@@ -61,7 +61,7 @@ def _notify_user(*, user_id, title: str, message: str, event: MindwalletDomainEv
     contexts=[EventContext.ACCOUNTS],
     priority=EventPriority.NORMAL,
 )
-def handle_account_membership_invited(event: MindwalletDomainEvent) -> None:
+def handle_account_membership_invited(event: VexxoAppDomainEvent) -> None:
     payload = event.payload or {}
     _notify_user(
         user_id=payload.get("user_id"),
@@ -79,7 +79,7 @@ def handle_account_membership_invited(event: MindwalletDomainEvent) -> None:
     contexts=[EventContext.ACCOUNTS],
     priority=EventPriority.NORMAL,
 )
-def handle_account_membership_accepted(event: MindwalletDomainEvent) -> None:
+def handle_account_membership_accepted(event: VexxoAppDomainEvent) -> None:
     payload = event.payload or {}
     _notify_user(
         user_id=payload.get("owner_id"),
@@ -97,7 +97,7 @@ def handle_account_membership_accepted(event: MindwalletDomainEvent) -> None:
     contexts=[EventContext.ACCOUNTS],
     priority=EventPriority.NORMAL,
 )
-def handle_account_membership_revoked(event: MindwalletDomainEvent) -> None:
+def handle_account_membership_revoked(event: VexxoAppDomainEvent) -> None:
     payload = event.payload or {}
     _notify_user(
         user_id=payload.get("user_id"),
@@ -115,7 +115,7 @@ def handle_account_membership_revoked(event: MindwalletDomainEvent) -> None:
     contexts=[EventContext.ACCOUNTS],
     priority=EventPriority.NORMAL,
 )
-def handle_account_primary_changed(event: MindwalletDomainEvent) -> None:
+def handle_account_primary_changed(event: VexxoAppDomainEvent) -> None:
     payload = event.payload or {}
     _notify_user(
         user_id=payload.get("owner_id"),
@@ -133,7 +133,7 @@ def handle_account_primary_changed(event: MindwalletDomainEvent) -> None:
     contexts=[EventContext.ACCOUNTS],
     priority=EventPriority.NORMAL,
 )
-def handle_account_archived(event: MindwalletDomainEvent) -> None:
+def handle_account_archived(event: VexxoAppDomainEvent) -> None:
     payload = event.payload or {}
     _notify_user(
         user_id=payload.get("owner_id"),
@@ -151,7 +151,7 @@ def handle_account_archived(event: MindwalletDomainEvent) -> None:
     contexts=[EventContext.ACCOUNTS],
     priority=EventPriority.LOW,
 )
-def handle_account_sync_succeeded(event: MindwalletDomainEvent) -> None:
+def handle_account_sync_succeeded(event: VexxoAppDomainEvent) -> None:
     payload = event.payload or {}
     _notify_user(
         user_id=payload.get("owner_id"),
