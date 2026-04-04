@@ -11,9 +11,6 @@ path normal del backend.
 - `bootstrap.py`
 - `generate_reports.py`
 - `migrate_data.py`
-- `run_manage_vexxo_app.cmd`
-- `migrate_vexxo_app.cmd`
-- `test_transactions_vexxo_app.cmd`
 
 ## Estado Del Codigo
 
@@ -21,8 +18,8 @@ En esta pasada no detecte implementacion funcional visible dentro de esos
 archivos. Por eso conviene documentarlos por su rol estructural y no como
 herramientas cerradas.
 
-Eso aplica a los scripts Python listados arriba. Los wrappers `.cmd` nuevos si
-tienen una responsabilidad operativa concreta y ya fueron validados: ejecutar
+Eso aplica a los scripts Python listados arriba. Los wrappers `.cmd` locales no
+versionados si tienen una responsabilidad operativa concreta: ejecutar
 `manage.py` contra PostgreSQL local `Vexxo` sin tocar el `.env` cloud.
 
 ## Rol En El Sistema
@@ -50,6 +47,12 @@ para:
 
 Estos wrappers son solo para desarrollo local y debugging de ingenieria.
 
+No deben quedar versionados en Git. La convención local esperada es:
+
+- `scripts/run_manage_vexxo_app.cmd`
+- `scripts/migrate_vexxo_app.cmd`
+- `scripts/test_transactions_vexxo_app.cmd`
+
 No son para:
 
 - produccion
@@ -58,8 +61,8 @@ No son para:
 - pipelines de despliegue
 - automatizacion operativa sobre GCP
 
-Pueden vivir versionados en el repo porque documentan y estandarizan el flujo
-local, pero no deben tratarse como scripts de release.
+Pueden existir localmente en la máquina del desarrollador, pero no deben
+tratarse como scripts de release ni como artefactos del repositorio.
 
 ### Que significa "por sesion"
 

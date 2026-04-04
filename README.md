@@ -215,7 +215,7 @@ pero esos archivos no definen el flujo de despliegue cloud.
 
 ### Scripts locales
 
-Wrappers como:
+Wrappers locales no versionados como:
 
 - `scripts/run_manage_vexxo_app.cmd`
 - `scripts/migrate_vexxo_app.cmd`
@@ -227,10 +227,10 @@ existen para:
 - validar migraciones rapidamente en Windows
 - ejecutar pruebas locales sin tocar el `.env` cloud
 
-Estos scripts:
+Estos wrappers:
 
-- pueden quedarse versionados en el repo
-- son tooling de desarrollo
+- son tooling de desarrollo local
+- no deben quedar versionados en el repo
 - no son artefactos de produccion
 - no deben ejecutarse en Cloud Run ni en pipelines de despliegue
 

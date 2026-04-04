@@ -3,3 +3,8 @@
 *.scripts
 enviroment
 
+# Local Windows wrappers for PostgreSQL dev flow
+scripts/run_manage_vexxo_app.cmd
+scripts/migrate_vexxo_app.cmd
+scripts/test_transactions_vexxo_app.cmd
+
