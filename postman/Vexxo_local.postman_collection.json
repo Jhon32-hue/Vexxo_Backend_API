@@ -1,0 +1,663 @@
+{
+  "info": {
+    "_postman_id": "1f2d8d95-f8c0-4b62-a321-7e0d8fe3e001",
+    "name": "Vexxo Local",
+    "description": "Coleccion unica para probar Vexxo en local contra http://127.0.0.1:8000.\n\nOrden recomendado:\n1. Auth -> Register\n2. Auth -> Login\n3. Identity -> Me\n4. Accounts -> Create Account\n5. Transactions -> Create Transaction\n6. Luego Payments, Alerts, Notifications y Realtime\n\nVariables importantes:\n- access_token y refresh_token se llenan automatico tras Login\n- account_id, transaction_id, alert_id, notification_id y payment_intent_id se llenan con requests helper\n- internal_token solo aplica para endpoints internos",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:8000" },
+    { "key": "email", "value": "prueba@example.com" },
+    { "key": "password", "value": "Secret12345!" },
+    { "key": "access_token", "value": "" },
+    { "key": "refresh_token", "value": "" },
+    { "key": "account_id", "value": "" },
+    { "key": "transaction_id", "value": "" },
+    { "key": "alert_id", "value": "" },
+    { "key": "notification_id", "value": "" },
+    { "key": "payment_intent_id", "value": "" },
+    { "key": "internal_token", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "00 - Start Here",
+      "description": "Lee esta carpeta primero. No son requests funcionales; es la guia rapida para usar la coleccion.\n\nFlujo minimo:\n- Register\n- Login\n- Me\n- Create Account\n- Create Transaction\n\nSi ya tienes usuario, puedes saltarte Register y correr Login.",
+      "item": []
+    },
+    {
+      "name": "01 - Auth",
+      "description": "Bloque de autenticacion. Login guarda access_token y refresh_token automaticamente en variables de coleccion.",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "description": "Crea un usuario nuevo. Si el correo ya existe, Postman devolvera error y puedes seguir directamente con Login.",
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Usuario Prueba\",\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\",\n  \"password2\": \"{{password}}\",\n  \"preferred_currency\": \"COP\",\n  \"timezone_name\": \"America/Bogota\",\n  \"locale\": \"es_CO\"\n}"
+            },
+            "url": "{{base_url}}/api/identity/users/auth/register/"
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json();",
+                  "  pm.collectionVariables.set('access_token', data.access || '');",
+                  "  pm.collectionVariables.set('refresh_token', data.refresh || '');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Acepta email o username en el campo username. Guarda tokens automaticamente.",
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": "{{base_url}}/api/identity/users/auth/login/"
+          }
+        },
+        {
+          "name": "Refresh",
+          "request": {
+            "description": "Renueva el access token usando el refresh guardado.",
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh\": \"{{refresh_token}}\"\n}"
+            },
+            "url": "{{base_url}}/api/identity/users/auth/refresh/"
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Identity",
+      "description": "Endpoints basicos del usuario autenticado. Sirven para validar que JWT, permisos y dashboard ya estan funcionando.",
+      "item": [
+        {
+          "name": "Me",
+          "request": {
+            "description": "Perfil actual del usuario autenticado.",
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/identity/users/me/"
+          }
+        },
+        {
+          "name": "Dashboard",
+          "request": {
+            "description": "Vista agregada del usuario con snapshots y proyecciones.",
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/identity/users/dashboard/"
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Accounts",
+      "description": "Primero crea una cuenta. Ese request guarda account_id y habilita el resto del flujo financiero.",
+      "item": [
+        {
+          "name": "List Accounts",
+          "request": {
+            "description": "Lista las cuentas visibles para el usuario autenticado.",
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/finance/accounts/cuentas/"
+          }
+        },
+        {
+          "name": "Create Account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const data = pm.response.json();",
+                  "  pm.collectionVariables.set('account_id', data.id || '');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Crea una cuenta simple para pruebas y guarda su id en la variable account_id.",
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Cuenta Postman\",\n  \"currency\": \"COP\",\n  \"type\": \"cash\",\n  \"ownership\": \"personal\"\n}"
+            },
+            "url": "{{base_url}}/api/finance/accounts/cuentas/"
+          }
+        },
+        {
+          "name": "List Account Memberships",
+          "request": {
+            "description": "Útil para revisar colaboración o cuentas compartidas.",
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/finance/accounts/membresias-cuenta/"
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - Transactions",
+      "description": "Ciclo basico del ledger. Este bloque valida que el backend contable ya responde y que la cuenta creada arriba funciona.",
+      "item": [
+        {
+          "name": "List Transactions",
+          "request": {
+            "description": "Lista el ledger actual del usuario.",
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/finance/transactions/transactions/"
+          }
+        },
+        {
+          "name": "Create Transaction",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const data = pm.response.json();",
+                  "  pm.collectionVariables.set('transaction_id', data.id || '');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Crea una transaccion manual y guarda transaction_id. Requiere que account_id ya exista.",
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"account\": {{account_id}},\n  \"type\": \"expense\",\n  \"status\": \"posted\",\n  \"amount\": \"25000.00\",\n  \"date\": \"2026-04-06\",\n  \"notes\": \"Prueba desde Postman\",\n  \"confirmed\": true\n}"
+            },
+            "url": "{{base_url}}/api/finance/transactions/transactions/"
+          }
+        },
+        {
+          "name": "Confirm Transaction",
+          "request": {
+            "description": "Confirma una transaccion existente. Si ya está confirmada, el backend responderá sin mayor cambio.",
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/finance/transactions/transactions/{{transaction_id}}/marcar_confirmada/"
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - Payments",
+      "description": "Pruebas del bounded context de pagos. No todo terminará en un cobro real, pero sí sirve para validar pricing, creación de intents y artefactos operativos.",
+      "item": [
+        {
+          "name": "List Payment Intents",
+          "request": {
+            "description": "Lista intents de pago del usuario.",
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/payments/intents/intents/"
+          }
+        },
+        {
+          "name": "Pricing Preview",
+          "request": {
+            "description": "Calcula preview de pricing sin crear un intent.",
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": \"30000.00\",\n  \"provider\": \"wompi\",\n  \"rail\": \"other\",\n  \"country\": \"CO\",\n  \"payment_type\": \"other\"\n}"
+            },
+            "url": "{{base_url}}/api/payments/intents/intents/pricing-preview/"
+          }
+        },
+        {
+          "name": "Create Payment Intent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const data = pm.response.json();",
+                  "  pm.collectionVariables.set('payment_intent_id', data.id || '');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Crea un PaymentIntent y guarda payment_intent_id. Requiere account_id.",
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"account\": {{account_id}},\n  \"amount\": \"30000.00\",\n  \"currency\": \"COP\",\n  \"provider\": \"wompi\",\n  \"payment_type\": \"other\",\n  \"rail\": \"other\",\n  \"external_reference\": \"postman-order-001\",\n  \"invoice_reference\": \"invoice-001\",\n  \"beneficiary_name\": \"Comercio Demo\",\n  \"beneficiary_document\": \"900123456\",\n  \"beneficiary_account_ref\": \"benef-001\",\n  \"idempotency_key\": \"postman-intent-001\"\n}"
+            },
+            "url": "{{base_url}}/api/payments/intents/intents/"
+          }
+        },
+        {
+          "name": "Retrieve Payment Intent",
+          "request": {
+            "description": "Consulta el intent que acabas de crear.",
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/payments/intents/intents/{{payment_intent_id}}/"
+          }
+        },
+        {
+          "name": "List Payouts",
+          "request": {
+            "description": "Lista lotes de payout visibles para el usuario.",
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/payments/intents/payouts/"
+          }
+        },
+        {
+          "name": "Create Payout Batch",
+          "request": {
+            "description": "Crea un lote de payout simple para pruebas.",
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"wompi\",\n  \"rail\": \"bank_transfer\",\n  \"currency\": \"COP\",\n  \"instructions\": [\n    {\n      \"beneficiary_name\": \"Proveedor Demo\",\n      \"beneficiary_document\": \"900999111\",\n      \"beneficiary_account_ref\": \"acct-001\",\n      \"amount\": \"10000.00\",\n      \"external_reference\": \"postman-payout-001\"\n    }\n  ]\n}"
+            },
+            "url": "{{base_url}}/api/payments/intents/payouts/"
+          }
+        },
+        {
+          "name": "List Payment Outbox",
+          "request": {
+            "description": "Observabilidad del outbox de pagos.",
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/payments/intents/outbox-pagos/"
+          }
+        },
+        {
+          "name": "List Callback Receipts",
+          "request": {
+            "description": "Consulta receipts de callbacks de proveedor ya persistidos.",
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/payments/intents/callback-receipts/"
+          }
+        },
+        {
+          "name": "List Settlements",
+          "request": {
+            "description": "Consulta records de settlement.",
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/payments/intents/settlements/"
+          }
+        },
+        {
+          "name": "List Operational Cases",
+          "request": {
+            "description": "Consulta disputas, errores y casos operativos asociados a pagos.",
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/payments/intents/operational-cases/"
+          }
+        },
+        {
+          "name": "Provider Contracts",
+          "request": {
+            "description": "Inspecciona contratos de provider actualmente expuestos por el backend.",
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/payments/intents/providers/contracts/"
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 - Alerts",
+      "description": "Pruebas de alertas ya creadas por el backend. Usa el helper para capturar alert_id antes de ejecutar acciones.",
+      "item": [
+        {
+          "name": "List Alerts",
+          "request": {
+            "description": "Lista alertas visibles del usuario.",
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/alerts/alertas/"
+          }
+        },
+        {
+          "name": "Get First Alert Id Helper",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json();",
+                  "  if (Array.isArray(data) && data.length > 0) {",
+                  "    pm.collectionVariables.set('alert_id', data[0].id || '');",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Helper para guardar alert_id con la primera alerta encontrada.",
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/alerts/alertas/"
+          }
+        },
+        {
+          "name": "Mark Alert Read",
+          "request": {
+            "description": "Marca como leida la alerta guardada en alert_id.",
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/alerts/alertas/{{alert_id}}/mark_read/"
+          }
+        },
+        {
+          "name": "Mark Alert Resolved",
+          "request": {
+            "description": "Marca como resuelta la alerta guardada en alert_id.",
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/alerts/alertas/{{alert_id}}/mark_resolved/"
+          }
+        },
+        {
+          "name": "Snooze Alert",
+          "request": {
+            "description": "Pospone una alerta hasta la fecha ISO enviada.",
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"until\": \"2026-04-07T09:00:00-05:00\"\n}"
+            },
+            "url": "{{base_url}}/api/alerts/alertas/{{alert_id}}/snooze/"
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 - Notifications",
+      "description": "Inbox persistente. Igual que en Alerts, usa el helper para guardar notification_id antes de probar mark_read.",
+      "item": [
+        {
+          "name": "List Deliveries",
+          "request": {
+            "description": "Lista entregas/notificaciones del usuario.",
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/notifications/deliveries/entregas-notificacion/"
+          }
+        },
+        {
+          "name": "Get First Notification Id Helper",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json();",
+                  "  if (Array.isArray(data) && data.length > 0) {",
+                  "    pm.collectionVariables.set('notification_id', data[0].id || '');",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Helper para capturar notification_id.",
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/notifications/deliveries/entregas-notificacion/"
+          }
+        },
+        {
+          "name": "Mark Delivery Read",
+          "request": {
+            "description": "Marca una entrega como leida.",
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/notifications/deliveries/entregas-notificacion/{{notification_id}}/mark_read/"
+          }
+        },
+        {
+          "name": "Mark All Read",
+          "request": {
+            "description": "Marca hasta 500 notificaciones como leidas.",
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/notifications/deliveries/entregas-notificacion/mark_all_read/"
+          }
+        },
+        {
+          "name": "Delivery Stats",
+          "request": {
+            "description": "Resumen basico de total, unread y read.",
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/notifications/deliveries/entregas-notificacion/stats/"
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 - Realtime",
+      "description": "Feed tecnico persistido para polling. Ideal para ver señales derivadas de cuentas y pagos.",
+      "item": [
+        {
+          "name": "List Signals",
+          "request": {
+            "description": "Lista senales realtime del usuario.",
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/realtime/consumers/senales-realtime/"
+          }
+        },
+        {
+          "name": "Latest Signal",
+          "request": {
+            "description": "Devuelve la ultima señal disponible o 204 si no hay ninguna.",
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/realtime/consumers/senales-realtime/latest/"
+          }
+        },
+        {
+          "name": "Signal Stats",
+          "request": {
+            "description": "Resumen de cantidad total, canales y eventos.",
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/realtime/consumers/senales-realtime/stats/"
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 - Support",
+      "description": "Bloque de apoyo operativo. Útil para inspección y soporte si tu usuario tiene acceso suficiente.",
+      "item": [
+        {
+          "name": "Audit Log",
+          "request": {
+            "description": "Consulta auditoría funcional desde el backend.",
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/support/audit/auditoria/"
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 - Internal",
+      "description": "Solo para debugging de endpoints internos. Requiere que internal_token exista en settings. Si no, verás 403.",
+      "item": [
+        {
+          "name": "Alerts AI Worker",
+          "request": {
+            "description": "Endpoint interno de worker IA para alertas.",
+            "method": "POST",
+            "header": [
+              { "key": "X-Vexxo-Internal-Token", "value": "{{internal_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"alert_id\": {{alert_id}},\n  \"trigger\": \"postman\"\n}"
+            },
+            "url": "{{base_url}}/api/alerts/internal/ai-worker/"
+          }
+        },
+        {
+          "name": "Internal Account Sync Stub",
+          "request": {
+            "description": "Stub interno de sync bancario. Requiere internal_token y account_id.",
+            "method": "POST",
+            "header": [
+              { "key": "X-Vexxo-Internal-Token", "value": "{{internal_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"account_id\": {{account_id}},\n  \"mode\": \"success\",\n  \"sync_cursor\": \"cursor-postman-001\",\n  \"duration_ms\": 250,\n  \"provider_metadata\": {\n    \"source\": \"postman\"\n  }\n}"
+            },
+            "url": "{{base_url}}/internal/integrations/banks/accounts/sync/"
+          }
+        },
+        {
+          "name": "Internal Account Intelligence Refresh",
+          "request": {
+            "description": "Refresh interno de inteligencia para owner_id fijo o ajustado manualmente.",
+            "method": "POST",
+            "header": [
+              { "key": "X-Vexxo-Internal-Token", "value": "{{internal_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"owner_id\": 1\n}"
+            },
+            "url": "{{base_url}}/internal/integrations/banks/accounts/intelligence/refresh/"
+          }
+        }
+      ]
+    }
+  ]
+}
