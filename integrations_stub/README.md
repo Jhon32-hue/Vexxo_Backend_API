@@ -81,3 +81,36 @@ La regla sigue siendo:
 - el stub recibe y traduce
 - el servicio canonico del dominio decide
 - la extraccion a Cloud Run futuro debe ser incremental, no traumática
+
+## Nota operativa despues de la ultima pasada
+
+`integrations_stub` sigue siendo temporal.
+
+La deuda principal no cambio:
+
+- todavia no existe un `integration_service` real y separado consumiendo
+  Pub/Sub o Cloud Tasks como frontera cloud canonica
+- el backend sigue siendo el productor de eventos y la fuente de verdad
+- el stub no debe crecer como segundo backend ni como dominio paralelo
+
+La mejora actual del proyecto fue otra:
+
+- acercar los bounded contexts al mismo nivel de outbox, retry, locking,
+  idempotencia y trazabilidad
+- dejar un intake canonico interno en `transactions` para que el futuro
+  `integration_service` no escriba ledger directo
+- dejar mas claro que la separacion fisica de integraciones sigue pendiente
+
+Para `transactions`, la frontera esperada ahora ya existe en el backend:
+
+- `POST /api/internal/transactions/intake/batches/`
+- `POST /api/internal/transactions/intake/batches/{id}/apply/`
+- `POST /api/internal/transactions/intake/row/`
+- `POST /api/internal/transactions/intake/reconcile/`
+- `POST /api/internal/transactions/reconciliation/issues/{id}/resolve/`
+
+Y el stub de bancos ya tiene un puente interno preparado para ese flujo:
+
+- puede recibir batches normalizados de movimientos
+- delega al intake canonico de `finance.transactions`
+- puede cerrar `TransactionReconciliationIssue` con acciones formales

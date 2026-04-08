@@ -8,17 +8,26 @@ from django.utils import timezone
 from alerts.alerts.services import create_alert
 from finance.accounts.models.account import Account
 from finance.transactions.Models.transacciones import ScheduledPayment, Transaction
-from finance.transactions.domain_events import TransactionDomainEventTypes
+from finance.transactions.domain_events import TransactionDomainEventTypes, serialize_transaction_state
 from finance.transactions.event_service import publish_transaction_event_after_commit
 from finance.transactions.transaction_state_service import is_transaction_countable_for_ledger
+from finance.transactions.transaction_write_service import create_manual_transaction, save_transaction_with_events
 from finance.transactions.utils_limits import account_month_expense_total
 
 
 @db_tx.atomic
 def reassign_transaction_account(*, tx: Transaction, new_account: Account, actor) -> Transaction:
+    before = serialize_transaction_state(tx)
     previous_account_id = tx.account_id
     tx.account = new_account
-    tx.save(update_fields=["account", "updated_at"])
+    tx = save_transaction_with_events(
+        instance=tx,
+        actor=actor,
+        before=before,
+        created=False,
+        event_source="finance.transactions.transaction_actions_service.reassign_transaction_account",
+        update_fields=["account", "updated_at"],
+    )
     publish_transaction_event_after_commit(
         event_type=TransactionDomainEventTypes.TRANSACTION_ACCOUNT_REASSIGNED,
         payload={
@@ -37,15 +46,23 @@ def reassign_transaction_account(*, tx: Transaction, new_account: Account, actor
 def confirm_transaction(*, tx: Transaction, actor) -> Transaction:
     if tx.confirmed and tx.status in [Transaction.Status.POSTED, Transaction.Status.RECONCILED]:
         return tx
+    before = serialize_transaction_state(tx)
     tx.confirmed = True
     if tx.status == Transaction.Status.PENDING:
         tx.status = Transaction.Status.POSTED
-    tx.save(update_fields=["confirmed", "status", "updated_at"])
-    return tx
+    return save_transaction_with_events(
+        instance=tx,
+        actor=actor,
+        before=before,
+        created=False,
+        event_source="finance.transactions.transaction_actions_service.confirm_transaction",
+        update_fields=["confirmed", "status", "updated_at"],
+    )
 
 
 @db_tx.atomic
 def add_transaction_comment(*, tx: Transaction, text: str, actor) -> Transaction:
+    before = serialize_transaction_state(tx)
     comments = list(tx.comments or [])
     comments.append(
         {
@@ -55,8 +72,14 @@ def add_transaction_comment(*, tx: Transaction, text: str, actor) -> Transaction
         }
     )
     tx.comments = comments
-    tx.save(update_fields=["comments", "updated_at"])
-    return tx
+    return save_transaction_with_events(
+        instance=tx,
+        actor=actor,
+        before=before,
+        created=False,
+        event_source="finance.transactions.transaction_actions_service.add_transaction_comment",
+        update_fields=["comments", "updated_at"],
+    )
 
 
 @db_tx.atomic
@@ -65,21 +88,33 @@ def register_transaction_reimbursement(*, expense: Transaction, amount=None, dat
         return expense.reimbursement_transaction
     resolved_amount = Decimal(str(amount)) if amount is not None else expense.amount
     resolved_date = date or timezone.now().date()
-    income_tx = Transaction.objects.create(
-        owner=expense.owner,
-        type=Transaction.Type.INCOME,
-        status=Transaction.Status.POSTED,
-        amount=resolved_amount,
-        date=resolved_date,
-        account=expense.account,
-        vendor=expense.vendor,
-        source="reimbursement",
-        notes=notes or f"Reembolso de gasto #{expense.id}",
-        confirmed=True,
+    income_tx = create_manual_transaction(
+        validated_data={
+            "owner": expense.owner,
+            "type": Transaction.Type.INCOME,
+            "status": Transaction.Status.POSTED,
+            "amount": resolved_amount,
+            "date": resolved_date,
+            "account": expense.account,
+            "vendor": expense.vendor,
+            "source": "reimbursement",
+            "notes": notes or f"Reembolso de gasto #{expense.id}",
+            "confirmed": True,
+        },
+        actor=actor,
+        event_source="finance.transactions.transaction_actions_service.register_transaction_reimbursement.create",
     )
+    before = serialize_transaction_state(expense)
     expense.reimbursed = True
     expense.reimbursement_transaction = income_tx
-    expense.save(update_fields=["reimbursed", "reimbursement_transaction", "updated_at"])
+    save_transaction_with_events(
+        instance=expense,
+        actor=actor,
+        before=before,
+        created=False,
+        event_source="finance.transactions.transaction_actions_service.register_transaction_reimbursement.update_expense",
+        update_fields=["reimbursed", "reimbursement_transaction", "updated_at"],
+    )
     publish_transaction_event_after_commit(
         event_type=TransactionDomainEventTypes.TRANSACTION_REIMBURSEMENT_RECORDED,
         payload={
@@ -97,21 +132,25 @@ def register_transaction_reimbursement(*, expense: Transaction, amount=None, dat
 def materialize_transaction_from_legacy_scheduled_payment(*, scheduled_payment: ScheduledPayment) -> Transaction:
     if scheduled_payment.status == ScheduledPayment.Status.PAID:
         raise ValueError("Este pago programado ya esta marcado como pagado.")
-    tx = Transaction.objects.create(
-        owner=scheduled_payment.owner,
-        type=Transaction.Type.EXPENSE,
-        status=Transaction.Status.POSTED,
-        amount=scheduled_payment.amount,
-        date=scheduled_payment.due_date,
-        account=scheduled_payment.account,
-        category=scheduled_payment.category,
-        vendor=scheduled_payment.vendor,
-        debt=scheduled_payment.debt,
-        installment=scheduled_payment.installment,
-        scheduled_payment=scheduled_payment,
-        source="scheduled_payment",
-        notes=f"Pago programado legacy: {scheduled_payment.name}",
-        confirmed=True,
+    tx = create_manual_transaction(
+        validated_data={
+            "owner": scheduled_payment.owner,
+            "type": Transaction.Type.EXPENSE,
+            "status": Transaction.Status.POSTED,
+            "amount": scheduled_payment.amount,
+            "date": scheduled_payment.due_date,
+            "account": scheduled_payment.account,
+            "category": scheduled_payment.category,
+            "vendor": scheduled_payment.vendor,
+            "debt": scheduled_payment.debt,
+            "installment": scheduled_payment.installment,
+            "scheduled_payment": scheduled_payment,
+            "source": "scheduled_payment",
+            "notes": f"Pago programado legacy: {scheduled_payment.name}",
+            "confirmed": True,
+        },
+        actor=None,
+        event_source="finance.transactions.transaction_actions_service.materialize_transaction_from_legacy_scheduled_payment.create",
     )
     tx.tags.set(scheduled_payment.tags.all())
     scheduled_payment.status = ScheduledPayment.Status.PAID

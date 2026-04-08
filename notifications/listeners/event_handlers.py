@@ -1,5 +1,5 @@
 """
-Listeners persistentes de notificaciones derivados de eventos de accounts.
+Listeners persistentes de notificaciones derivados de eventos de dominio.
 
 Descripcion general:
 - convierte eventos del dominio en items de inbox persistentes
@@ -9,7 +9,7 @@ Analisis detallado:
 - la idea no es reemplazar alertas; las notificaciones son una capa de
   comunicacion/inbox para el usuario
 - cada listener decide a quien notificar y con que mensaje segun el tipo de
-  evento
+  evento, hoy principalmente para `accounts` y `payments`
 """
 
 from __future__ import annotations
@@ -31,12 +31,22 @@ def _load_user(user_id):
     return User.objects.filter(pk=user_id).first()
 
 
-def _notify_user(*, user_id, title: str, message: str, event: VexxoAppDomainEvent, payload: dict):
+def _notify_user(
+    *,
+    user_id,
+    title: str,
+    message: str,
+    event: VexxoAppDomainEvent,
+    payload: dict,
+    dedupe_key: str = "",
+):
     user = _load_user(user_id)
     if not user:
         return
     target_user_id = payload.get("user_id") or payload.get("owner_id") or user.id
-    dedupe_key = f"{event.type}:{payload.get('account_id')}:{target_user_id}:{event.correlation_id or event.id}"
+    normalized_dedupe = dedupe_key or (
+        f"{event.type}:{payload.get('account_id')}:{target_user_id}:{event.correlation_id or event.id}"
+    )
     create_notification_delivery(
         owner=user,
         title=title,
@@ -44,13 +54,50 @@ def _notify_user(*, user_id, title: str, message: str, event: VexxoAppDomainEven
         event_type=event.type,
         source="notifications.listeners.event_handlers",
         payload=payload,
-        dedupe_key=dedupe_key,
+        dedupe_key=normalized_dedupe,
     )
     logger.info(
         "[notifications][persisted][corr=%s] event=%s owner_id=%s",
         event.correlation_id,
         event.type,
         user.id,
+    )
+
+
+def _format_money(payload: dict) -> str:
+    amount = str(payload.get("amount") or "").strip()
+    currency = str(payload.get("currency") or "").strip().upper()
+    if amount and currency:
+        return f"{amount} {currency}"
+    if amount:
+        return amount
+    return "el monto solicitado"
+
+
+def _payment_provider_label(payload: dict) -> str:
+    provider = str(payload.get("provider") or "").strip()
+    return provider if provider else "el proveedor"
+
+
+@subscribe(
+    EventNames.ACCOUNT_CREATED,
+    name="notifications.handle_account_created",
+    run_async=True,
+    contexts=[EventContext.ACCOUNTS],
+    priority=EventPriority.NORMAL,
+)
+def handle_account_created(event: VexxoAppDomainEvent) -> None:
+    payload = event.payload or {}
+    account_name = payload.get("name") or "financiera"
+    owner_id = payload.get("owner_id")
+    account_id = payload.get("account_id")
+    _notify_user(
+        user_id=owner_id,
+        title="Cuenta creada",
+        message=f"La cuenta {account_name} ya esta disponible en tu espacio financiero.",
+        event=event,
+        payload=payload,
+        dedupe_key=f"{event.type}:{account_id}:{owner_id}",
     )
 
 
@@ -159,4 +206,57 @@ def handle_account_sync_succeeded(event: VexxoAppDomainEvent) -> None:
         message=f"La cuenta {payload.get('name') or 'financiera'} se sincronizo correctamente.",
         event=event,
         payload=payload,
+    )
+
+
+@subscribe(
+    EventNames.PAYMENT_INTENT_REQUIRES_ACTION,
+    name="notifications.handle_payment_intent_requires_action",
+    run_async=True,
+    contexts=[EventContext.PAYMENTS],
+    priority=EventPriority.HIGH,
+)
+def handle_payment_intent_requires_action(event: VexxoAppDomainEvent) -> None:
+    payload = event.payload or {}
+    owner_id = payload.get("owner_id")
+    payment_intent_id = payload.get("payment_intent_id")
+    _notify_user(
+        user_id=owner_id,
+        title="Tu pago requiere accion",
+        message=(
+            f"El pago por {_format_money(payload)} con {_payment_provider_label(payload)} "
+            "requiere una accion adicional para continuar."
+        ),
+        event=event,
+        payload=payload,
+        dedupe_key=f"{event.type}:{payment_intent_id}:{owner_id}",
+    )
+
+
+@subscribe(
+    EventNames.PAYMENT_INTENT_FAILED,
+    name="notifications.handle_payment_intent_failed",
+    run_async=True,
+    contexts=[EventContext.PAYMENTS],
+    priority=EventPriority.HIGH,
+)
+def handle_payment_intent_failed(event: VexxoAppDomainEvent) -> None:
+    payload = event.payload or {}
+    owner_id = payload.get("owner_id")
+    payment_intent_id = payload.get("payment_intent_id")
+    failure_message = str(payload.get("failure_message") or "").strip()
+    if failure_message:
+        message = (
+            f"El pago por {_format_money(payload)} con {_payment_provider_label(payload)} fallo: "
+            f"{failure_message}"
+        )
+    else:
+        message = f"El pago por {_format_money(payload)} con {_payment_provider_label(payload)} no pudo completarse."
+    _notify_user(
+        user_id=owner_id,
+        title="Pago fallido",
+        message=message,
+        event=event,
+        payload=payload,
+        dedupe_key=f"{event.type}:{payment_intent_id}:{owner_id}",
     )

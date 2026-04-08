@@ -19,7 +19,7 @@ import uuid
 
 from django.core.exceptions import ValidationError
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Q
 from django.utils import timezone
 
@@ -32,6 +32,7 @@ class IdentityDomainEventOutbox(models.Model):
         PROCESSING = "processing", "Processing"
         PUBLISHED = "published", "Published"
         FAILED = "failed", "Failed"
+        DEAD_LETTER = "dead_letter", "Dead letter"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     aggregate_type = models.CharField(max_length=64)
@@ -41,23 +42,29 @@ class IdentityDomainEventOutbox(models.Model):
     priority = models.PositiveSmallIntegerField(default=int(EventPriority.NORMAL))
     correlation_id = models.CharField(max_length=64, blank=True, default="")
     causation_id = models.CharField(max_length=64, blank=True, default="")
+    request_id = models.CharField(max_length=64, blank=True, default="")
     payload = models.JSONField(default=dict)
     metadata = models.JSONField(default=dict)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
     occurred_at = models.DateTimeField(auto_now_add=True)
     published_at = models.DateTimeField(null=True, blank=True)
     retry_count = models.PositiveIntegerField(default=0)
+    next_attempt_at = models.DateTimeField(null=True, blank=True)
     last_error = models.TextField(blank=True, default="")
     locked_at = models.DateTimeField(null=True, blank=True)
     locked_by = models.CharField(max_length=64, blank=True, default="")
+    dead_lettered_at = models.DateTimeField(null=True, blank=True)
+    dead_letter_reason = models.TextField(blank=True, default="")
 
     class Meta:
         ordering = ["occurred_at"]
         indexes = [
             models.Index(fields=["status", "occurred_at"]),
+            models.Index(fields=["status", "next_attempt_at"]),
             models.Index(fields=["event_type", "occurred_at"]),
             models.Index(fields=["aggregate_type", "aggregate_id"]),
             models.Index(fields=["correlation_id"]),
+            models.Index(fields=["request_id"]),
         ]
         constraints = [
             models.CheckConstraint(
@@ -85,6 +92,8 @@ class IdentityDomainEventOutbox(models.Model):
             raise ValidationError({"published_at": "published_at es requerido cuando status=published."})
         if self.status == self.Status.PROCESSING and not (self.locked_at and self.locked_by):
             raise ValidationError({"status": "status=processing requiere lock."})
+        if self.status == self.Status.DEAD_LETTER and self.dead_lettered_at is None:
+            raise ValidationError({"dead_lettered_at": "dead_lettered_at es requerido cuando status=dead_letter."})
 
     def save(self, *args, **kwargs):
         self.aggregate_type = (self.aggregate_type or "").strip()
@@ -93,12 +102,16 @@ class IdentityDomainEventOutbox(models.Model):
         self.idempotency_key = (self.idempotency_key or "").strip()
         if self.published_at and self.status != self.Status.PUBLISHED:
             self.status = self.Status.PUBLISHED
+        if self.dead_lettered_at and self.status != self.Status.DEAD_LETTER:
+            self.status = self.Status.DEAD_LETTER
         if self.locked_at and self.locked_by and self.status == self.Status.PENDING:
             self.status = self.Status.PROCESSING
         if not self.locked_at and self.status == self.Status.PROCESSING:
             self.status = self.Status.PENDING
         if self.status == self.Status.PUBLISHED:
             self.last_error = ""
+        if self.status == self.Status.DEAD_LETTER:
+            self.next_attempt_at = None
         if not self.locked_at:
             self.locked_by = ""
         super().save(*args, **kwargs)
@@ -114,18 +127,95 @@ class IdentityDomainEventOutbox(models.Model):
     def mark_published(self, commit: bool = True):
         self.status = self.Status.PUBLISHED
         self.published_at = timezone.now()
+        self.next_attempt_at = None
         self.last_error = ""
+        self.dead_lettered_at = None
+        self.dead_letter_reason = ""
         self.release_lock(commit=False)
         if commit:
-            self.save(update_fields=["status", "published_at", "last_error", "locked_at", "locked_by"])
+            self.save(
+                update_fields=[
+                    "status",
+                    "published_at",
+                    "next_attempt_at",
+                    "last_error",
+                    "dead_lettered_at",
+                    "dead_letter_reason",
+                    "locked_at",
+                    "locked_by",
+                ]
+            )
 
-    def mark_failed(self, error: str, commit: bool = True):
+    def mark_dead_letter(self, reason: str, commit: bool = True):
+        self.status = self.Status.DEAD_LETTER
+        self.dead_lettered_at = timezone.now()
+        self.dead_letter_reason = (reason or "")[:2000]
+        self.last_error = self.dead_letter_reason
+        self.next_attempt_at = None
+        self.release_lock(commit=False)
+        if commit:
+            self.save(
+                update_fields=[
+                    "status",
+                    "next_attempt_at",
+                    "dead_lettered_at",
+                    "dead_letter_reason",
+                    "last_error",
+                    "locked_at",
+                    "locked_by",
+                ]
+            )
+
+    def mark_failed(self, error: str, *, max_retries: int = 10, commit: bool = True):
         self.status = self.Status.FAILED
         self.retry_count = int(self.retry_count or 0) + 1
         self.last_error = (error or "")[:2000]
         self.release_lock(commit=False)
+        if self.retry_count >= max(1, int(max_retries or 10)):
+            self.mark_dead_letter(
+                f"{self.last_error} | retries_exhausted={self.retry_count}",
+                commit=commit,
+            )
+            return
+        delay_seconds = min(300, 2 ** min(self.retry_count, 8))
+        self.next_attempt_at = timezone.now() + timezone.timedelta(seconds=delay_seconds)
         if commit:
-            self.save(update_fields=["status", "retry_count", "last_error", "locked_at", "locked_by"])
+            self.save(
+                update_fields=[
+                    "status",
+                    "retry_count",
+                    "next_attempt_at",
+                    "last_error",
+                    "locked_at",
+                    "locked_by",
+                ]
+            )
+
+    def claim_for_processing(self, *, worker_id: str) -> bool:
+        if self.published_at:
+            return False
+        now = timezone.now()
+        stale_threshold = now - timezone.timedelta(minutes=15)
+        with transaction.atomic():
+            updated = (
+                self.__class__.objects.filter(pk=self.pk, published_at__isnull=True)
+                .filter(
+                    Q(status__in=[self.Status.PENDING, self.Status.FAILED])
+                    | Q(status=self.Status.PROCESSING, locked_at__lte=stale_threshold)
+                )
+                .filter(Q(next_attempt_at__isnull=True) | Q(next_attempt_at__lte=now) | Q(status=self.Status.PROCESSING))
+                .update(
+                    status=self.Status.PROCESSING,
+                    locked_at=now,
+                    locked_by=(worker_id or "")[:64],
+                )
+            )
+        if updated:
+            self.status = self.Status.PROCESSING
+            self.locked_at = now
+            self.locked_by = (worker_id or "")[:64]
+            return True
+        return False
 
 
 class UserProductUsageProjection(models.Model):

@@ -81,6 +81,7 @@ def request_account_intelligence_refresh(*, owner_id: str | int | None, event=No
 
     with transaction.atomic():
         state = _load_dispatch_state(owner_id=owner_id)
+        was_pending = bool(state.pending_request)
 
         recent_points = [
             dt
@@ -95,7 +96,7 @@ def request_account_intelligence_refresh(*, owner_id: str | int | None, event=No
                 and max(0, int((now - recent_reference).total_seconds())) < window_seconds
             )
 
-        state.pending_request = True
+        state.pending_request = True if should_dispatch else was_pending
         state.request_count = int(state.request_count or 0) + 1
         state.last_requested_at = now
         state.last_event_type = details["event_type"][:128]

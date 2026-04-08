@@ -32,6 +32,7 @@ from finance.transactions.transaction_actions_service import (
     reassign_transaction_account,
     register_transaction_reimbursement,
 )
+from finance.transactions.transaction_write_service import delete_transaction
 from finance.transactions.transaction_validation_service import (
     participant_scope_for_user,
     scheduled_payment_scope_for_user,
@@ -131,19 +132,15 @@ class TransactionViewSet(OwnerScopedMixin, viewsets.ModelViewSet):
         return _apply_temporal_filters(queryset, self.request.query_params, field_name="date")
 
     def perform_create(self, serializer):
-        account = serializer.validated_data.get("account")
-        with bind_transaction_actor(self.request.user):
-            serializer.save(owner=account.owner if account is not None else self.request.user)
+        serializer.save()
 
     def perform_update(self, serializer):
-        with bind_transaction_actor(self.request.user):
-            serializer.save()
+        serializer.save()
 
     def perform_destroy(self, instance):
         if not user_can_post_transactions(self.request.user, instance.account):
             raise PermissionDenied("No tienes permisos para eliminar transacciones en esta cuenta.")
-        with bind_transaction_actor(self.request.user):
-            super().perform_destroy(instance)
+        delete_transaction(instance=instance, actor=self.request.user)
 
     @db_tx.atomic
     @action(detail=True, methods=["post"])

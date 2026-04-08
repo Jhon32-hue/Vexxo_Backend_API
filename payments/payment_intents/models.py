@@ -11,7 +11,7 @@ import uuid
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Q
 from django.utils import timezone
 
@@ -420,7 +420,19 @@ class PaymentDomainEventOutbox(models.Model):
             self.status = self.Status.PUBLISHED
         if self.dead_lettered_at and self.status != self.Status.DEAD_LETTER:
             self.status = self.Status.DEAD_LETTER
+        if self.locked_at and self.locked_by and self.status in {self.Status.PENDING, self.Status.FAILED}:
+            self.status = self.Status.PROCESSING
+        if not self.locked_at and self.status == self.Status.PROCESSING:
+            self.status = self.Status.PENDING
         super().save(*args, **kwargs)
+
+    def release_lock(self, commit: bool = True):
+        self.locked_at = None
+        self.locked_by = ""
+        if self.status == self.Status.PROCESSING:
+            self.status = self.Status.PENDING
+        if commit:
+            self.save(update_fields=["status", "locked_at", "locked_by"])
 
     def mark_published(self, commit: bool = True):
         self.status = self.Status.PUBLISHED
@@ -448,8 +460,7 @@ class PaymentDomainEventOutbox(models.Model):
     def mark_failed(self, error: str, *, max_retries: int = 10, commit: bool = True):
         self.retry_count = int(self.retry_count or 0) + 1
         self.last_error = (error or "")[:2000]
-        self.locked_at = None
-        self.locked_by = ""
+        self.release_lock(commit=False)
         if self.retry_count >= max(1, int(max_retries or 10)):
             self.status = self.Status.DEAD_LETTER
             self.dead_lettered_at = timezone.now()
@@ -470,7 +481,8 @@ class PaymentDomainEventOutbox(models.Model):
                 )
             return
         self.status = self.Status.FAILED
-        self.next_attempt_at = timezone.now()
+        delay_seconds = min(300, 2 ** min(self.retry_count, 8))
+        self.next_attempt_at = timezone.now() + timezone.timedelta(seconds=delay_seconds)
         if commit:
             self.save(
                 update_fields=[
@@ -482,6 +494,32 @@ class PaymentDomainEventOutbox(models.Model):
                     "next_attempt_at",
                 ]
             )
+
+    def claim_for_processing(self, *, worker_id: str) -> bool:
+        if self.published_at:
+            return False
+        now = timezone.now()
+        stale_threshold = now - timezone.timedelta(minutes=15)
+        with transaction.atomic():
+            updated = (
+                self.__class__.objects.filter(pk=self.pk, published_at__isnull=True)
+                .filter(
+                    Q(status__in=[self.Status.PENDING, self.Status.FAILED])
+                    | Q(status=self.Status.PROCESSING, locked_at__lte=stale_threshold)
+                )
+                .filter(Q(next_attempt_at__isnull=True) | Q(next_attempt_at__lte=now) | Q(status=self.Status.PROCESSING))
+                .update(
+                    status=self.Status.PROCESSING,
+                    locked_at=now,
+                    locked_by=(worker_id or "")[:64],
+                )
+            )
+        if updated:
+            self.status = self.Status.PROCESSING
+            self.locked_at = now
+            self.locked_by = (worker_id or "")[:64]
+            return True
+        return False
 
 
 class PaymentProviderCallbackReceipt(models.Model):

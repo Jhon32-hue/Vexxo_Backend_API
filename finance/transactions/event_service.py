@@ -4,16 +4,32 @@ import hashlib
 import json
 import logging
 
+from django.conf import settings
+from django.db import transaction
+
 from common.domain_events import EventContext, EventPriority, publish_domain_event
 from finance.transactions.Models.outbox import TransactionDomainEventOutbox
 
 logger = logging.getLogger(__name__)
 
 
+def _local_autopublish_enabled() -> bool:
+    return bool(getattr(settings, "DOMAIN_EVENTS_LOCAL_AUTOPUBLISH_ENABLED", False))
+
+
 def stable_transaction_event_key(event_type: str, aggregate_type: str, aggregate_id: str | int, payload: dict) -> str:
-    raw = json.dumps(payload or {}, sort_keys=True, default=str)
+    raw = json.dumps(
+        {
+            "event_type": str(event_type or ""),
+            "aggregate_type": str(aggregate_type or ""),
+            "aggregate_id": str(aggregate_id or ""),
+            "payload": payload or {},
+        },
+        sort_keys=True,
+        default=str,
+    )
     digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
-    return f"{event_type}:{aggregate_type}:{aggregate_id}:{digest}"
+    return f"txevt:{digest}"
 
 
 def enqueue_transaction_domain_event(
@@ -106,7 +122,7 @@ def publish_transaction_event_after_commit(
         aggregate_id=aggregate_id or "transactions",
         payload=payload or {},
     )
-    return enqueue_transaction_domain_event(
+    event = enqueue_transaction_domain_event(
         aggregate_type=aggregate_type or "transaction",
         aggregate_id=aggregate_id or "transactions",
         event_type=event_type,
@@ -116,3 +132,14 @@ def publish_transaction_event_after_commit(
         causation_id=causation_id,
         metadata=event_metadata,
     )
+    if _local_autopublish_enabled() and not getattr(event, "_local_publish_scheduled", False):
+        event._local_publish_scheduled = True
+
+        def _publish_local_event() -> None:
+            fresh = TransactionDomainEventOutbox.objects.filter(pk=event.pk).first()
+            if fresh is None or fresh.published_at:
+                return
+            publish_transaction_outbox_event(fresh)
+
+        transaction.on_commit(_publish_local_event)
+    return event

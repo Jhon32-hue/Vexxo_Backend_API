@@ -326,6 +326,8 @@ Ya existe:
 - artifacts base de settlement y operational cases
 - materializacion contable al confirmar el pago
 - servicios base de payout con guard y eventos
+- claim de outbox para workers concurrentes
+- backoff exponencial y respeto de `next_attempt_at`
 
 Todavia falta:
 
@@ -335,6 +337,7 @@ Todavia falta:
 - conciliacion externa contra APIs reales del operador
 - dispute/refund workflows profundos con soporte/ops
 - webhooks publicos definitivos si el operador no usa callback interno
+- trazabilidad operativa tan rica como `accounts` en publisher, duracion y fases
 
 ## Como agregar un proveedor nuevo
 
@@ -371,6 +374,27 @@ semantica de pago externo. Ese flujo sigue siendo contable/manual.
 
 La segunda no reemplaza la primera. Solo evita que mobile/web dependa del bus
 de dominio para feedback interactivo.
+
+## Nota operativa
+
+`payments` ya no procesa el outbox de forma tan ingenua:
+
+- los workers pueden reclamar filas con lock
+- se respetan intentos futuros
+- hay recuperacion de locks stale
+
+Sigue pendiente igualar por completo la observabilidad de `accounts`.
+
+La ultima pasada de endurecimiento ya dejo:
+
+- `claim_for_processing()` en el outbox
+- recuperacion de locks stale
+- backoff exponencial con `next_attempt_at`
+
+Lo que todavia no conviene vender como cerrado es:
+
+- trazabilidad operativa por publisher/fase tan rica como `accounts`
+- paridad completa de observabilidad entre bounded contexts
 
 ## Encaje Con GCP
 

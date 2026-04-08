@@ -92,6 +92,76 @@ Se usa para:
 - desacoplar listeners locales y dispatchers externos
 - dejar workers dedicados para Cloud Run, Pub/Sub o jobs batch
 
+### `TransactionIntakeBatch`
+
+Representa un lote recibido desde una fuente externa antes de tocar el ledger.
+
+Guarda:
+
+- `provider`
+- `source`
+- `provider_account_id`
+- `cursor`
+- `request_id`
+- `idempotency_key`
+- `status`
+- `row_count`
+- `received_at` / `applied_at`
+
+Su trabajo es separar:
+
+- "recibi un lote externo"
+- "lo procese"
+- "lo aplique o lo deje parcial/fallido"
+
+### `TransactionIntakeReceipt`
+
+Representa una fila individual normalizada de una fuente externa.
+
+Guarda:
+
+- identidad externa
+- `canonical_fingerprint`
+- payload normalizado
+- payload crudo
+- `status`
+- `duplicate_of`
+- `materialized_transaction`
+- `reconciliation_issue`
+
+Esta tabla existe para que un retry, re-sync o reenvio del proveedor no toque
+el ledger directo ni pierda trazabilidad.
+
+### `TransactionSourceLink`
+
+Vinculo estable entre una `Transaction` y su identidad externa.
+
+Es la pieza que sostiene la idempotencia fuerte para fuentes no manuales:
+
+- `provider + source + provider_account_id + external_id`
+- o `provider + source + provider_account_id + canonical_fingerprint`
+
+Con eso el sistema ya no depende solo de buscar `provider + external_id` en la
+tabla del ledger.
+
+### `TransactionReconciliationIssue`
+
+Registro formal de correcciones o reversos que no conviene aplicar
+silenciosamente sobre una transaccion ya contable.
+
+Se usa para casos como:
+
+- cambio material de monto/fecha/cuenta sobre una transaccion ya countable
+- reverso o cancelacion tardia informada por el proveedor
+
+Ahora tambien guarda el cierre formal del caso:
+
+- `resolution_action`
+- `resolution_notes`
+- `resolution_payload`
+- `resolved_by`
+- `resolution_transaction`
+
 ## Semantica de `status + confirmed`
 
 Esto quedo formalizado en el modelo y en `transaction_state_service.py`.
@@ -112,7 +182,7 @@ Eso evita ambiguedad entre "existe un registro" y "ya es verdad contable".
 
 ## Flujos principales
 
-### 1. Transaccion manual o importada
+### 1. Transaccion manual
 
 1. la API crea o actualiza `Transaction`
 2. serializer valida reglas de acceso a cuenta, tipo, deuda, categoria y limites
@@ -120,6 +190,28 @@ Eso evita ambiguedad entre "existe un registro" y "ya es verdad contable".
 4. signal fino encola `transactions.*` en outbox
 5. worker publica
 6. listeners locales disparan side effects desacoplados
+
+### 1.a. Intake externo canonico
+
+1. un `integration_service` o worker interno llama un endpoint interno de
+   intake
+2. el backend persiste `TransactionIntakeBatch`
+3. el backend persiste `TransactionIntakeReceipt`
+4. el servicio de intake deduplica por identidad externa o fingerprint
+5. decide:
+   - `duplicate`
+   - `noop`
+   - `materialized`
+   - `updated`
+   - `corrected`
+   - `reversed`
+6. solo despues materializa o actualiza `Transaction`
+7. publica eventos `transactions.*` desde el mismo outbox del contexto
+
+Regla importante:
+
+- open banking e imports ya no deben crear `Transaction` directo
+- primero pasan por la capa de intake
 
 ### 1.b. Transaccion en cuenta compartida
 
@@ -178,6 +270,20 @@ Servicios clave:
   - agregar comentario
   - registrar reembolso
   - materializar scheduled payment legacy
+- `transaction_intake_service.py`
+  - intake externo canonico
+  - persistencia de batch/receipt
+  - dedupe por source link o fingerprint
+  - decision `noop/create/update/correct/reverse`
+  - reconciliacion basica sin tocar el CRUD manual
+- `transaction_reconciliation_service.py`
+  - resuelve `TransactionReconciliationIssue`
+  - soporta `apply_provider_update`, `create_adjustment`, `create_reversal`
+    e `ignore`
+- `transaction_write_service.py`
+  - mueve el create/update/delete manual de `Transaction`
+  - publica eventos de CRUD de forma explicita
+  - deja signals como fallback para paths aun no migrados
 - `payment_materialization_service.py`
   - reflejo contable desde `payments`
 
@@ -189,7 +295,15 @@ El contexto ya emite eventos canónicos como:
 - `transactions.updated.v1`
 - `transactions.financial.updated.v1`
 - `transactions.deleted.v1`
+- `transactions.intake.batch.received.v1`
+- `transactions.intake.batch.applied.v1`
+- `transactions.intake.batch.failed.v1`
+- `transactions.intake.row.duplicate_detected.v1`
 - `transactions.confirmed.v1`
+- `transactions.imported.v1`
+- `transactions.reconciled.v1`
+- `transactions.corrected.v1`
+- `transactions.reversed.v1`
 - `transactions.account.reassigned.v1`
 - `transactions.reimbursement.recorded.v1`
 - `transactions.participant.created.v1`
@@ -238,6 +352,54 @@ despues del `save()`.
 propaguen `actor_user_id` de forma consistente cuando la mutacion nace desde
 API o acciones del backend.
 
+### Eventos nuevos del intake
+
+Los eventos nuevos no reemplazan `transactions.created.v1` o
+`transactions.financial.updated.v1`; los complementan.
+
+- `transactions.intake.batch.received.v1`
+  - confirma que el backend recibio y persistio el lote externo
+- `transactions.intake.batch.applied.v1`
+  - resume el resultado del procesamiento del lote
+- `transactions.intake.row.duplicate_detected.v1`
+  - deja trazabilidad de reenvios o retries del proveedor
+- `transactions.imported.v1`
+  - marca la primera materializacion contable desde una fuente externa
+- `transactions.reconciled.v1`
+  - marca cambios no destructivos o metadata reconciliada
+- `transactions.corrected.v1`
+  - marca que aparecio una correccion formal pendiente
+- `transactions.reversed.v1`
+  - marca reversos o cancelaciones tardias
+- `transactions.reconciliation.issue.resolved.v1`
+  - marca el cierre formal del issue y su accion de resolucion
+
+### Resolucion formal de reconciliation issues
+
+Cuando ya existe un `TransactionReconciliationIssue`, el cierre ya no es
+informal ni manual fuera del dominio.
+
+Acciones soportadas hoy:
+
+- `apply_provider_update`
+  - solo para cambios que no exigen replacement pair
+- `create_adjustment`
+  - crea ajuste compensatorio simple si el cambio sigue en la misma cuenta/tipo
+  - o crea replacement pair si cambia cuenta/tipo/proveedor
+- `create_reversal`
+  - crea reverso compensatorio formal
+- `ignore`
+  - cierra el issue como ignorado explicitamente
+
+Regla operativa:
+
+- si la correccion cambia cuenta, tipo o proveedor, no se actualiza en sitio el
+  ledger original
+- se usa replacement pair:
+  - reverso compensatorio del hecho viejo
+  - nueva transaccion replacement con el estado correcto
+  - `TransactionSourceLink` se relinka a la nueva transaccion
+
 ## Que sigue en signal y que ya paso a eventos
 
 ### Signal
@@ -247,10 +409,21 @@ Los signals ahora son delgados.
 Su responsabilidad principal es:
 
 - capturar estado anterior
-- detectar create/update/delete
-- encolar evento en outbox
+- servir como fallback para create/update/delete fuera del write service
+- encolar evento en outbox cuando el path aun no fue migrado
 
 No deberian contener logica de negocio pesada.
+
+En esta pasada ya no son el coordinador principal del CRUD manual de
+`Transaction`:
+
+- create/update/delete manual via API pasan por `transaction_write_service.py`
+- acciones manuales clave como `confirm`, `reassign`, `add_comment`,
+  `register_reimbursement` y `materialize_transaction_from_legacy_scheduled_payment`
+  tambien ya publican por write path explicito
+- ese servicio publica los eventos de CRUD de forma explicita
+- los signals quedan para intake, materializaciones y otros paths todavia no
+  migrados
 
 ### Event handlers
 
@@ -281,6 +454,36 @@ Esto no reemplaza una conciliacion global del dominio, pero evita dejar objetos
 derivados en estado viejo cuando una transaccion ya contable cambia despues.
 
 Esto alinea `transactions` con el mismo estilo de `accounts` y `payments`.
+
+## Endpoints internos de intake
+
+Esta capa no es publica para mobile/web.
+
+Rutas internas actuales:
+
+- `POST /api/internal/transactions/intake/batches/`
+  - recibe un lote normalizado
+- `POST /api/internal/transactions/intake/batches/{id}/apply/`
+  - aplica el lote ya persistido
+- `POST /api/internal/transactions/intake/row/`
+  - atajo para una fila unica
+- `POST /api/internal/transactions/intake/reconcile/`
+  - recibe y aplica un lote orientado a re-sync o conciliacion
+- `POST /api/internal/transactions/reconciliation/issues/{id}/resolve/`
+  - cierra un `TransactionReconciliationIssue` con accion formal
+
+Headers obligatorios:
+
+- `X-Vexxo-Internal-Token`
+- `X-Request-Id`
+- `Idempotency-Key`
+
+Regla cloud:
+
+- `integration_service` consume banco/agregador
+- normaliza payload externo
+- llama estos endpoints internos
+- el backend sigue siendo el unico que escribe Cloud SQL
 
 ## Convivencia entre `transactions.ScheduledPayment` y `payments.scheduled_payments`
 
@@ -403,3 +606,40 @@ Ya existe:
 - mover mas casos de uso de reporte/presupuesto a eventos `transactions.*`
 - definir productores canonicos adicionales si `budgets`, `reports` o `goals`
   empiezan a depender mas del ledger
+- cerrar ingestion canonica para fuentes externas:
+  - upsert controlado
+  - politicas mas ricas de fingerprint por proveedor
+  - reconciliacion y correccion formal para open banking
+- seguir adelgazando signals:
+  - hoy ya son mas finos
+  - pero el lifecycle critico todavia depende bastante de ellos frente a imports
+    futuros o paths no estandar
+
+## Nota operativa despues de la ultima pasada
+
+`transactions` ya no esta solo en estado "manual + pagos reflejados".
+
+Ahora tambien tiene una capa explicita de intake externo con:
+
+- `TransactionIntakeBatch`
+- `TransactionIntakeReceipt`
+- `TransactionSourceLink`
+- `TransactionReconciliationIssue`
+- endpoints internos de intake
+
+Ademas mejoro la proteccion de duplicados para fuentes no manuales:
+
+- si llega `provider + external_id` ya no se acepta una segunda transaccion
+  igual para el mismo `ledger_owner` en el write path manual
+- y el intake externo ya usa `source link` y `canonical_fingerprint`
+  antes de tocar el ledger
+
+Eso ayuda, pero no cierra todavia la deuda principal:
+
+- la reconciliacion ya cubre replacement pair para cambios complejos de
+  cuenta/tipo/proveedor, pero todavia no resuelve todos los casos extremos de
+  correccion por proveedor
+- el CRUD manual principal y varias acciones operativas ya no dependen solo de
+  signals
+- los signals siguen existiendo como compatibilidad para paths no migrados; la
+  migracion no esta terminada

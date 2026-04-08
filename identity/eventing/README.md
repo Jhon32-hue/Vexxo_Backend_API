@@ -112,5 +112,13 @@ La direccion objetivo es acercarlo aun mas al outbox de `accounts`:
 - workers dedicados en Cloud Run / Cloud Tasks / Pub/Sub
 - trazabilidad mas rica por publisher
 
-Hoy ya esta fuera del request path; lo siguiente es endurecer la operacion,
-no cambiar el contrato.
+Estado actual despues de esta pasada:
+
+- ya tiene `next_attempt_at`
+- ya tiene `dead_lettered_at` y `dead_letter_reason`
+- ya tiene `request_id`
+- ya usa `claim_for_processing()` en worker
+- ya puede recuperar locks stale y respetar reintentos
+
+Hoy ya esta fuera del request path; lo siguiente es endurecer todavia mas la
+observabilidad y no cambiar el contrato.

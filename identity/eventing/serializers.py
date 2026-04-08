@@ -21,9 +21,12 @@ class IdentityDomainEventOutboxSerializer(serializers.ModelSerializer):
             "occurred_at",
             "published_at",
             "retry_count",
+            "next_attempt_at",
             "last_error",
             "locked_at",
             "locked_by",
+            "dead_lettered_at",
+            "dead_letter_reason",
         ]
         read_only_fields = fields
 

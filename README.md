@@ -45,7 +45,8 @@ Los bounded contexts principales responden a estas preguntas:
 
 - `identity`: quien es el usuario, que plan tiene, que puede hacer
 - `finance.accounts`: donde vive el dinero y quien puede operar cada cuenta
-- `finance.transactions`: cual es el ledger real y sus efectos contables
+- `finance.transactions`: cual es el ledger real, su intake externo canonico,
+  su reconciliacion formal y sus efectos contables
 - `payments`: como se ejecutan pagos externos sin contaminar el ledger
 - `alerts`: que debe llamar la atencion del usuario y como se enriquece con IA
 - `notifications` y `realtime`: como se entrega feedback util a mobile/web
@@ -87,6 +88,14 @@ Reglas estructurales importantes:
 - la publicacion confiable usa outbox; la UX puede usar senales realtime livianas
 - los requests web deben terminar rapido; el trabajo pesado se mueve a workers,
   callbacks o consumidores del bus
+- las fuentes externas no deben escribir ledger directo; pasan por intake
+  canonico y luego por bounded contexts duenos del dato
+- cuando se endurezca cloud/eventing, la prioridad es homogeneizar publicacion,
+  retry, idempotencia y trazabilidad entre bounded contexts antes de agregar mas
+  transporte o mas servicios
+- cada correccion sobre cloud/eventing debe cerrar brechas reales entre
+  bounded contexts y no esconder deuda con mas glue local, mas threads o mas
+  stubs
 
 ## Encaje con GCP
 
@@ -686,6 +695,25 @@ La idea es que:
 
 no que el request espere toda la cadena externa.
 
+### Comportamiento local
+
+En desarrollo local, Vexxo puede habilitar:
+
+- `DOMAIN_EVENTS_LOCAL_AUTOPUBLISH_ENABLED=true`
+
+Con esa bandera:
+
+- el cambio sigue persistiendo primero en outbox
+- despues del commit, el backend autopublica el evento al bus local
+- listeners de `notifications`, `realtime`, `identity` o modulos internos
+  pueden reaccionar sin correr workers aparte
+
+Esto no elimina ni reemplaza la topologia cloud:
+
+- Pub/Sub sigue siendo la salida externa opcional
+- Cloud Run workers y management commands siguen siendo el camino de produccion
+- local solo gana una via rapida para probar side effects end-to-end
+
 ## Workers y trabajo fuera del request path
 
 Los workers son la extension natural del outbox y de la arquitectura cloud.
@@ -1063,6 +1091,12 @@ Documentos principales:
 - [Flujo de dtos.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/Flujo%20de%20dtos.md)
   Estructura de datos, tablas, dependencias, endpoints y ciclo de vida del
   dato dentro de Vexxo.
+- [Auditoria_eventos_locales.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/Auditoria_eventos_locales.md)
+  Matriz exacta de consumo local de eventos, listeners y side effects visibles
+  e internos.
+- [AUDITORIA_EVENTING_CLOUD.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/AUDITORIA_EVENTING_CLOUD.md)
+  Estado actual de homogeneidad del eventing, cloud-readiness y deuda
+  pendiente despues de la ultima pasada de endurecimiento.
 - [backend/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/backend/README.md)
   Configuracion global de Django, settings, URLs y entrypoints del proyecto.
 - [common/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/common/README.md)
@@ -1169,6 +1203,9 @@ Documentos principales:
   Fronteras temporales para workers e integraciones aun no separadas.
 - [integrations_stub/banks/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/integrations_stub/banks/README.md)
   Sync e integraciones bancarias temporales.
+- [AUDITORIA_EVENTING_CLOUD.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/AUDITORIA_EVENTING_CLOUD.md)
+  Estado actual de homogeneidad del eventing, cloud-readiness y deuda
+  pendiente despues de la ultima pasada de endurecimiento.
 - [tasks/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/tasks/README.md)
   Estructura general de ejecucion asincrona, scheduling y workers.
 - [tasks/dispatchers/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/tasks/dispatchers/README.md)

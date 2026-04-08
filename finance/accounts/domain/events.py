@@ -64,7 +64,7 @@ ACCOUNT_EVENT_CATALOG = [
         "category": "lifecycle",
         "description": "Se emite cuando nace una cuenta financiera en Vexxo.",
         "emitted_by": ["accounts.views.perform_create"],
-        "current_local_listeners": [],
+        "current_local_listeners": ["notifications.handle_account_created"],
         "intended_consumers": ["audit", "analytics", "notifications", "integrations"],
     },
     {

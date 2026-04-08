@@ -6,16 +6,18 @@ from django.dispatch import receiver
 from finance.transactions.Models.transacciones import ScheduledPayment, Transaction, TransactionParticipant
 from finance.transactions.domain_events import (
     TransactionDomainEventTypes,
-    _base_metadata,
     build_participant_payload,
     build_scheduled_payment_payload,
-    build_transaction_payload,
     serialize_participant_state,
     serialize_scheduled_payment_state,
     serialize_transaction_state,
 )
 from finance.transactions.event_service import publish_transaction_event_after_commit
 from finance.transactions.actor_context import get_current_transaction_actor_id
+from finance.transactions.transaction_event_publisher import (
+    publish_transaction_change_events,
+    publish_transaction_deleted_event,
+)
 
 
 def _capture_previous_state(instance, serializer):
@@ -30,10 +32,12 @@ def _publish(event_type: str, payload: dict, *, aggregate_type: str, aggregate_i
     publish_transaction_event_after_commit(
         event_type=event_type,
         payload=payload,
-        metadata=_base_metadata(
-            source,
-            metadata={"aggregate_type": aggregate_type, "aggregate_id": str(aggregate_id)},
-        ),
+        metadata={
+            "context": "transactions",
+            "source": source,
+            "aggregate_type": aggregate_type,
+            "aggregate_id": str(aggregate_id),
+        },
     )
 
 
@@ -44,41 +48,15 @@ def capture_transaction_previous_state(sender, instance: Transaction, **kwargs):
 
 @receiver(post_save, sender=Transaction)
 def enqueue_transaction_events(sender, instance: Transaction, created: bool, **kwargs):
+    if getattr(instance, "_skip_transaction_signal_publication", False):
+        return
     before = getattr(instance, "_previous_state", {}) or {}
-    payload = build_transaction_payload(instance, before=before)
-    event_type = (
-        TransactionDomainEventTypes.TRANSACTION_CREATED
-        if created
-        else TransactionDomainEventTypes.TRANSACTION_UPDATED
-    )
-    _publish(
-        event_type,
-        payload,
-        aggregate_type="transaction",
-        aggregate_id=instance.pk,
+    publish_transaction_change_events(
+        instance,
+        created=created,
+        before=before,
         source="finance.transactions.signals.enqueue_transaction_events",
     )
-    financial_change = payload.get("financial_change") or {}
-    if (
-        not created
-        and financial_change.get("is_financial")
-        and financial_change.get("kind") != "became_countable"
-    ):
-        _publish(
-            TransactionDomainEventTypes.TRANSACTION_FINANCIAL_UPDATED,
-            payload,
-            aggregate_type="transaction",
-            aggregate_id=instance.pk,
-            source="finance.transactions.signals.enqueue_transaction_events.financial",
-        )
-    if not created and not before.get("confirmed") and instance.confirmed:
-        _publish(
-            TransactionDomainEventTypes.TRANSACTION_CONFIRMED,
-            payload,
-            aggregate_type="transaction",
-            aggregate_id=instance.pk,
-            source="finance.transactions.signals.enqueue_transaction_events.confirmed",
-        )
 
 
 @receiver(pre_delete, sender=Transaction)
@@ -88,17 +66,11 @@ def capture_transaction_delete_state(sender, instance: Transaction, **kwargs):
 
 @receiver(post_delete, sender=Transaction)
 def enqueue_transaction_delete(sender, instance: Transaction, **kwargs):
-    payload = {
-        "transaction_id": str(instance.pk),
-        "owner_id": str(instance.owner_id),
-        "actor_user_id": str(getattr(instance, "_event_actor_id", "") or get_current_transaction_actor_id() or ""),
-        "before": getattr(instance, "_delete_state", {}) or {},
-    }
-    _publish(
-        TransactionDomainEventTypes.TRANSACTION_DELETED,
-        payload,
-        aggregate_type="transaction",
-        aggregate_id=instance.pk,
+    if getattr(instance, "_skip_transaction_delete_signal_publication", False):
+        return
+    publish_transaction_deleted_event(
+        instance,
+        before=getattr(instance, "_delete_state", {}) or {},
         source="finance.transactions.signals.enqueue_transaction_delete",
     )
 

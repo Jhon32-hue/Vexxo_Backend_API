@@ -9,10 +9,18 @@ from identity.eventing.models import (
 
 @admin.register(IdentityDomainEventOutbox)
 class IdentityDomainEventOutboxAdmin(admin.ModelAdmin):
-    list_display = ("id", "aggregate_type", "aggregate_id", "event_type", "status", "occurred_at", "published_at")
+    list_display = ("id", "aggregate_type", "aggregate_id", "event_type", "status", "retry_count", "occurred_at", "published_at")
     list_filter = ("status", "aggregate_type", "event_type")
     search_fields = ("aggregate_id", "event_type", "idempotency_key")
-    readonly_fields = ("occurred_at", "published_at", "retry_count", "last_error")
+    readonly_fields = (
+        "occurred_at",
+        "published_at",
+        "retry_count",
+        "next_attempt_at",
+        "last_error",
+        "dead_lettered_at",
+        "dead_letter_reason",
+    )
 
 
 @admin.register(UserProductUsageProjection)

@@ -158,7 +158,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Cuenta Postman\",\n  \"currency\": \"COP\",\n  \"type\": \"cash\",\n  \"ownership\": \"personal\"\n}"
+              "raw": "{\n  \"name\": \"Cuenta Postman\",\n  \"currency\": \"COP\",\n  \"type\": \"cash\",\n  \"ownership\": \"owned\"\n}"
             },
             "url": "{{base_url}}/api/finance/accounts/cuentas/"
           }

@@ -31,8 +31,9 @@ registraron.
 ### Creacion
 
 1. `alerts.alerts.services.create_alert()` persiste la alerta.
-2. Publica `alerts.created.v1`.
-3. Un listener despacha el enriquecimiento IA mediante
+2. Encola `alerts.created.v1` en outbox.
+3. En local puede autopublicarse after-commit; en cloud lo publica un worker.
+4. Un listener despacha el enriquecimiento IA mediante
    `alerts.alerts.dispatch_service`.
 
 ### Enriquecimiento IA
@@ -93,6 +94,22 @@ El principio es:
 - si la infraestructura async no esta lista, solo se permite fallback local
   controlado
 - el futuro `llm_gateway` debe respetar la misma frontera publica del modulo
+- `alerts` no debe volver a publicar eventos criticos directo desde el request
+  path; usa outbox como los demas bounded contexts fuertes
+
+## Estado operativo actual
+
+`alerts` ya tiene outbox propio para `alerts.created.v1`.
+
+Eso permite:
+
+- retry
+- dead-letter
+- worker dedicado
+- autopublish local sin romper la topologia cloud
+
+Todavia no implica que todo `alerts.*` tenga ya la misma riqueza operativa de
+`accounts`.
 
 ## Esqueleto/futuro
 

@@ -1,15 +1,33 @@
 # common/domain_events.py
 from __future__ import annotations
 
+import os
 import logging
 import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, IntEnum
 from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+_ASYNC_EVENT_WORKERS = max(2, int(os.getenv("DOMAIN_EVENTS_LOCAL_ASYNC_WORKERS", "8")))
+_ASYNC_EVENT_EXECUTOR = ThreadPoolExecutor(
+    max_workers=_ASYNC_EVENT_WORKERS,
+    thread_name_prefix="event-listener",
+)
+
+
+def _log_async_listener_result(future, *, listener_name: str, event_type: str) -> None:
+    try:
+        future.result()
+    except Exception:
+        logger.exception(
+            "[events] Error async en listener '%s' para evento '%s'",
+            listener_name,
+            event_type,
+        )
 
 # ========= CONTEXTOS Y NOMBRES DE EVENTO =========
 
@@ -131,6 +149,14 @@ class EventNames:
     TRANSACTION_FINANCIAL_UPDATED = "transactions.financial.updated.v1"
     TRANSACTION_DELETED = "transactions.deleted.v1"
     TRANSACTION_IMPORTED = "transactions.imported.v1"
+    TRANSACTION_INTAKE_BATCH_RECEIVED = "transactions.intake.batch.received.v1"
+    TRANSACTION_INTAKE_BATCH_APPLIED = "transactions.intake.batch.applied.v1"
+    TRANSACTION_INTAKE_BATCH_FAILED = "transactions.intake.batch.failed.v1"
+    TRANSACTION_INTAKE_ROW_DUPLICATE_DETECTED = "transactions.intake.row.duplicate_detected.v1"
+    TRANSACTION_RECONCILED = "transactions.reconciled.v1"
+    TRANSACTION_CORRECTED = "transactions.corrected.v1"
+    TRANSACTION_REVERSED = "transactions.reversed.v1"
+    TRANSACTION_RECONCILIATION_ISSUE_RESOLVED = "transactions.reconciliation.issue.resolved.v1"
     TRANSACTION_CONFIRMED = "transactions.confirmed.v1"
     TRANSACTION_ACCOUNT_REASSIGNED = "transactions.account.reassigned.v1"
     TRANSACTION_REIMBURSEMENT_RECORDED = "transactions.reimbursement.recorded.v1"
@@ -255,6 +281,14 @@ KNOWN_EVENT_TYPES: Dict[str, str] = {
     EventNames.TRANSACTION_UPDATED: "Transacción actualizada",
     EventNames.TRANSACTION_DELETED: "Transacción eliminada",
     EventNames.TRANSACTION_IMPORTED: "Transacción importada desde proveedor externo",
+    EventNames.TRANSACTION_INTAKE_BATCH_RECEIVED: "Batch de intake de transacciones recibido",
+    EventNames.TRANSACTION_INTAKE_BATCH_APPLIED: "Batch de intake de transacciones aplicado",
+    EventNames.TRANSACTION_INTAKE_BATCH_FAILED: "Batch de intake de transacciones fallido",
+    EventNames.TRANSACTION_INTAKE_ROW_DUPLICATE_DETECTED: "Fila duplicada detectada durante intake",
+    EventNames.TRANSACTION_RECONCILED: "Transaccion reconciliada con fuente externa",
+    EventNames.TRANSACTION_CORRECTED: "Transaccion marcada para correccion formal",
+    EventNames.TRANSACTION_REVERSED: "Transaccion revertida o marcada para reverso",
+    EventNames.TRANSACTION_RECONCILIATION_ISSUE_RESOLVED: "Issue de reconciliacion de transaccion resuelto formalmente",
     EventNames.TRANSACTION_CONFIRMED: "Transaccion confirmada",
     EventNames.TRANSACTION_ACCOUNT_REASSIGNED: "Cuenta de transaccion reasignada",
     EventNames.TRANSACTION_REIMBURSEMENT_RECORDED: "Reembolso registrado sobre transaccion",
@@ -541,12 +575,14 @@ class DomainEventBus:
             for cfg in listeners:
                 try:
                     if cfg.run_async:
-                        threading.Thread(
-                            target=cfg.handler,
-                            args=(event,),
-                            name=f"event-listener-{cfg.name}",
-                            daemon=True,
-                        ).start()
+                        future = _ASYNC_EVENT_EXECUTOR.submit(cfg.handler, event)
+                        future.add_done_callback(
+                            lambda future, listener_name=cfg.name, event_type=event.type: _log_async_listener_result(
+                                future,
+                                listener_name=listener_name,
+                                event_type=event_type,
+                            )
+                        )
                     else:
                         cfg.handler(event)
                 except Exception as exc:

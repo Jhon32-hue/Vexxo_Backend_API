@@ -4,6 +4,8 @@ from integrations_stub.banks.views import (
     InternalAccountIntelligenceRefreshView,
     InternalAccountSyncJobView,
     InternalConsentRevocationView,
+    InternalTransactionsReconciliationResolutionView,
+    InternalTransactionsSyncBatchView,
 )
 
 
@@ -18,5 +20,15 @@ urlpatterns = [
         "consents/revoke/",
         InternalConsentRevocationView.as_view(),
         name="internal-consent-revoke",
+    ),
+    path(
+        "transactions/sync/",
+        InternalTransactionsSyncBatchView.as_view(),
+        name="internal-transactions-sync",
+    ),
+    path(
+        "transactions/reconciliation/resolve/",
+        InternalTransactionsReconciliationResolutionView.as_view(),
+        name="internal-transactions-reconciliation-resolve",
     ),
 ]

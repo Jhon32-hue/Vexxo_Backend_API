@@ -16,6 +16,7 @@ from finance.transactions.transaction_validation_service import (
     resolve_transaction_ledger_owner,
     validate_transaction_payload,
 )
+from finance.transactions.transaction_write_service import create_manual_transaction, update_manual_transaction
 from identity.users.services.product_access_service import validate_scheduled_payments_limit
 
 
@@ -188,17 +189,21 @@ class TransactionSerializer(BaseOwnerSerializer):
         )
 
     def create(self, validated_data):
-        account = validated_data.get("account")
-        if account is not None:
-            validated_data["owner"] = account.owner
-        tx = super().create(validated_data)
-        tx._event_actor_id = getattr(self.context.get("request"), "user", None).id if self.context.get("request") else ""
-        return apply_tag_selection(tx, self.initial_data.get("tags"))
+        actor = getattr(self.context.get("request"), "user", None)
+        return create_manual_transaction(
+            validated_data=validated_data,
+            actor=actor,
+            tags_data=self.initial_data.get("tags"),
+        )
 
     def update(self, instance, validated_data):
-        tx = super().update(instance, validated_data)
-        tx._event_actor_id = getattr(self.context.get("request"), "user", None).id if self.context.get("request") else ""
-        return apply_tag_selection(tx, self.initial_data.get("tags"))
+        actor = getattr(self.context.get("request"), "user", None)
+        return update_manual_transaction(
+            instance=instance,
+            validated_data=validated_data,
+            actor=actor,
+            tags_data=self.initial_data.get("tags"),
+        )
 
     @staticmethod
     def add_comment(tx: Transaction, text: str, user):

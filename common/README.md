@@ -64,6 +64,9 @@ Principios actuales:
 - el bus local sirve para coordinacion intra-backend
 - los bounded contexts fuertes publican por outbox antes de salir a transporte
 - las senales livianas para UX no reemplazan al outbox
+- si un bounded context queda muy por debajo de `accounts` en retry, locking,
+  dead-letter o trazabilidad, la prioridad es cerrarlo antes de agregar mas
+  fan-out cloud
 
 ## Relacion Con Los Otros Modulos
 
@@ -84,6 +87,15 @@ Topologia esperada:
 - si Pub/Sub esta habilitado, `common.gcp.pubsub_dispatcher` publica el evento
 - Cloud Run, Dataflow o analytics pueden consumirlo desacoplados
 
+Modo local actual:
+
+- si `DOMAIN_EVENTS_LOCAL_AUTOPUBLISH_ENABLED=true`, los bounded contexts con
+  outbox pueden autopublicar sus eventos despues del commit
+- esto permite que listeners locales, notificaciones, realtime y proyecciones
+  reaccionen en desarrollo sin correr workers aparte
+- la salida opcional a Pub/Sub sigue intacta y no se elimina la configuracion
+  cloud; simplemente no se usa si `DOMAIN_EVENTS_PUBSUB_ENABLED=false`
+
 Esto permite:
 
 - mantener consistencia local aunque falle GCP
@@ -98,6 +110,21 @@ Hoy `common` ya sostiene:
 - suscripciones por `@subscribe`
 - bus local
 - dispatcher opcional a Pub/Sub
+
+## Estado operativo actual
+
+`common` ya no lanza un thread ad-hoc por listener async.
+
+Ahora:
+
+- `run_async=True` usa un `ThreadPoolExecutor` acotado
+- los errores async quedan loggeados al resolver el `future`
+
+Importante:
+
+- esto mejora el runtime local
+- no reemplaza outbox
+- no convierte el bus local en cola durable
 
 Lo que no debe absorber es:
 

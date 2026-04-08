@@ -147,6 +147,23 @@ def validate_transaction_payload(*, user, attrs: dict, instance=None) -> dict:
     if parent and parent.parent_id:
         raise serializers.ValidationError({"parent": "No puedes anidar splits a mas de un nivel."})
 
+    source = str(attrs.get("source", getattr(instance, "source", "manual")) or "manual").strip().lower()
+    provider = str(attrs.get("provider", getattr(instance, "provider", "")) or "").strip().lower()
+    external_id = str(attrs.get("external_id", getattr(instance, "external_id", "")) or "").strip()
+    if source not in {"manual", ""} and provider and external_id:
+        duplicate_qs = Transaction.objects.filter(owner=ledger_owner, provider__iexact=provider, external_id=external_id)
+        if instance is not None:
+            duplicate_qs = duplicate_qs.exclude(pk=instance.pk)
+        if duplicate_qs.exists():
+            raise serializers.ValidationError(
+                {
+                    "external_id": (
+                        "Ya existe una transaccion para este proveedor y external_id. "
+                        "Usa un flujo de reconciliacion/correccion en lugar de duplicarla."
+                    )
+                }
+            )
+
     return attrs
 
 

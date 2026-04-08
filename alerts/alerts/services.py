@@ -15,11 +15,11 @@ from alerts.alerts.models.alerts import (
     AlertStatus,
 )
 from common.domain_events import (
-    publish_domain_event,
     EventContext,
     EventNames,
     EventPriority,
 )
+from alerts.alerts.event_service import publish_alert_event_after_commit
 
 logger = logging.getLogger(__name__)
 
@@ -96,29 +96,26 @@ def create_alert(
     #      - Contar alertas nuevas.
     #      - Actualizar un "inbox" o feed de notificaciones.
     #      - Disparar integraciones externas (webhooks, etc.).
-    try:
-        publish_domain_event(
-            event_type=EventNames.ALERT_CREATED,
-            context=EventContext.ALERTS,
-            payload={
-                "alert_id": alert.pk,
-                "owner_id": alert.owner_id,
-                "type": alert.type,
-                "category": alert.category,
-                "severity": alert.severity,
-                "source": alert.source,
-            },
-            metadata={
-                "source": source,
-                "correlation_id": correlation_id or alert.correlation_id,
-            },
-            priority=EventPriority.NORMAL,
-        )
-    except Exception:
-        logger.exception(
-            "[alerts] Error emitiendo evento ALERT_CREATED para alert_id=%s",
-            alert.pk,
-        )
+    publish_alert_event_after_commit(
+        event_type=EventNames.ALERT_CREATED,
+        payload={
+            "alert_id": alert.pk,
+            "owner_id": alert.owner_id,
+            "type": alert.type,
+            "category": alert.category,
+            "severity": alert.severity,
+            "source": alert.source,
+        },
+        metadata={
+            "context": EventContext.ALERTS.value,
+            "source": source,
+            "correlation_id": correlation_id or alert.correlation_id,
+            "aggregate_type": "alert",
+            "aggregate_id": str(alert.pk),
+        },
+        priority=EventPriority.NORMAL,
+        correlation_id=correlation_id or alert.correlation_id,
+    )
 
     # 2) Enriquecimiento IA (no bloquea la creación de la alerta)
     #    Por ahora se hace in-process. Más adelante puedes:

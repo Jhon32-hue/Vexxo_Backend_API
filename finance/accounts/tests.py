@@ -86,7 +86,7 @@ class AccountDomainGuardsTests(TestCase):
 
         self.assertEqual(snapshot["plan"], "free")
         self.assertEqual(snapshot["usage"]["active_accounts"], 2)
-        self.assertEqual(snapshot["limits"]["max_active_accounts"], 3)
+        self.assertIsNone(snapshot["limits"]["max_active_accounts"])
 
     def test_plan_snapshot_counts_frozen_accounts_against_plan(self):
         Account.objects.create(owner=self.user, name="Cuenta Activa", currency="COP", status=AccountStatus.ACTIVE)
@@ -168,6 +168,12 @@ class AccountDomainEventsTests(TestCase):
         balance_event = next(item for item in catalog if item["event_type"] == "accounts.balance.updated.v1")
 
         self.assertIn("alerts.handle_account_balance_updated", balance_event["current_local_listeners"])
+
+    def test_event_catalog_declares_account_created_notification_listener(self):
+        catalog = get_account_event_catalog()
+        created_event = next(item for item in catalog if item["event_type"] == "accounts.created.v1")
+
+        self.assertIn("notifications.handle_account_created", created_event["current_local_listeners"])
 
     def test_event_runtime_declares_outbox_pipeline(self):
         runtime = get_account_event_runtime()

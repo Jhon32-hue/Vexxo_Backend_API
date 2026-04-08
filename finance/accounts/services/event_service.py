@@ -16,6 +16,10 @@ logger = logging.getLogger(__name__)
 DELIVERY_STATE_KEY = "_vexxo_delivery"
 
 
+def _local_autopublish_enabled() -> bool:
+    return bool(getattr(settings, "DOMAIN_EVENTS_LOCAL_AUTOPUBLISH_ENABLED", False))
+
+
 def _outbox_retry_config() -> dict:
     return {
         "max_retries": max(1, int(getattr(settings, "ACCOUNTS_OUTBOX_MAX_RETRIES", 10))),
@@ -183,4 +187,18 @@ def publish_after_commit(event: DomainEventOutbox) -> None:
     El request solo deja el evento en outbox; la publicacion real la hace un
     worker dedicado fuera del path web.
     """
+    if not event or event.published_at or not _local_autopublish_enabled():
+        return None
+    if getattr(event, "_local_publish_scheduled", False):
+        return None
+
+    event._local_publish_scheduled = True
+
+    def _publish_local_event() -> None:
+        fresh = DomainEventOutbox.objects.filter(pk=event.pk).first()
+        if fresh is None or fresh.published_at:
+            return
+        publish_outbox_event(fresh, publisher="local-after-commit")
+
+    transaction.on_commit(_publish_local_event)
     return None

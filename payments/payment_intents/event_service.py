@@ -11,10 +11,17 @@ import hashlib
 import json
 import logging
 
+from django.conf import settings
+from django.db import transaction
+
 from common.domain_events import EventContext, EventPriority, publish_domain_event
 from payments.payment_intents.models import PaymentDomainEventOutbox
 
 logger = logging.getLogger(__name__)
+
+
+def _local_autopublish_enabled() -> bool:
+    return bool(getattr(settings, "DOMAIN_EVENTS_LOCAL_AUTOPUBLISH_ENABLED", False))
 
 
 def stable_payment_event_key(event_type: str, aggregate_type: str, aggregate_id: str | int, payload: dict) -> str:
@@ -111,7 +118,7 @@ def publish_payment_event_after_commit(
         aggregate_id=aggregate_id or "payments",
         payload=payload or {},
     )
-    return enqueue_payment_domain_event(
+    event = enqueue_payment_domain_event(
         aggregate_type=aggregate_type or "payment",
         aggregate_id=aggregate_id or "payments",
         event_type=event_type,
@@ -121,3 +128,14 @@ def publish_payment_event_after_commit(
         causation_id=causation_id,
         metadata=event_metadata,
     )
+    if _local_autopublish_enabled() and not getattr(event, "_local_publish_scheduled", False):
+        event._local_publish_scheduled = True
+
+        def _publish_local_event() -> None:
+            fresh = PaymentDomainEventOutbox.objects.filter(pk=event.pk).first()
+            if fresh is None or fresh.published_at:
+                return
+            publish_payment_outbox_event(fresh)
+
+        transaction.on_commit(_publish_local_event)
+    return event

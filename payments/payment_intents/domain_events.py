@@ -80,7 +80,10 @@ PAYMENT_EVENT_CATALOG = [
         "category": "lifecycle",
         "description": "Se emite cuando el proveedor exige accion adicional del usuario.",
         "emitted_by": ["payments.payment_intents.services.mark_payment_intent_requires_action"],
-        "current_local_listeners": ["payments.publish_intent_requires_action_realtime_signal"],
+        "current_local_listeners": [
+            "payments.publish_intent_requires_action_realtime_signal",
+            "notifications.handle_payment_intent_requires_action",
+        ],
         "intended_consumers": ["ui", "notifications", "support"],
     },
     {
@@ -104,7 +107,10 @@ PAYMENT_EVENT_CATALOG = [
         "category": "lifecycle",
         "description": "Se emite cuando el pago falla.",
         "emitted_by": ["payments.payment_intents.services.mark_payment_intent_failed"],
-        "current_local_listeners": ["payments.publish_intent_failed_realtime_signal"],
+        "current_local_listeners": [
+            "payments.publish_intent_failed_realtime_signal",
+            "notifications.handle_payment_intent_failed",
+        ],
         "intended_consumers": ["ui", "support", "analytics"],
     },
     {
@@ -409,6 +415,8 @@ def build_payment_core_payload(payment_intent) -> dict:
         "provider_intent_id": payment_intent.provider_intent_id,
         "provider_reference": payment_intent.provider_reference,
         "provider_cus": payment_intent.provider_cus,
+        "failure_code": payment_intent.failure_code,
+        "failure_message": payment_intent.failure_message,
         "beneficiary_name": payment_intent.beneficiary_name,
         "beneficiary_document": payment_intent.beneficiary_document,
         "beneficiary_account_ref": payment_intent.beneficiary_account_ref,

@@ -192,7 +192,7 @@ def _advance_sync_runtime(*, account, action: str, sync_run_id: str, command_key
         current_phase = str(runtime.get("current_phase") or "")
 
     if action in SYNC_TERMINAL_ACTIONS:
-        if last_terminal_run_id == sync_run_id and last_terminal_phase == action:
+        if sync_run_id and last_terminal_run_id == sync_run_id:
             runtime["last_transition_result"] = "already_terminal"
             return False, "already_terminal", runtime
         if not current_run_id:

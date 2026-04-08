@@ -32,6 +32,7 @@ load_dotenv(dot_env_path) #lee el archivo .env y carga todas las variables como 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = config('DJANGO_SECRET_KEY')
 DEBUG = config('DEBUG', default=False, cast=bool)
+BOOT_ENV = config("ENV", default="local")
 
 ALLOWED_HOSTS = config(
     "ALLOWED_HOSTS",
@@ -41,10 +42,24 @@ ALLOWED_HOSTS = config(
 
 CSRF_TRUSTED_ORIGINS = config("CSRF_TRUSTED_ORIGINS", default="", cast=lambda v: [s.strip() for s in v.split(",") if s.strip()])
 CORS_ALLOWED_ORIGINS = config("CORS_ALLOWED_ORIGINS", default="", cast=lambda v: [s.strip() for s in v.split(",") if s.strip()])
-CORS_ALLOW_ALL_ORIGINS = True  # SOLO DEV / TEST
+CORS_ALLOW_ALL_ORIGINS = config(
+    "CORS_ALLOW_ALL_ORIGINS",
+    default=BOOT_ENV == "local",
+    cast=bool,
+)
 
 # Configuración para detectar HTTPS detrás de un proxy inverso
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_SSL_REDIRECT = config("SECURE_SSL_REDIRECT", default=BOOT_ENV == "cloud", cast=bool)
+SESSION_COOKIE_SECURE = config("SESSION_COOKIE_SECURE", default=BOOT_ENV == "cloud", cast=bool)
+CSRF_COOKIE_SECURE = config("CSRF_COOKIE_SECURE", default=BOOT_ENV == "cloud", cast=bool)
+SECURE_HSTS_SECONDS = config("SECURE_HSTS_SECONDS", default=0 if BOOT_ENV == "local" else 3600, cast=int)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = config(
+    "SECURE_HSTS_INCLUDE_SUBDOMAINS",
+    default=BOOT_ENV == "cloud",
+    cast=bool,
+)
+SECURE_HSTS_PRELOAD = config("SECURE_HSTS_PRELOAD", default=False, cast=bool)
 
 # Configuración de archivos estáticos
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
@@ -315,6 +330,12 @@ else:
             "PORT": config("DB_PORT"),
         }
     }
+
+DOMAIN_EVENTS_LOCAL_AUTOPUBLISH_ENABLED = config(
+    "DOMAIN_EVENTS_LOCAL_AUTOPUBLISH_ENABLED",
+    default=ENV == "local",
+    cast=bool,
+)
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators

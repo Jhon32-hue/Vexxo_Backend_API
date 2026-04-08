@@ -59,6 +59,11 @@ logger = logging.getLogger(__name__)
 class _ReadOnlyIntelligenceViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated]
 
+    def get_permissions(self):
+        if getattr(self, "action", "") == "worker_report":
+            return [AllowAny()]
+        return super().get_permissions()
+
     def get_queryset(self):
         return self.queryset.filter(owner=self.request.user)
 

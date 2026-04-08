@@ -10,6 +10,7 @@ Hoy cubre:
 - sync de cuentas
 - refresh de inteligencia de `accounts`
 - revocacion de acceso por consentimiento/permisos
+- puente temporal para intake y resolucion de reconciliacion de `transactions`
 
 ## Por Que Existe
 
@@ -49,6 +50,7 @@ sin duplicar la logica del dominio.
 - `finance.accounts`: dueño real del lifecycle de sync
 - `identity`: fuente de lifecycle y consentimiento
 - `common.domain_events`: transporte/eventos que disparan el trabajo
+- `finance.transactions`: intake canonico y resolucion formal del ledger externo
 
 ## Encaje Con GCP
 
@@ -64,3 +66,19 @@ La semantica correcta es:
 - el stub recibe
 - el dominio decide
 - el estado vuelve a cuentas e identidad
+
+## Frontera temporal para `transactions`
+
+Este modulo ya puede actuar como puente temporal para el futuro
+`integration_service` en dos tareas:
+
+- recibir lotes normalizados de movimientos bancarios y delegarlos al intake
+  canonico de `transactions`
+- resolver `TransactionReconciliationIssue` detectados por re-syncs o cambios
+  tardios del proveedor
+
+Regla importante:
+
+- el stub no escribe ledger directo
+- llama al servicio canonico de `transactions`
+- la identidad externa sigue gobernada por `TransactionSourceLink`

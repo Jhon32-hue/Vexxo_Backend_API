@@ -8,10 +8,23 @@ import hashlib
 import json
 import logging
 
+from django.conf import settings
+from django.db import transaction
+
 from common.domain_events import EventContext, EventPriority, publish_domain_event
 from identity.eventing.models import IdentityDomainEventOutbox
 
 logger = logging.getLogger(__name__)
+
+
+def _local_autopublish_enabled() -> bool:
+    return bool(getattr(settings, "DOMAIN_EVENTS_LOCAL_AUTOPUBLISH_ENABLED", False))
+
+
+def _identity_outbox_retry_config() -> dict:
+    return {
+        "max_retries": max(1, int(getattr(settings, "IDENTITY_OUTBOX_MAX_RETRIES", 10))),
+    }
 
 
 def stable_identity_event_key(event_type: str, aggregate_type: str, aggregate_id: str | int, payload: dict) -> str:
@@ -41,6 +54,7 @@ def enqueue_identity_domain_event(
             "priority": int(priority),
             "correlation_id": correlation_id or "",
             "causation_id": causation_id or "",
+            "request_id": str((metadata or {}).get("request_id") or "")[:64],
             "payload": payload,
             "metadata": metadata or {},
         },
@@ -75,7 +89,10 @@ def publish_identity_outbox_event(event: IdentityDomainEventOutbox) -> None:
         event.mark_published()
     except Exception as exc:
         logger.exception("[identity] Error publicando outbox id=%s", event.pk)
-        event.mark_failed(str(exc))
+        event.mark_failed(
+            str(exc),
+            max_retries=_identity_outbox_retry_config()["max_retries"],
+        )
 
 
 def publish_identity_after_commit(
@@ -111,4 +128,14 @@ def publish_identity_after_commit(
         causation_id=causation_id,
         metadata=event_metadata,
     )
+    if _local_autopublish_enabled() and not getattr(event, "_local_publish_scheduled", False):
+        event._local_publish_scheduled = True
+
+        def _publish_local_event() -> None:
+            fresh = IdentityDomainEventOutbox.objects.filter(pk=event.pk).first()
+            if fresh is None or fresh.published_at:
+                return
+            publish_identity_outbox_event(fresh)
+
+        transaction.on_commit(_publish_local_event)
     return event
