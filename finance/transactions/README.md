@@ -285,24 +285,24 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant INT as integration_service / stub
-    participant API as Internal API
-    participant INTAKE as transaction_intake_service
-    participant SQL as Cloud SQL
-    participant LINK as source link dedupe
-    participant REC as reconciliation issue
-    participant TO as Transactions Outbox
+    participant INT as integration service
+    participant API as internal API
+    participant INTAKE as transactions intake
+    participant DB as Cloud SQL
+    participant LINK as source link
+    participant ISSUE as reconciliation issue
+    participant OUT as transactions outbox
 
     INT->>API: post intake batch
-    API->>INTAKE: validate internal auth + headers
-    INTAKE->>SQL: create batch + receipts
+    API->>INTAKE: validate auth and headers
+    INTAKE->>DB: create batch and receipts
     INTAKE->>LINK: dedupe external identity
     alt materializable
-        INTAKE->>SQL: create/update transaction
+        INTAKE->>DB: create or update transaction
     else mismatch
-        INTAKE->>REC: open issue
+        INTAKE->>ISSUE: open issue
     end
-    INTAKE->>TO: enqueue transactions.* result event
+    INTAKE->>OUT: enqueue transactions result event
     API-->>INT: batch outcome
 ```
 

@@ -999,25 +999,25 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant INT as integration_service / integrations_stub
-    participant API as Internal API
-    participant INTAKE as transaction_intake_service
-    participant SQL as Cloud SQL
-    participant LINK as TransactionSourceLink
-    participant REC as ReconciliationIssue
-    participant TO as Transactions Outbox
+    participant INT as integration service
+    participant API as internal API
+    participant INTAKE as transactions intake
+    participant DB as Cloud SQL
+    participant LINK as source link
+    participant ISSUE as reconciliation issue
+    participant OUT as transactions outbox
 
-    INT->>API: POST /api/internal/transactions/intake/batches/
-    API->>INTAKE: validate token + request_id + idempotency_key
-    INTAKE->>SQL: create TransactionIntakeBatch
-    INTAKE->>SQL: create TransactionIntakeReceipt rows
-    INTAKE->>LINK: dedupe by external_id or fingerprint
-    alt no duplicate and no material mismatch
-        INTAKE->>SQL: create/update Transaction
-    else material mismatch / reverse needed
-        INTAKE->>REC: open TransactionReconciliationIssue
+    INT->>API: post intake batch
+    API->>INTAKE: validate auth and idempotency
+    INTAKE->>DB: create intake batch
+    INTAKE->>DB: create intake receipts
+    INTAKE->>LINK: dedupe external identity
+    alt materializable row
+        INTAKE->>DB: create or update transaction
+    else material mismatch
+        INTAKE->>ISSUE: open reconciliation issue
     end
-    INTAKE->>TO: enqueue transactions.imported/reconciled/corrected/reversed.v1
+    INTAKE->>OUT: enqueue transactions result event
     API-->>INT: batch result
 ```
 
@@ -1126,21 +1126,21 @@ Lectura:
 
 ```mermaid
 sequenceDiagram
-    participant ACC as accounts sync event
-    participant BUS as Pub/Sub
+    participant ACC as accounts sync
+    participant BUS as PubSub
     participant INT as integration_service
-    participant BANK as Bank / Open banking provider
+    participant BANK as bank provider
     participant API as backend internal API
     participant TX as transactions intake
-    participant SQL as Cloud SQL
+    participant DB as Cloud SQL
 
     ACC->>BUS: accounts.sync.scheduled.v1
     BUS->>INT: deliver event
-    INT->>BANK: fetch accounts / balances / movements
+    INT->>BANK: fetch movements
     BANK-->>INT: normalized provider payload
-    INT->>API: POST /api/internal/transactions/intake/batches/
-    API->>TX: dedupe + reconcile + materialize
-    TX->>SQL: persist batch / receipts / transactions
+    INT->>API: post intake batch
+    API->>TX: dedupe reconcile materialize
+    TX->>DB: persist batch receipts transactions
 ```
 
 Lectura:
