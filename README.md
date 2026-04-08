@@ -51,6 +51,792 @@ Los bounded contexts principales responden a estas preguntas:
 - `alerts`: que debe llamar la atencion del usuario y como se enriquece con IA
 - `notifications` y `realtime`: como se entrega feedback util a mobile/web
 
+### Vista visual del core
+
+Los siguientes diagramas muestran el estado actual del modelo backend ya
+implementado. No intentan representar cada tabla auxiliar, sino la estructura
+canonica del negocio segun DDD: aggregates, relaciones entre bounded contexts y
+modelos de lectura derivados.
+
+#### 1. Mapa DDD del core
+
+```mermaid
+flowchart LR
+    U[User / Identity]
+    A[Accounts]
+    T[Transactions Ledger]
+    P[Payment Intents]
+    X[Intake Externo]
+    AL[Alerts]
+    N[Notifications]
+    R[Realtime]
+    I[Integrations Stub / Futuro integration_service]
+    E[Outbox + Domain Events]
+
+    U --> A
+    U --> T
+    U --> P
+    A --> T
+    P --> T
+    I --> X
+    X --> T
+    T --> E
+    A --> E
+    P --> E
+    U --> E
+    E --> AL
+    E --> N
+    E --> R
+    E --> I
+```
+
+Lectura:
+
+- `identity` define usuario, plan y ownership
+- `accounts` define la superficie financiera operativa
+- `transactions` es el ledger canonico
+- `payments` ejecuta afuera y luego materializa en ledger
+- integraciones externas entran por intake, no por escritura directa al ledger
+- outbox y eventos desacoplan side effects y servicios futuros
+
+#### 2. Modelo de clases del dominio financiero central
+
+```mermaid
+classDiagram
+    class User {
+        +email
+        +plan
+        +status
+        +preferred_currency
+        +timezone_name
+        +onboarding_completed
+    }
+
+    class Account {
+        +owner
+        +name
+        +type
+        +ownership
+        +status
+        +currency
+        +provider
+        +external_id
+        +balance
+        +sync_status
+        +is_primary
+    }
+
+    class AccountMembership {
+        +role
+        +access_mode
+        +can_post_transactions
+        +can_manage_members
+        +is_active
+    }
+
+    class AccountInvitation {
+        +status
+        +attempt_number
+        +is_current
+        +sent_at
+        +accepted_at
+        +revoked_at
+    }
+
+    class Transaction {
+        +type
+        +status
+        +amount
+        +date
+        +source
+        +provider
+        +external_id
+        +fingerprint
+        +confirmed
+        +affects_balance
+        +is_reimbursable
+        +reimbursed
+    }
+
+    class TransactionParticipant {
+        +direction
+        +role
+        +status
+        +share_amount
+        +paid_amount
+    }
+
+    class TransactionIntakeBatch {
+        +provider
+        +source
+        +provider_account_id
+        +request_id
+        +idempotency_key
+        +status
+        +row_count
+    }
+
+    class TransactionIntakeReceipt {
+        +external_id
+        +provider_event_id
+        +canonical_fingerprint
+        +status
+        +seen_count
+    }
+
+    class TransactionSourceLink {
+        +provider
+        +source
+        +provider_account_id
+        +external_id
+        +canonical_fingerprint
+        +provider_status
+    }
+
+    class TransactionReconciliationIssue {
+        +issue_type
+        +status
+        +summary
+        +resolution_action
+        +resolved_at
+    }
+
+    class PaymentIntent {
+        +payment_type
+        +rail
+        +amount
+        +currency
+        +provider
+        +idempotency_key
+        +status
+        +provider_intent_id
+    }
+
+    User "1" --> "*" Account : owns
+    Account "1" --> "*" AccountMembership : memberships
+    AccountMembership "1" --> "*" AccountInvitation : invitations
+    User "1" --> "*" Transaction : ledger_owner
+    Account "1" --> "*" Transaction : contains
+    Transaction "1" --> "*" TransactionParticipant : participants
+    PaymentIntent "1" --> "0..1" Transaction : materializes_to
+    Account "1" --> "*" TransactionIntakeBatch : intake_batches
+    TransactionIntakeBatch "1" --> "*" TransactionIntakeReceipt : receipts
+    Transaction "1" --> "*" TransactionSourceLink : source_links
+    Transaction "1" --> "*" TransactionReconciliationIssue : reconciliation_issues
+    TransactionIntakeReceipt "0..1" --> "0..1" Transaction : materialized_transaction
+    TransactionIntakeReceipt "0..1" --> "0..1" TransactionReconciliationIssue : creates_issue
+    TransactionSourceLink "*" --> "1" Transaction : points_to
+```
+
+Lectura:
+
+- `User` es el root de identidad y plan
+- `Account` es el aggregate operativo donde vive el dinero
+- `Transaction` es el hecho contable final
+- `PaymentIntent` no es ledger; puede materializar una `Transaction`
+- `TransactionIntake*` y `TransactionSourceLink` separan ingreso externo de
+  escritura contable
+- `TransactionReconciliationIssue` formaliza correcciones y reversos tardios
+
+#### 3. Capa de eventos, proyecciones y experiencia
+
+```mermaid
+classDiagram
+    class IdentityDomainEventOutbox {
+        +aggregate_type
+        +aggregate_id
+        +event_type
+        +idempotency_key
+        +status
+        +retry_count
+    }
+
+    class AccountDomainEventOutbox {
+        +aggregate_type
+        +aggregate_id
+        +event_type
+        +idempotency_key
+        +status
+    }
+
+    class TransactionDomainEventOutbox {
+        +aggregate_type
+        +aggregate_id
+        +event_type
+        +idempotency_key
+        +status
+    }
+
+    class PaymentDomainEventOutbox {
+        +aggregate_type
+        +aggregate_id
+        +event_type
+        +idempotency_key
+        +status
+    }
+
+    class UserProductUsageProjection {
+        +accounts_used
+        +rules_used
+        +payments_used
+        +ai_used
+        +updated_at
+    }
+
+    class Alert {
+        +type
+        +category
+        +severity
+        +status
+        +title
+        +message
+    }
+
+    class NotificationDelivery {
+        +channel
+        +status
+        +event_type
+        +dedupe_key
+        +delivered_at
+        +read_at
+    }
+
+    class RealtimeSignal {
+        +owner_id
+        +channel
+        +event
+        +aggregate_type
+        +aggregate_id
+    }
+
+    IdentityDomainEventOutbox --> UserProductUsageProjection : feeds
+    AccountDomainEventOutbox --> UserProductUsageProjection : feeds
+    TransactionDomainEventOutbox --> Alert : triggers
+    TransactionDomainEventOutbox --> NotificationDelivery : may_trigger
+    PaymentDomainEventOutbox --> NotificationDelivery : may_trigger
+    AccountDomainEventOutbox --> RealtimeSignal : may_trigger
+    PaymentDomainEventOutbox --> RealtimeSignal : may_trigger
+```
+
+Lectura:
+
+- los bounded contexts publican por outbox, no desde el request path fuerte
+- `UserProductUsageProjection` es una proyeccion de producto, no una tabla
+  transaccional
+- `Alert`, `NotificationDelivery` y `RealtimeSignal` son capas de experiencia
+  derivadas del core
+
+#### 4. Vista corta de arquitectura backend
+
+```mermaid
+flowchart TD
+    FE[Frontend Mobile/Web]
+    GW[API Gateway / Ingress]
+    API[Django DRF BFF]
+    SQL[(Cloud SQL / PostgreSQL)]
+    OUT[Outbox por bounded context]
+    BUS[Pub/Sub / Event Bus]
+    STUB[Integrations Stub]
+    INT[Future integration_service]
+    BQ[BigQuery / Analytics]
+
+    FE --> GW --> API
+    API --> SQL
+    API --> OUT
+    OUT --> BUS
+    BUS --> STUB
+    BUS --> INT
+    STUB --> API
+    INT --> API
+    BUS --> BQ
+```
+
+Lectura:
+
+- el backend canonico sigue siendo el dueño de Cloud SQL
+- integraciones no escriben ledger directo
+- outbox y bus separan API, dominio y consumidores cloud
+
+#### 5. Diagramas detallados por modulo
+
+Esta segunda tanda hace zoom sobre los modelos y relaciones que hoy estan
+implementados. No reemplaza los README de cada bounded context; sirve para
+entender rapido el shape real del backend y como se reparten responsabilidades
+entre aggregates, read models y outboxes.
+
+##### 5.1 Identity
+
+```mermaid
+classDiagram
+    class User {
+        +email
+        +plan
+        +status
+        +preferred_currency
+        +timezone_name
+        +onboarding_completed
+        +last_seen
+    }
+
+    class UserDevice {
+        +fingerprint
+        +device_type
+        +trust_level
+        +is_primary
+        +first_seen_at
+        +last_seen_at
+    }
+
+    class UserSession {
+        +session_key
+        +refresh_jti
+        +status
+        +risk_level
+        +requires_step_up
+        +authenticated_at
+        +expires_at
+    }
+
+    class UserConsent {
+        +consent_type
+        +provider
+        +scope_code
+        +status
+        +granted_at
+        +expires_at
+    }
+
+    class UserPermissionGrant {
+        +permission_code
+        +scope_type
+        +scope_id
+        +status
+        +source
+        +grant_kind
+    }
+
+    class UserProductUsageProjection {
+        +manual_accounts_count
+        +connected_accounts_count
+        +active_accounts_count
+        +payments_count_month
+        +payments_volume_month
+        +ai_used_month
+        +shared_memberships_count
+    }
+
+    class IdentityDomainEventOutbox {
+        +aggregate_type
+        +aggregate_id
+        +event_type
+        +idempotency_key
+        +status
+        +retry_count
+        +request_id
+    }
+
+    User "1" --> "*" UserDevice : owns
+    User "1" --> "*" UserSession : authenticates_with
+    UserDevice "1" --> "*" UserSession : used_by
+    User "1" --> "*" UserConsent : grants
+    User "1" --> "*" UserPermissionGrant : receives
+    User "1" --> "1" UserProductUsageProjection : summarized_into
+    IdentityDomainEventOutbox --> UserProductUsageProjection : refreshes
+```
+
+Lectura:
+
+- `User` concentra identidad, plan y configuracion base
+- `UserDevice` y `UserSession` separan hardware conocido de ocurrencias de acceso
+- `UserConsent` y `UserPermissionGrant` soportan gobierno de datos y
+  capabilities
+- `UserProductUsageProjection` es el read model operativo que evita hacer
+  `count()` complejos en caliente
+
+##### 5.2 Accounts
+
+```mermaid
+classDiagram
+    class Account {
+        +owner
+        +name
+        +type
+        +role
+        +ownership
+        +status
+        +currency
+        +provider
+        +external_id
+        +balance
+        +sync_status
+        +is_primary
+        +archived
+    }
+
+    class AccountMembership {
+        +role
+        +access_mode
+        +can_view_balance
+        +can_post_transactions
+        +can_manage_members
+        +is_active
+    }
+
+    class AccountInvitation {
+        +status
+        +attempt_number
+        +is_current
+        +expires_at
+        +accepted_at
+        +revoked_at
+    }
+
+    class BalanceSnapshot {
+        +snapshot_kind
+        +cached_balance
+        +recomputed_balance
+        +difference
+        +recorded_at
+    }
+
+    class AccountBalanceFallback {
+        +reason
+        +previous_balance
+        +recomputed_balance
+        +difference
+        +recorded_at
+    }
+
+    class AccountPortfolioSnapshot {
+        +assets_total
+        +liabilities_total
+        +net_worth
+        +captured_at
+    }
+
+    class AccountRiskSnapshot {
+        +risk_level
+        +risk_score
+        +anomaly_flags
+        +captured_at
+    }
+
+    class DomainEventOutbox {
+        +aggregate_type
+        +aggregate_id
+        +event_type
+        +idempotency_key
+        +status
+        +retry_count
+        +dead_lettered_at
+    }
+
+    User "1" --> "*" Account : owns
+    Account "1" --> "*" AccountMembership : shares
+    AccountMembership "1" --> "*" AccountInvitation : invites
+    Account "1" --> "*" BalanceSnapshot : reconciles_into
+    Account "1" --> "*" AccountBalanceFallback : records_fallbacks
+    Account "1" --> "*" AccountPortfolioSnapshot : materializes
+    Account "1" --> "*" AccountRiskSnapshot : materializes
+    DomainEventOutbox --> Account : publishes_events_for
+```
+
+Lectura:
+
+- `Account` es la superficie operativa donde vive el dinero observado
+- membresias e invitaciones separan sharing efectivo de onboarding de acceso
+- snapshots y fallbacks soportan conciliacion, inteligencia y soporte
+- el outbox de `accounts` es hoy el patron mas maduro del sistema
+
+##### 5.3 Transactions
+
+```mermaid
+classDiagram
+    class Transaction {
+        +owner
+        +account
+        +type
+        +status
+        +amount
+        +currency
+        +date
+        +source
+        +provider
+        +external_id
+        +fingerprint
+        +confirmed
+        +affects_balance
+    }
+
+    class TransactionParticipant {
+        +direction
+        +role
+        +status
+        +share_amount
+        +paid_amount
+    }
+
+    class ScheduledPayment {
+        +name
+        +amount
+        +frequency
+        +next_run_date
+        +is_active
+    }
+
+    class TransactionIntakeBatch {
+        +provider
+        +source
+        +provider_account_id
+        +request_id
+        +idempotency_key
+        +status
+        +row_count
+    }
+
+    class TransactionIntakeReceipt {
+        +external_id
+        +provider_event_id
+        +canonical_fingerprint
+        +status
+        +seen_count
+        +last_error
+    }
+
+    class TransactionSourceLink {
+        +provider
+        +source
+        +provider_account_id
+        +external_id
+        +canonical_fingerprint
+        +provider_status
+        +last_seen_at
+    }
+
+    class TransactionReconciliationIssue {
+        +issue_type
+        +status
+        +summary
+        +resolution_action
+        +resolved_at
+    }
+
+    class TransactionDomainEventOutbox {
+        +aggregate_type
+        +aggregate_id
+        +event_type
+        +idempotency_key
+        +status
+        +retry_count
+    }
+
+    class PaymentIntent {
+        +status
+        +provider
+        +provider_intent_id
+    }
+
+    Account "1" --> "*" Transaction : contains
+    User "1" --> "*" Transaction : owns
+    Transaction "1" --> "*" TransactionParticipant : distributes
+    Account "1" --> "*" ScheduledPayment : plans
+    Account "1" --> "*" TransactionIntakeBatch : receives_external_rows
+    TransactionIntakeBatch "1" --> "*" TransactionIntakeReceipt : stores
+    TransactionIntakeReceipt "0..1" --> "0..1" Transaction : materializes
+    Transaction "1" --> "*" TransactionSourceLink : binds_external_identity
+    Transaction "1" --> "*" TransactionReconciliationIssue : raises
+    TransactionIntakeReceipt "0..1" --> "0..1" TransactionReconciliationIssue : creates
+    PaymentIntent "1" --> "0..1" Transaction : materializes_to
+    TransactionDomainEventOutbox --> Transaction : publishes_events_for
+```
+
+Lectura:
+
+- el ledger sigue en `Transaction`, no en `PaymentIntent`
+- el intake externo ya no escribe al ledger directo; entra por batch/receipt
+- `TransactionSourceLink` e `Issue` formalizan dedupe, correcciones y reversos
+- el write path manual sigue conviviendo con signals, pero el camino nuevo ya
+  existe para intake y reconciliacion
+
+##### 5.4 Payments
+
+```mermaid
+classDiagram
+    class PaymentIntent {
+        +owner
+        +account
+        +payment_type
+        +rail
+        +amount
+        +currency
+        +provider
+        +idempotency_key
+        +status
+        +provider_intent_id
+        +failure_code
+    }
+
+    class PayoutBatch {
+        +provider
+        +rail
+        +currency
+        +idempotency_key
+        +status
+        +total_instructions
+        +total_amount
+    }
+
+    class PayoutInstruction {
+        +beneficiary_name
+        +beneficiary_account_ref
+        +amount
+        +currency
+        +status
+        +provider_reference
+        +failure_code
+    }
+
+    class PaymentProviderCallbackReceipt {
+        +provider
+        +provider_event_id
+        +callback_kind
+        +status
+        +received_at
+    }
+
+    class PaymentSettlementRecord {
+        +provider
+        +provider_settlement_id
+        +status
+        +settled_amount
+        +settled_at
+    }
+
+    class PaymentOperationalCase {
+        +case_type
+        +status
+        +summary
+        +opened_at
+        +closed_at
+    }
+
+    class PaymentDomainEventOutbox {
+        +aggregate_type
+        +aggregate_id
+        +event_type
+        +idempotency_key
+        +status
+        +retry_count
+        +next_attempt_at
+    }
+
+    class Transaction {
+        +type
+        +status
+        +amount
+        +date
+    }
+
+    User "1" --> "*" PaymentIntent : owns
+    Account "1" --> "*" PaymentIntent : funds
+    PaymentIntent "1" --> "*" PaymentProviderCallbackReceipt : receives
+    PaymentIntent "1" --> "*" PaymentSettlementRecord : settles_into
+    PaymentIntent "1" --> "*" PaymentOperationalCase : may_open
+    PayoutBatch "1" --> "*" PayoutInstruction : groups
+    PayoutInstruction "*" --> "0..1" PaymentIntent : may_reference
+    PaymentIntent "1" --> "0..1" Transaction : materializes_to
+    PaymentDomainEventOutbox --> PaymentIntent : publishes_events_for
+```
+
+Lectura:
+
+- `payments` representa ejecucion operativa externa, no verdad contable final
+- callbacks, settlement y casos operativos quedan persistidos fuera del ledger
+- los payouts comparten lenguaje del dominio de pagos, no del ledger
+
+##### 5.5 Experience y eventing
+
+```mermaid
+classDiagram
+    class Alert {
+        +owner
+        +type
+        +category
+        +severity
+        +status
+        +title
+        +message
+        +source
+        +correlation_id
+    }
+
+    class NotificationDelivery {
+        +channel
+        +status
+        +event_type
+        +source
+        +title
+        +dedupe_key
+        +delivered_at
+        +read_at
+    }
+
+    class RealtimeSignal {
+        +owner_id
+        +channel
+        +event
+        +aggregate_type
+        +aggregate_id
+        +published_at
+    }
+
+    class UserProductUsageProjection {
+        +active_accounts_count
+        +rules_count
+        +payments_count_month
+        +payments_volume_month
+        +ai_used_month
+        +scheduled_payments_active_count
+    }
+
+    class IdentityDomainEventOutbox {
+        +event_type
+        +status
+    }
+
+    class AccountDomainEventOutbox {
+        +event_type
+        +status
+    }
+
+    class TransactionDomainEventOutbox {
+        +event_type
+        +status
+    }
+
+    class PaymentDomainEventOutbox {
+        +event_type
+        +status
+    }
+
+    IdentityDomainEventOutbox --> UserProductUsageProjection : updates
+    AccountDomainEventOutbox --> UserProductUsageProjection : updates
+    PaymentDomainEventOutbox --> UserProductUsageProjection : updates
+    TransactionDomainEventOutbox --> Alert : may_create
+    AccountDomainEventOutbox --> NotificationDelivery : may_create
+    PaymentDomainEventOutbox --> NotificationDelivery : may_create
+    AccountDomainEventOutbox --> RealtimeSignal : may_emit
+    PaymentDomainEventOutbox --> RealtimeSignal : may_emit
+```
+
+Lectura:
+
+- esta capa no es el core transaccional; es la traduccion visible del dominio
+- `Alert` es pieza de negocio; `NotificationDelivery` es entrega durable;
+  `RealtimeSignal` es feedback liviano
+- `UserProductUsageProjection` conecta producto, limites y experiencia sin
+  recalculo caliente sobre OLTP
+
 ## Glosario corto
 
 Antes de entrar al detalle, estos terminos aparecen una y otra vez:
