@@ -16,6 +16,22 @@ Eso significa:
 - `integrations_stub` no debe absorber dominio; solo actuar como frontera
   temporal hacia un futuro `integration_service`
 
+## Vista visual del principio rector
+
+```mermaid
+flowchart LR
+    B[backend canonico]
+    O[outboxs homogéneos]
+    E[eventing consistente]
+    I[integration_service real]
+    S[integrations_stub temporal]
+
+    B --> O
+    O --> E
+    E --> I
+    S -. puente temporal .-> I
+```
+
 ## Objetivo de esta pasada
 
 Esta pasada no rehace toda la arquitectura. Endurece la base comun donde ya era

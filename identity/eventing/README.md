@@ -28,6 +28,40 @@ Este modulo evita dos problemas:
 
 Su funcion es ser capa de entrega y de lectura derivada para identidad.
 
+## Vista visual
+
+```mermaid
+classDiagram
+    class IdentityDomainEventOutbox {
+        +aggregate_type
+        +aggregate_id
+        +event_type
+        +idempotency_key
+        +status
+        +retry_count
+        +next_attempt_at
+        +dead_lettered_at
+    }
+
+    class UserProductUsageProjection {
+        +manual_accounts_count
+        +connected_accounts_count
+        +active_accounts_count
+        +payments_count_month
+        +payments_volume_month
+        +ai_used_month
+    }
+
+    class UserProductUsageProjectionEvent {
+        +event_key
+        +event_type
+        +applied_at
+    }
+
+    IdentityDomainEventOutbox --> UserProductUsageProjection : publishes_updates
+    UserProductUsageProjection "1" --> "*" UserProductUsageProjectionEvent : dedupes_with
+```
+
 ## Flujo actual
 
 1. `identity.users.services.event_service.publish_user_event_after_commit()`

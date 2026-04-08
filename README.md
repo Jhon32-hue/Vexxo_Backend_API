@@ -37,6 +37,59 @@ La forma recomendada de leerlo es:
 3. entender como se relacionan los modulos
 4. profundizar en el README especifico del contexto que te interese
 
+## Indice de arquitectura
+
+Puedes entrar al backend desde cuatro puertas distintas, segun la pregunta que
+tengas:
+
+### 1. Negocio
+
+Si quieres entender que resuelve Vexxo y donde vive cada responsabilidad:
+
+- [Core del negocio](#core-del-negocio)
+- [Glosario corto](#glosario-corto)
+- [Arquitectura logica](#arquitectura-logica)
+
+### 2. Dominio
+
+Si quieres entender bounded contexts, aggregates y tablas principales:
+
+- [Diagramas detallados por modulo](#5-diagramas-detallados-por-modulo)
+- [identity.users](identity/users/README.md)
+- [identity.sessions](identity/sessions/README.md)
+- [identity.devices](identity/devices/README.md)
+- [identity.consents](identity/consents/README.md)
+- [identity.permissions](identity/permissions/README.md)
+- [identity.eventing](identity/eventing/README.md)
+- [finance.accounts](finance/accounts/README.md)
+- [finance.transactions](finance/transactions/README.md)
+- [payments.payment_intents](payments/payment_intents/README.md)
+- [alerts.alerts](alerts/alerts/README.md)
+- [notifications](notifications/README.md)
+- [realtime.consumers](realtime/consumers/README.md)
+- [common](common/README.md)
+
+### 3. Flujos
+
+Si quieres seguir que pasa paso a paso cuando alguien usa el producto:
+
+- [Diagramas de secuencia de flujos criticos](#6-diagramas-de-secuencia-de-flujos-criticos)
+- [register](identity/users/README.md#secuencia-critica-register)
+- [create account](finance/accounts/README.md#secuencia-critica-create-account)
+- [manual transaction](finance/transactions/README.md#secuencias-criticas)
+- [payment confirmed](payments/payment_intents/README.md#secuencia-critica-payment-confirmed)
+- [external transaction intake](finance/transactions/README.md#secuencias-criticas)
+
+### 4. Cloud
+
+Si quieres entender despliegue, eventing e integraciones:
+
+- [Encaje con GCP](#encaje-con-gcp)
+- [Diagramas de despliegue e interaccion cloud](#7-diagramas-de-despliegue-e-interaccion-cloud)
+- [common cloud/eventing](common/README.md#vista-cloud)
+- [integrations_stub](integrations_stub/README.md)
+- [Auditoria de eventing y cloud readiness](AUDITORIA_EVENTING_CLOUD.md)
+
 ## Core del negocio
 
 Vexxo no se modela como un simple tracker.
@@ -836,6 +889,258 @@ Lectura:
   `RealtimeSignal` es feedback liviano
 - `UserProductUsageProjection` conecta producto, limites y experiencia sin
   recalculo caliente sobre OLTP
+
+#### 6. Diagramas de secuencia de flujos criticos
+
+Estos diagramas muestran el camino operativo real de las acciones que hoy mas
+importan en Vexxo. La idea no es representar cada helper interno, sino dejar
+claro que bounded context es dueno del dato, donde vive el outbox y cuando
+aparecen side effects o integraciones.
+
+##### 6.1 Register
+
+```mermaid
+sequenceDiagram
+    participant FE as Frontend
+    participant API as Django BFF
+    participant U as identity.users
+    participant SQL as Cloud SQL
+    participant IO as Identity Outbox
+    participant PERM as identity.permissions
+    participant PROJ as identity.eventing
+
+    FE->>API: POST /api/identity/users/auth/register/
+    API->>U: validate + create user
+    U->>SQL: insert users_user
+    U->>IO: enqueue users.registered.v1
+    API-->>FE: 201 user payload
+    IO->>PERM: sync plan permissions
+    IO->>PROJ: bootstrap usage projection
+```
+
+##### 6.2 Create account
+
+```mermaid
+sequenceDiagram
+    participant FE as Frontend
+    participant API as Django BFF
+    participant ACC as finance.accounts
+    participant SQL as Cloud SQL
+    participant AO as Accounts Outbox
+    participant PROJ as identity.eventing
+    participant RT as realtime
+
+    FE->>API: POST /api/finance/accounts/cuentas/
+    API->>ACC: validate policy + create Account
+    ACC->>SQL: insert account + owner membership
+    ACC->>AO: enqueue accounts.created.v1
+    API-->>FE: 201 account payload
+    AO->>PROJ: refresh usage / counts
+    AO->>RT: optional signal for UI
+```
+
+##### 6.3 Manual transaction
+
+```mermaid
+sequenceDiagram
+    participant FE as Frontend
+    participant API as Django BFF
+    participant TXW as transaction_write_service
+    participant SQL as Cloud SQL
+    participant TO as Transactions Outbox
+    participant ACC as finance.accounts
+    participant AL as alerts
+    participant CT as contacts/debts
+
+    FE->>API: POST /api/finance/transactions/transactions/
+    API->>TXW: validate + create Transaction
+    TXW->>SQL: insert transactions_transaction
+    TXW->>TO: enqueue transactions.created.v1
+    API-->>FE: 201 transaction payload
+    TO->>ACC: apply balance delta / fallback
+    TO->>AL: evaluate alerts
+    TO->>CT: update participants / debt effects
+```
+
+##### 6.4 Payment confirmed
+
+```mermaid
+sequenceDiagram
+    participant FE as Frontend
+    participant API as Django BFF
+    participant PAY as payments.payment_intents
+    participant PO as Payments Outbox
+    participant INT as integrations_stub / future integration_service
+    participant PSP as Provider / Rail
+    participant MAT as payment_materialization_service
+    participant TX as finance.transactions
+
+    FE->>API: POST /api/payments/intents/intents/
+    API->>PAY: create PaymentIntent
+    PAY->>PO: enqueue payments.intent.created.v1
+    API-->>FE: 201 payment intent
+    PO->>INT: dispatch command
+    INT->>PSP: execute external rail
+    PSP-->>API: callback / worker report
+    API->>PAY: update PaymentIntent status
+    PAY->>PO: enqueue payments.intent.succeeded/settled.v1
+    PAY->>MAT: materialize ledger reflection
+    MAT->>TX: create or reuse Transaction
+```
+
+##### 6.5 External transaction intake
+
+```mermaid
+sequenceDiagram
+    participant INT as integration_service / integrations_stub
+    participant API as Internal API
+    participant INTAKE as transaction_intake_service
+    participant SQL as Cloud SQL
+    participant LINK as TransactionSourceLink
+    participant REC as ReconciliationIssue
+    participant TO as Transactions Outbox
+
+    INT->>API: POST /api/internal/transactions/intake/batches/
+    API->>INTAKE: validate token + request_id + idempotency_key
+    INTAKE->>SQL: create TransactionIntakeBatch
+    INTAKE->>SQL: create TransactionIntakeReceipt rows
+    INTAKE->>LINK: dedupe by external_id or fingerprint
+    alt no duplicate and no material mismatch
+        INTAKE->>SQL: create/update Transaction
+    else material mismatch / reverse needed
+        INTAKE->>REC: open TransactionReconciliationIssue
+    end
+    INTAKE->>TO: enqueue transactions.imported/reconciled/corrected/reversed.v1
+    API-->>INT: batch result
+```
+
+#### 7. Diagramas de despliegue e interaccion cloud
+
+Esta capa separa dos cosas:
+
+- como esta armado hoy el backend para convivir con local, Cloud Run y GCP
+- cual es la topologia objetivo cuando `integration_service` salga del stub y
+  opere como consumidor cloud real
+
+##### 7.1 Despliegue cloud objetivo
+
+```mermaid
+flowchart TB
+    FE[Frontend Mobile / Web]
+    GW[API Gateway]
+    CA[Cloud Armor]
+    API[Cloud Run: backend api]
+    SQL[(Cloud SQL PostgreSQL)]
+    TASKS[Cloud Tasks]
+    BUS[Pub/Sub]
+    INT[Cloud Run: integration_service]
+    NOTI[Cloud Run: notifications / workers]
+    DATA[Cloud Run: data_service]
+    BQ[(BigQuery)]
+
+    FE --> GW
+    GW --> CA
+    CA --> API
+    API --> SQL
+    API --> TASKS
+    API --> BUS
+    BUS --> INT
+    BUS --> NOTI
+    BUS --> DATA
+    INT --> API
+    DATA --> BQ
+```
+
+Lectura:
+
+- `backend api` sigue siendo duenio de Cloud SQL y del write canonico
+- `integration_service` consume eventos y devuelve resultados al backend
+- `Pub/Sub` distribuye trabajo entre consumidores cloud sin volver al request
+  sincrono
+- `BigQuery` recibe analitica y lecturas de datos, no ownership transaccional
+
+##### 7.2 Interaccion cloud del backend canonico
+
+```mermaid
+flowchart LR
+    REQ[HTTP request]
+    API[Django BFF]
+    DOM[Bounded context]
+    DB[(Cloud SQL)]
+    OUT[Outbox]
+    BUS[common.domain_events]
+    PUB[Pub/Sub dispatcher]
+    LOCAL[Listeners locales]
+
+    REQ --> API
+    API --> DOM
+    DOM --> DB
+    DOM --> OUT
+    OUT --> BUS
+    BUS --> LOCAL
+    BUS --> PUB
+```
+
+Lectura:
+
+- el request web escribe dominio y termina rapido
+- los side effects fuertes no salen del request path; se encolan en outbox
+- `common.domain_events` coordina listeners locales y dispatchers externos
+
+##### 7.3 Estado actual vs estado objetivo de integraciones
+
+```mermaid
+flowchart LR
+    subgraph Hoy
+        API1[backend api]
+        STUB[integrations_stub]
+        API1 --> STUB
+        STUB --> API1
+    end
+
+    subgraph Objetivo
+        API2[backend api]
+        BUS[Pub/Sub / Cloud Tasks]
+        INT[Cloud Run integration_service]
+        API2 --> BUS
+        BUS --> INT
+        INT --> API2
+    end
+```
+
+Lectura:
+
+- hoy el stub permite diseñar la frontera sin sacar aun el servicio del repo
+- el objetivo no es que `integration_service` escriba directo a SQL
+- el objetivo si es que consuma eventos/tasks y reporte resultados por
+  callbacks o endpoints internos del backend
+
+##### 7.4 Camino cloud de intake externo
+
+```mermaid
+sequenceDiagram
+    participant ACC as accounts sync event
+    participant BUS as Pub/Sub
+    participant INT as integration_service
+    participant BANK as Bank / Open banking provider
+    participant API as backend internal API
+    participant TX as transactions intake
+    participant SQL as Cloud SQL
+
+    ACC->>BUS: accounts.sync.scheduled.v1
+    BUS->>INT: deliver event
+    INT->>BANK: fetch accounts / balances / movements
+    BANK-->>INT: normalized provider payload
+    INT->>API: POST /api/internal/transactions/intake/batches/
+    API->>TX: dedupe + reconcile + materialize
+    TX->>SQL: persist batch / receipts / transactions
+```
+
+Lectura:
+
+- open banking no debe escribir `transactions` directo desde afuera
+- `integration_service` integra y normaliza
+- el backend canonico decide dedupe, reconciliacion y escritura final
 
 ## Glosario corto
 

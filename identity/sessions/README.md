@@ -23,6 +23,38 @@ De cara al cliente, permite:
 - cerrar otras sesiones
 - revocar toda su presencia si detecta riesgo
 
+## Vista visual
+
+```mermaid
+classDiagram
+    class UserSession {
+        +session_key
+        +refresh_jti
+        +status
+        +risk_level
+        +requires_step_up
+        +provider
+        +authenticated_at
+        +expires_at
+    }
+
+    class UserDevice {
+        +fingerprint
+        +device_type
+        +trust_level
+        +last_seen_at
+    }
+
+    class User {
+        +email
+        +plan
+        +status
+    }
+
+    User "1" --> "*" UserSession : owns
+    UserDevice "1" --> "*" UserSession : backs
+```
+
 ## Flujo Principal
 
 1. auth o cliente registra una sesion

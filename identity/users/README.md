@@ -22,6 +22,69 @@ De cara al usuario, este modulo responde:
 - cuanto uso llevo frente a mis limites
 - que mensajes de upgrade o bloqueo son validos
 
+## Vista visual
+
+```mermaid
+classDiagram
+    class User {
+        +email
+        +plan
+        +status
+        +preferred_currency
+        +timezone_name
+        +locale
+        +onboarding_completed
+        +last_seen
+    }
+
+    class UserPermissionGrant {
+        +permission_code
+        +status
+        +source
+        +grant_kind
+    }
+
+    class UserConsent {
+        +consent_type
+        +provider
+        +scope_code
+        +status
+    }
+
+    class UserProductUsageProjection {
+        +active_accounts_count
+        +payments_count_month
+        +payments_volume_month
+        +ai_used_month
+        +shared_memberships_count
+    }
+
+    User "1" --> "*" UserPermissionGrant : derives_capabilities
+    User "1" --> "*" UserConsent : authorizes
+    User "1" --> "1" UserProductUsageProjection : summarized_into
+```
+
+## Secuencia critica: register
+
+```mermaid
+sequenceDiagram
+    participant FE as Frontend
+    participant API as Django BFF
+    participant U as identity.users
+    participant SQL as Cloud SQL
+    participant IO as Identity Outbox
+    participant PERM as identity.permissions
+    participant PROJ as identity.eventing
+
+    FE->>API: register
+    API->>U: validate + create user
+    U->>SQL: insert users_user
+    U->>IO: enqueue users.registered.v1
+    API-->>FE: 201 user
+    IO->>PERM: sync plan permissions
+    IO->>PROJ: bootstrap usage projection
+```
+
 ## Flujos principales
 
 ### Plan y capabilities

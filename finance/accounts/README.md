@@ -23,6 +23,89 @@ De cara al cliente, este modulo cumple funciones visibles y criticas:
 Sin `accounts`, Vexxo no sabe de donde sale el dinero ni sobre que superficie
 debe interpretar, alertar o ejecutar.
 
+## Vista visual
+
+```mermaid
+classDiagram
+    class Account {
+        +owner
+        +name
+        +type
+        +role
+        +ownership
+        +status
+        +currency
+        +provider
+        +external_id
+        +balance
+        +sync_status
+        +is_primary
+    }
+
+    class AccountMembership {
+        +role
+        +access_mode
+        +can_view_balance
+        +can_post_transactions
+        +can_manage_members
+        +is_active
+    }
+
+    class AccountInvitation {
+        +status
+        +attempt_number
+        +is_current
+        +expires_at
+    }
+
+    class BalanceSnapshot {
+        +cached_balance
+        +recomputed_balance
+        +difference
+        +recorded_at
+    }
+
+    class AccountBalanceFallback {
+        +reason
+        +difference
+        +recorded_at
+    }
+
+    class DomainEventOutbox {
+        +event_type
+        +idempotency_key
+        +status
+        +retry_count
+    }
+
+    Account "1" --> "*" AccountMembership : shares
+    AccountMembership "1" --> "*" AccountInvitation : drives
+    Account "1" --> "*" BalanceSnapshot : reconciles_into
+    Account "1" --> "*" AccountBalanceFallback : records
+    DomainEventOutbox --> Account : publishes_events_for
+```
+
+## Secuencia critica: create account
+
+```mermaid
+sequenceDiagram
+    participant FE as Frontend
+    participant API as Django BFF
+    participant ACC as finance.accounts
+    participant SQL as Cloud SQL
+    participant AO as Accounts Outbox
+    participant PROJ as identity.eventing
+    participant RT as realtime
+
+    FE->>API: create account
+    API->>ACC: validate policy + create aggregate
+    ACC->>SQL: insert account + owner membership
+    ACC->>AO: enqueue accounts.created.v1
+    API-->>FE: 201 account
+    AO->>PROJ: refresh usage
+    AO->>RT: emit optional signal
+```
+
 ## Principios Del Modulo
 - `Account` es el agregado operativo principal.
 - `AccountMembership` es la fuente canonica del sharing moderno.

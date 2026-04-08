@@ -32,6 +32,36 @@ politica se volveria inconsistente.
 
 `identity.permissions` funciona como capa de entitlements reutilizable.
 
+## Vista visual
+
+```mermaid
+classDiagram
+    class UserPermissionGrant {
+        +permission_code
+        +scope_type
+        +scope_id
+        +status
+        +source
+        +grant_kind
+        +granted_at
+        +expires_at
+    }
+
+    class User {
+        +email
+        +plan
+        +status
+    }
+
+    class UserConsent {
+        +consent_type
+        +status
+    }
+
+    User "1" --> "*" UserPermissionGrant : receives
+    User --> UserConsent : may_influence
+```
+
 ## Flujo Principal
 
 ### Grants por plan

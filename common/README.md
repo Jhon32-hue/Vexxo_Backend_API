@@ -41,6 +41,52 @@ Sin este modulo, cada bounded context tenderia a:
 
 `common` pone orden sin forzar que todos los dominios se vuelvan uno solo.
 
+## Vista visual
+
+```mermaid
+flowchart LR
+    A[Outbox accounts]
+    T[Outbox transactions]
+    P[Outbox payments]
+    I[Outbox identity]
+    B[common.domain_events]
+    L[Listeners locales]
+    X[Dispatchers externos]
+    G[Pub/Sub GCP]
+
+    A --> B
+    T --> B
+    P --> B
+    I --> B
+    B --> L
+    B --> X
+    X --> G
+```
+
+## Vista cloud
+
+```mermaid
+flowchart LR
+    O[Outbox por contexto]
+    B[common.domain_events]
+    L[Listeners locales]
+    D[Pub/Sub dispatcher]
+    P[Pub/Sub]
+    C[Cloud Run consumers]
+
+    O --> B
+    B --> L
+    B --> D
+    D --> P
+    P --> C
+```
+
+Lectura:
+
+- `common` no es el outbox ni el dominio; es la capa de reparto comun
+- el backend puede reaccionar localmente y a la vez publicar hacia GCP
+- el transporte cloud cuelga del contrato comun, no al reves
+
 ## Eventos De Dominio
 
 El archivo clave es [domain_events.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/common/domain_events.py).

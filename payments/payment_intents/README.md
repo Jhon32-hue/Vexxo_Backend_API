@@ -51,6 +51,101 @@ idempotencia y separacion clara entre:
 - resultado operativo
 - reflejo contable
 
+## Vista visual
+
+```mermaid
+classDiagram
+    class PaymentIntent {
+        +payment_type
+        +rail
+        +amount
+        +currency
+        +provider
+        +idempotency_key
+        +status
+        +provider_intent_id
+        +failure_code
+    }
+
+    class PayoutBatch {
+        +provider
+        +rail
+        +currency
+        +idempotency_key
+        +status
+        +total_instructions
+        +total_amount
+    }
+
+    class PayoutInstruction {
+        +beneficiary_name
+        +beneficiary_account_ref
+        +amount
+        +status
+        +provider_reference
+        +failure_code
+    }
+
+    class PaymentProviderCallbackReceipt {
+        +provider
+        +provider_event_id
+        +callback_type
+        +status
+    }
+
+    class PaymentSettlementRecord {
+        +provider
+        +provider_settlement_id
+        +status
+        +settled_amount
+    }
+
+    class PaymentOperationalCase {
+        +case_type
+        +status
+        +summary
+    }
+
+    class PaymentDomainEventOutbox {
+        +event_type
+        +idempotency_key
+        +status
+        +retry_count
+    }
+
+    PaymentIntent "1" --> "*" PaymentProviderCallbackReceipt : receives
+    PaymentIntent "1" --> "*" PaymentSettlementRecord : settles_into
+    PaymentIntent "1" --> "*" PaymentOperationalCase : may_open
+    PayoutBatch "1" --> "*" PayoutInstruction : groups
+    PaymentDomainEventOutbox --> PaymentIntent : publishes_events_for
+```
+
+## Secuencia critica: payment confirmed
+
+```mermaid
+sequenceDiagram
+    participant FE as Frontend
+    participant API as Django BFF
+    participant PAY as payments.payment_intents
+    participant PO as Payments Outbox
+    participant INT as integrations_stub / integration_service
+    participant PSP as Provider
+    participant MAT as payment materialization
+    participant TX as finance.transactions
+
+    FE->>API: create payment intent
+    API->>PAY: persist PaymentIntent
+    PAY->>PO: enqueue payments.intent.created.v1
+    API-->>FE: 201 intent
+    PO->>INT: dispatch external command
+    INT->>PSP: execute payment
+    PSP-->>API: callback / worker report
+    API->>PAY: mark succeeded or settled
+    PAY->>PO: enqueue payments.intent.succeeded/settled.v1
+    PAY->>MAT: materialize ledger
+    MAT->>TX: create or reuse Transaction
+```
+
 ## Flujos principales
 
 ### Pay now

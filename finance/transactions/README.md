@@ -23,6 +23,84 @@ Desde producto, este modulo representa la respuesta a preguntas como:
 
 Es el punto donde Vexxo deja de hablar de intenciones y pasa a hablar de realidad contable.
 
+## Vista visual
+
+```mermaid
+classDiagram
+    class Transaction {
+        +type
+        +status
+        +amount
+        +currency
+        +date
+        +source
+        +provider
+        +external_id
+        +fingerprint
+        +confirmed
+        +affects_balance
+    }
+
+    class TransactionParticipant {
+        +direction
+        +role
+        +status
+        +share_amount
+        +paid_amount
+    }
+
+    class ScheduledPayment {
+        +amount
+        +frequency
+        +next_run_date
+        +is_active
+    }
+
+    class TransactionIntakeBatch {
+        +provider
+        +source
+        +provider_account_id
+        +request_id
+        +idempotency_key
+        +status
+    }
+
+    class TransactionIntakeReceipt {
+        +external_id
+        +canonical_fingerprint
+        +status
+        +seen_count
+    }
+
+    class TransactionSourceLink {
+        +provider
+        +source
+        +provider_account_id
+        +external_id
+        +provider_status
+    }
+
+    class TransactionReconciliationIssue {
+        +issue_type
+        +status
+        +resolution_action
+        +resolved_at
+    }
+
+    class TransactionDomainEventOutbox {
+        +event_type
+        +idempotency_key
+        +status
+    }
+
+    Transaction "1" --> "*" TransactionParticipant : splits_to
+    TransactionIntakeBatch "1" --> "*" TransactionIntakeReceipt : stores
+    TransactionIntakeReceipt "0..1" --> "0..1" Transaction : materializes
+    Transaction "1" --> "*" TransactionSourceLink : binds_external_identity
+    Transaction "1" --> "*" TransactionReconciliationIssue : opens
+    TransactionDomainEventOutbox --> Transaction : publishes_events_for
+```
+
 ## Que no hace
 
 `Transaction` no es:
@@ -179,6 +257,54 @@ Regla operativa:
 - una transaccion cuenta para ledger cuando es `posted`/`reconciled`, esta `confirmed` y `affects_balance=True`
 
 Eso evita ambiguedad entre "existe un registro" y "ya es verdad contable".
+
+## Secuencias criticas
+
+### Transaccion manual
+
+```mermaid
+sequenceDiagram
+    participant FE as Frontend
+    participant API as Django BFF
+    participant WRITE as transaction_write_service
+    participant SQL as Cloud SQL
+    participant TO as Transactions Outbox
+    participant ACC as finance.accounts
+    participant AL as alerts
+
+    FE->>API: create transaction
+    API->>WRITE: validate + create
+    WRITE->>SQL: insert transaction
+    WRITE->>TO: enqueue transactions.created.v1
+    API-->>FE: 201 transaction
+    TO->>ACC: update balance
+    TO->>AL: evaluate alert side effects
+```
+
+### Intake externo
+
+```mermaid
+sequenceDiagram
+    participant INT as integration_service / stub
+    participant API as Internal API
+    participant INTAKE as transaction_intake_service
+    participant SQL as Cloud SQL
+    participant LINK as source link dedupe
+    participant REC as reconciliation issue
+    participant TO as Transactions Outbox
+
+    INT->>API: post intake batch
+    API->>INTAKE: validate internal auth + headers
+    INTAKE->>SQL: create batch + receipts
+    INTAKE->>LINK: dedupe external identity
+    alt materializable
+        INTAKE->>SQL: create/update transaction
+    else mismatch
+        INTAKE->>REC: open issue
+    end
+    INTAKE->>TO: enqueue transactions.* result event
+    API-->>INT: batch outcome
+```
 
 ## Flujos principales
 

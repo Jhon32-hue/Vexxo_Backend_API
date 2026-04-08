@@ -53,6 +53,29 @@ Este modulo es el puente natural para migrar a:
 Cuando el servicio real exista, el ideal es mover el receptor y dejar intacta
 la semantica del caso de uso.
 
+## Vista visual
+
+```mermaid
+flowchart LR
+    API[backend api]
+    STUB[integrations_stub]
+    DOM[bounded contexts]
+    FUT[future integration_service]
+    BUS[Pub/Sub / Cloud Tasks]
+
+    API --> STUB
+    STUB --> DOM
+    API --> BUS
+    BUS --> FUT
+    FUT --> API
+```
+
+Lectura:
+
+- hoy el stub vive dentro del repo y delega al dominio canonico
+- el objetivo es reemplazar ese receptor interno por un servicio separado
+- el contrato del dominio debe sobrevivir intacto a esa extraccion
+
 ## Submodulos actuales
 
 - `banks`

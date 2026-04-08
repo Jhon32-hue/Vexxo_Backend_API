@@ -31,6 +31,37 @@ Eso tiene implicaciones:
 - de permisos derivados
 - de integraciones activas
 
+## Vista visual
+
+```mermaid
+classDiagram
+    class UserConsent {
+        +consent_type
+        +provider
+        +external_consent_id
+        +scope_code
+        +status
+        +granted_at
+        +revoked_at
+        +expires_at
+    }
+
+    class User {
+        +email
+        +plan
+        +status
+    }
+
+    class UserPermissionGrant {
+        +permission_code
+        +status
+        +source
+    }
+
+    User "1" --> "*" UserConsent : grants_or_revokes
+    UserConsent --> UserPermissionGrant : may_derive
+```
+
 ## Flujo Principal
 
 ### Grant de consentimiento

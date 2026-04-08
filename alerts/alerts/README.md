@@ -26,6 +26,32 @@ De cara al cliente:
 No reemplaza el ledger ni a `accounts`; interpreta lo que otros contextos ya
 registraron.
 
+## Vista visual
+
+```mermaid
+classDiagram
+    class Alert {
+        +type
+        +category
+        +severity
+        +status
+        +title
+        +message
+        +source
+        +correlation_id
+        +risk_score
+    }
+
+    class AlertDomainEventOutbox {
+        +event_type
+        +idempotency_key
+        +status
+        +retry_count
+    }
+
+    AlertDomainEventOutbox --> Alert : publishes_events_for
+```
+
 ## Flujo actual
 
 ### Creacion

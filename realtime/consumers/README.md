@@ -13,6 +13,29 @@ No pretende ser:
 
 Su objetivo es dar a la UI una superficie barata para polling y depuracion.
 
+## Vista visual
+
+```mermaid
+classDiagram
+    class RealtimeSignal {
+        +owner_id
+        +channel
+        +event
+        +aggregate_type
+        +aggregate_id
+        +payload
+        +published_at
+    }
+
+    class DomainEvent {
+        +event_type
+        +aggregate_type
+        +aggregate_id
+    }
+
+    DomainEvent --> RealtimeSignal : translated_into
+```
+
 ## Flujo Principal
 
 1. un bounded context produce un cambio relevante

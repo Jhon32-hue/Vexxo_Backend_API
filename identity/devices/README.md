@@ -21,6 +21,39 @@ De cara al cliente y soporte, responde preguntas como:
 - cuales dispositivos son confiables o sospechosos
 - que dispositivo debe revocarse
 
+## Vista visual
+
+```mermaid
+classDiagram
+    class UserDevice {
+        +fingerprint
+        +name
+        +device_type
+        +platform
+        +trust_level
+        +is_primary
+        +is_active
+        +first_seen_at
+        +last_seen_at
+    }
+
+    class UserSession {
+        +session_key
+        +status
+        +risk_level
+        +authenticated_at
+    }
+
+    class User {
+        +email
+        +plan
+        +status
+    }
+
+    User "1" --> "*" UserDevice : registers
+    UserDevice "1" --> "*" UserSession : used_in
+```
+
 ## Flujo Principal
 
 1. login o cliente registra un dispositivo

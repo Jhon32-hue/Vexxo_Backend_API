@@ -35,6 +35,31 @@ Este modulo evita depender solo de:
 - alerts tecnicas
 - senales efimeras de realtime
 
+## Vista visual
+
+```mermaid
+classDiagram
+    class NotificationDelivery {
+        +channel
+        +status
+        +event_type
+        +source
+        +title
+        +message
+        +dedupe_key
+        +delivered_at
+        +read_at
+    }
+
+    class DomainEvent {
+        +event_type
+        +source
+        +payload
+    }
+
+    DomainEvent --> NotificationDelivery : materializes_when_relevant
+```
+
 ## Flujo General
 
 1. un bounded context emite un evento fuerte
