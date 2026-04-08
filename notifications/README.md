@@ -13,6 +13,26 @@ No es lo mismo que:
 `notifications` existe para que el usuario tenga un historial durable de
 mensajes importantes.
 
+## Documento canonico y subdocumentos
+
+Este README es el documento canonico del bounded context `notifications`.
+
+Subdocumentos derivados:
+
+- [deliveries/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/notifications/deliveries/README.md)
+  inbox persistente y semantica de `NotificationDelivery`
+- [listeners/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/notifications/listeners/README.md)
+  materializacion de inbox desde eventos del dominio
+- [preferences/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/notifications/preferences/README.md)
+  configuracion futura por canal
+- [templates/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/notifications/templates/README.md)
+  renderizado y mensajes reutilizables
+
+Regla editorial:
+
+- este README explica `notifications` como modulo
+- los subREADME explican ownership puntual por capa
+
 ## Componentes Principales
 
 - `deliveries`

@@ -12,6 +12,14 @@ Hoy cubre:
 - revocacion de acceso por consentimiento/permisos
 - puente temporal para intake y resolucion de reconciliacion de `transactions`
 
+## Alcance documental
+
+Este README es derivado del documento canonico del modulo:
+
+- [integrations_stub/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/integrations_stub/README.md)
+
+Su foco es la frontera temporal bancaria; no documenta todo `integrations_stub`.
+
 ## Por Que Existe
 
 Mientras `integrations_service` no viva como servicio separado en Cloud Run,

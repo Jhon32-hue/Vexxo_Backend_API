@@ -22,10 +22,19 @@ Aqui vive:
   - refund
   - error
 - dispersiones:
-  - `PayoutBatch`
-  - `PayoutInstruction`
+- `PayoutBatch`
+- `PayoutInstruction`
 
 No es el ledger final. El ledger final vive en `finance.transactions`.
+
+## Alcance documental
+
+Este README es derivado del documento canonico del bounded context:
+
+- [payments/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/payments/README.md)
+
+Su foco es el aggregate operativo `PaymentIntent`, callbacks, outbox,
+settlement, casos operativos y payouts.
 
 ## Rol En El Producto
 

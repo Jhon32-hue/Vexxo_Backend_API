@@ -90,6 +90,13 @@ Si quieres entender despliegue, eventing e integraciones:
 - [integrations_stub](integrations_stub/README.md)
 - [Auditoria de eventing y cloud readiness](AUDITORIA_EVENTING_CLOUD.md)
 
+### 5. Documentacion
+
+Si quieres entender que README es canonico, cual es derivado y que estructura
+debemos mantener:
+
+- [Convencion documental](CONVENCION_DOCUMENTAL.md)
+
 ## Core del negocio
 
 Vexxo no se modela como un simple tracker.
@@ -2185,9 +2192,12 @@ Documentos principales:
 - [Auditoria_eventos_locales.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/Auditoria_eventos_locales.md)
   Matriz exacta de consumo local de eventos, listeners y side effects visibles
   e internos.
-- [AUDITORIA_EVENTING_CLOUD.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/AUDITORIA_EVENTING_CLOUD.md)
-  Estado actual de homogeneidad del eventing, cloud-readiness y deuda
-  pendiente despues de la ultima pasada de endurecimiento.
+  - [AUDITORIA_EVENTING_CLOUD.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/AUDITORIA_EVENTING_CLOUD.md)
+    Estado actual de homogeneidad del eventing, cloud-readiness y deuda
+    pendiente despues de la ultima pasada de endurecimiento.
+  - [CONVENCION_DOCUMENTAL.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/CONVENCION_DOCUMENTAL.md)
+    Convencion de README, mapa canonico y reglas para evitar redundancia
+    documental.
 - [backend/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/backend/README.md)
   Configuracion global de Django, settings, URLs y entrypoints del proyecto.
 - [common/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/common/README.md)
@@ -2365,3 +2375,4 @@ La documentacion canonica de Vexxo sigue estas reglas:
 - distingue entre contexto operativo y contexto reservado
 - explica tanto el por que de negocio como el como tecnico
 - conecta cada modulo con el resto del sistema y con la topologia GCP
+- sigue la convencion descrita en `CONVENCION_DOCUMENTAL.md`

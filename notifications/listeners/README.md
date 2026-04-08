@@ -8,6 +8,15 @@ persistentes para el usuario.
 No reemplaza a `alerts` ni a `realtime`. Su foco es inbox y comunicacion
 durable.
 
+## Alcance documental
+
+Este README es derivado del documento canonico del modulo:
+
+- [notifications/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/notifications/README.md)
+
+Su foco es la materializacion de inbox desde eventos; no explica todo el
+bounded context `notifications`.
+
 ## Estado Actual Real
 
 Este modulo si tiene una pieza operativa clara:

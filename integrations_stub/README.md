@@ -14,6 +14,16 @@ Su objetivo es permitir que los bounded contexts ya trabajen con:
 
 sin obligar a tener desde el primer dia todos los microservicios separados.
 
+## Documento canonico y subdocumentos
+
+Este README es el documento canonico del modulo `integrations_stub`.
+
+Subdocumento derivado:
+
+- [banks/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/integrations_stub/banks/README.md)
+  frontera temporal para sync bancario, refresh de inteligencia y puente hacia
+  intake/reconciliacion de `transactions`
+
 ## Rol En La Arquitectura
 
 Este modulo permite que el dominio se diseñe como si ya existieran:

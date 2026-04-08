@@ -13,6 +13,14 @@ No pretende ser:
 
 Su objetivo es dar a la UI una superficie barata para polling y depuracion.
 
+## Alcance documental
+
+Este README es derivado del documento canonico del modulo:
+
+- [realtime/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/realtime/README.md)
+
+Su foco es `RealtimeSignal` y la capa de consumo/lectura.
+
 ## Vista visual
 
 ```mermaid

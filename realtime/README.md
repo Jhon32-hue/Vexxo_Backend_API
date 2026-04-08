@@ -7,6 +7,27 @@
 No es un inbox funcional ni un stream de negocio duradero. Es una capa de UX y
 observabilidad de bajo costo.
 
+## Documento canonico y subdocumentos
+
+Este README es el documento canonico del modulo `realtime`.
+
+Subdocumento derivado:
+
+- [consumers/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/realtime/consumers/README.md)
+  detalle del modelo `RealtimeSignal`, lectura por API y semantica operativa
+
+## Vista visual
+
+```mermaid
+flowchart LR
+    EVT[Domain event]
+    RT[RealtimeSignal]
+    UI[Polling / UI]
+
+    EVT --> RT
+    RT --> UI
+```
+
 ## Estado Actual
 
 Hoy el modulo funciona principalmente con `RealtimeSignal` persistido.

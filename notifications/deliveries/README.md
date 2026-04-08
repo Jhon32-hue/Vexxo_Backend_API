@@ -10,6 +10,14 @@ Su responsabilidad es:
 - deduplicar mensajes cuando el bus reintenta
 - permitir lectura, listado y marcado como leido
 
+## Alcance documental
+
+Este README es derivado del documento canonico del modulo:
+
+- [notifications/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/notifications/README.md)
+
+Su foco es solo `NotificationDelivery` y la semantica del inbox durable.
+
 ## Flujo Principal
 
 1. un listener decide crear una notificacion

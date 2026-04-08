@@ -1,6 +1,6 @@
 # payments
 
-## Vision del bounded context
+## Que hace
 
 `payments` es la frontera de ejecucion externa de dinero en Vexxo.
 
@@ -15,6 +15,44 @@ Por eso el dominio se separa en:
 - `finance.transactions`: reflejo contable final en el ledger
 - `payouts` se modela dentro de `payment_intents` por ahora mediante
   `PayoutBatch` y `PayoutInstruction`
+
+## Documento canonico y subdocumentos
+
+Este README es el mapa canonico del bounded context `payments`.
+
+Subdocumentos derivados:
+
+- [payment_intents/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/payments/payment_intents/README.md)
+  detalle del aggregate operativo principal, callbacks, outbox y payouts
+- [scheduled_payments/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/payments/scheduled_payments/README.md)
+  planificacion recurrente y scheduling moderno
+- [calendar/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/payments/calendar/README.md)
+  capa reservada de calendario y agenda
+- [reminders/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/payments/reminders/README.md)
+  capa reservada de recordatorios
+
+Regla editorial:
+
+- este README explica el bounded context
+- los subREADME profundizan una pieza concreta y no deben reescribir todo
+  `payments`
+
+## Vista visual
+
+```mermaid
+flowchart LR
+    PI[PaymentIntent]
+    PB[PayoutBatch]
+    SP[Scheduled Payments]
+    TX[finance.transactions]
+    OUT[Payments Outbox]
+
+    PI --> TX
+    PB --> PI
+    SP --> PI
+    PI --> OUT
+    PB --> OUT
+```
 
 ## Rol En El Producto
 
