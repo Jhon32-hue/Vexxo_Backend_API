@@ -998,27 +998,24 @@ sequenceDiagram
 ##### 6.5 External transaction intake
 
 ```mermaid
-sequenceDiagram
-    participant INT as integration service
-    participant API as internal API
-    participant INTAKE as transactions intake
-    participant DB as Cloud SQL
-    participant LINK as source link
-    participant ISSUE as reconciliation issue
-    participant OUT as transactions outbox
+flowchart LR
+    INT[integration service]
+    API[internal API]
+    INTAKE[transactions intake]
+    RECEIPTS[intake batch and receipts]
+    DEDUPE[source link dedupe]
+    TX[transaction write]
+    ISSUE[reconciliation issue]
+    OUT[transactions outbox]
 
-    INT->>API: post intake batch
-    API->>INTAKE: validate auth and idempotency
-    INTAKE->>DB: create intake batch
-    INTAKE->>DB: create intake receipts
-    INTAKE->>LINK: dedupe external identity
-    alt materializable row
-        INTAKE->>DB: create or update transaction
-    else material mismatch
-        INTAKE->>ISSUE: open reconciliation issue
-    end
-    INTAKE->>OUT: enqueue transactions result event
-    API-->>INT: batch result
+    INT --> API
+    API --> INTAKE
+    INTAKE --> RECEIPTS
+    RECEIPTS --> DEDUPE
+    DEDUPE --> TX
+    DEDUPE --> ISSUE
+    TX --> OUT
+    ISSUE --> OUT
 ```
 
 #### 7. Diagramas de despliegue e interaccion cloud
