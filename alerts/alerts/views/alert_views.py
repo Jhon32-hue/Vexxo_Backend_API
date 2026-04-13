@@ -1,6 +1,3 @@
-import secrets
-
-from django.conf import settings
 from django.utils import timezone
 from rest_framework import viewsets, status, views
 from rest_framework.decorators import action
@@ -10,6 +7,7 @@ from rest_framework.response import Response
 from alerts.alerts.ai_services import enrich_alert_with_ai
 from alerts.alerts.models.alerts import Alert, AlertStatus
 from alerts.alerts.serializers.alert_serializers import AlertaSerializer
+from common.internal_auth import assert_internal_token
 
 
 class AlertaViewSet(viewsets.ModelViewSet):
@@ -95,10 +93,16 @@ class AlertAiWorkerView(views.APIView):
     permission_classes = []
 
     def post(self, request, *args, **kwargs):
-        expected = str(getattr(settings, "ALERTS_AI_INTERNAL_TOKEN", "") or "").strip()
-        provided = str(request.headers.get("X-Vexxo-Internal-Token") or "").strip()
-        if expected and not secrets.compare_digest(expected, provided):
-            return Response({"detail": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+        try:
+            assert_internal_token(
+                request,
+                "ALERTS_AI_INTERNAL_TOKEN",
+                detail="Unauthorized",
+            )
+        except Exception as exc:
+            if hasattr(exc, "detail"):
+                return Response({"detail": str(exc.detail)}, status=status.HTTP_403_FORBIDDEN)
+            raise
 
         alert_id = request.data.get("alert_id")
         if not alert_id:

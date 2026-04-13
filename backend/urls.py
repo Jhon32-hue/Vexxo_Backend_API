@@ -22,5 +22,6 @@ urlpatterns = [
 
     # API entrypoint
     path("api/", include("api.v1.routers")),
+    path("api/internal/integrations/banks/", include("integrations_stub.banks.urls")),
     path("internal/integrations/banks/", include("integrations_stub.banks.urls")),
 ]

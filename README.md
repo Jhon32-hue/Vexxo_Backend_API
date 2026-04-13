@@ -39,7 +39,7 @@ La forma recomendada de leerlo es:
 
 ## Indice de arquitectura
 
-Puedes entrar al backend desde cuatro puertas distintas, segun la pregunta que
+Puedes entrar al backend desde cinco puertas distintas, segun la pregunta que
 tengas:
 
 ### 1. Negocio
@@ -95,6 +95,8 @@ Si quieres entender despliegue, eventing e integraciones:
 Si quieres entender que README es canonico, cual es derivado y que estructura
 debemos mantener:
 
+- [Mapa de rutas API](RUTAS_API.md)
+- [Auditoria de rutas API](AUDITORIA_RUTAS_API.md)
 - [Convencion documental](CONVENCION_DOCUMENTAL.md)
 
 ## Core del negocio
@@ -2186,6 +2188,12 @@ Documentos principales:
 - [Flujo de dtos.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/Flujo%20de%20dtos.md)
   Estructura de datos, tablas, dependencias, endpoints y ciclo de vida del
   dato dentro de Vexxo.
+- [RUTAS_API.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/RUTAS_API.md)
+  Mapa raiz de rutas HTTP, CRUDs, acciones custom y endpoints internos por
+  modulo.
+- [AUDITORIA_RUTAS_API.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/AUDITORIA_RUTAS_API.md)
+  Auditoria de consistencia, permisos y separacion entre rutas publicas e
+  internas.
 - [Auditoria_eventos_locales.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/Auditoria_eventos_locales.md)
   Matriz exacta de consumo local de eventos, listeners y side effects visibles
   e internos.

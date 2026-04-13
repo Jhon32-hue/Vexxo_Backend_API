@@ -1,7 +1,10 @@
 from django.urls import path, include
 
 urlpatterns = [
+    path("internal/accounts/", include("finance.accounts.internal_urls")),
     path("internal/transactions/", include("finance.transactions.internal_urls")),
+    path("internal/payments/", include("payments.payment_intents.internal_urls")),
+    path("internal/alerts/", include("alerts.alerts.internal_urls")),
 
     # -------------------
     # IDENTITY

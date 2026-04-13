@@ -5,6 +5,7 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from common.internal_auth import assert_internal_token
 from finance.transactions.Models import TransactionIntakeBatch
 from finance.transactions.Serializers.intake_serializers import (
     TransactionIntakeBatchResponseSerializer,
@@ -28,14 +29,6 @@ from finance.transactions.Models import TransactionReconciliationIssue
 class InternalTransactionsBaseView(APIView):
     permission_classes = [permissions.AllowAny]
 
-    def _authorized(self, request) -> bool:
-        configured = getattr(settings, "TRANSACTIONS_INTAKE_INTERNAL_TOKEN", "")
-        provided = request.headers.get("X-Vexxo-Internal-Token", "")
-        if configured:
-            return bool(provided and provided == configured)
-        user = getattr(request, "user", None)
-        return bool(user and user.is_authenticated and getattr(user, "is_staff", False))
-
     def _request_id(self, request) -> str:
         return str(request.headers.get("X-Request-Id", "") or "").strip()
 
@@ -43,8 +36,16 @@ class InternalTransactionsBaseView(APIView):
         return str(request.headers.get("Idempotency-Key", "") or "").strip()
 
     def _validate_transport_headers(self, request):
-        if not self._authorized(request):
-            return Response({"detail": "No autorizado para intake interno de transactions."}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            assert_internal_token(
+                request,
+                "TRANSACTIONS_INTAKE_INTERNAL_TOKEN",
+                detail="No autorizado para intake interno de transactions.",
+            )
+        except Exception as exc:
+            if hasattr(exc, "detail"):
+                return Response({"detail": str(exc.detail)}, status=status.HTTP_403_FORBIDDEN)
+            raise
         if not self._request_id(request):
             return Response({"detail": "X-Request-Id es requerido."}, status=status.HTTP_400_BAD_REQUEST)
         if not self._idempotency_key(request):

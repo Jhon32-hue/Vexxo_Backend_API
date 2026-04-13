@@ -4,15 +4,12 @@ API y endpoints internos del bounded context `payments.payment_intents`.
 
 from __future__ import annotations
 
-import secrets
-
-from django.conf import settings
 from rest_framework import mixins, status, viewsets, views
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
+from common.internal_auth import assert_internal_token
 from payments.payment_intents.adapters import ADAPTERS, get_payment_provider_adapter
 from payments.payment_intents.callback_service import process_payment_provider_callback
 from payments.payment_intents.models import (
@@ -152,10 +149,11 @@ class PaymentWorkerReportView(views.APIView):
     permission_classes = [AllowAny]
 
     def _assert_internal_worker_token(self, request) -> None:
-        expected = str(getattr(settings, "PAYMENTS_INTERNAL_TOKEN", "") or "").strip()
-        provided = str(request.headers.get("X-Vexxo-Internal-Token") or "").strip()
-        if expected and not secrets.compare_digest(expected, provided):
-            raise PermissionDenied("Unauthorized")
+        assert_internal_token(
+            request,
+            "PAYMENTS_INTERNAL_TOKEN",
+            detail="Unauthorized",
+        )
 
     def post(self, request, *args, **kwargs):
         self._assert_internal_worker_token(request)

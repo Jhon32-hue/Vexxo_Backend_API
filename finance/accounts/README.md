@@ -106,6 +106,19 @@ sequenceDiagram
     AO->>RT: emit optional signal
 ```
 
+## Nota operativa de rutas internas
+
+Los callbacks de sync ya tienen una frontera interna canonica:
+
+- `POST /api/internal/accounts/{account_id}/sync/running/`
+- `POST /api/internal/accounts/{account_id}/sync/success/`
+- `POST /api/internal/accounts/{account_id}/sync/error/`
+- `POST /api/internal/accounts/{account_id}/sync/stale/`
+
+Las rutas antiguas `mark_sync_*` bajo `cuentas/{id}` siguen existiendo por
+compatibilidad, pero ya requieren `X-Vexxo-Internal-Token` y no deben usarse
+como superficie nueva para integraciones.
+
 ## Principios Del Modulo
 - `Account` es el agregado operativo principal.
 - `AccountMembership` es la fuente canonica del sharing moderno.

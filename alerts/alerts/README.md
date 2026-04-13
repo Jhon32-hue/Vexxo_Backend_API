@@ -66,10 +66,17 @@ classDiagram
 
 `dispatch_service` intenta:
 
-- Cloud Tasks hacia `alerts/internal/ai-worker/` si la infraestructura esta lista
+- Cloud Tasks hacia `/api/internal/alerts/ai-worker/` si la infraestructura esta lista
 - fallback local controlado solo en entornos permitidos
 
 El endpoint interno ejecuta `alerts.alerts.ai_services.enrich_alert_with_ai()`.
+
+La ruta legacy:
+
+- `/api/alerts/internal/ai-worker/`
+
+se mantiene por compatibilidad, pero el prefijo canonico nuevo para trafico
+interno es `/api/internal/alerts/...`.
 
 ### Consumo por mobile/web
 

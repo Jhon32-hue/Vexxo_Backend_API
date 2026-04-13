@@ -12,8 +12,8 @@ from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.conf import settings
 
+from common.internal_auth import assert_internal_token
 from finance.accounts.models import Account
 from integrations_stub.banks.services import (
     process_stub_account_intelligence_refresh,
@@ -70,16 +70,10 @@ class InternalTransactionsReconciliationResolutionSerializer(serializers.Seriali
 class InternalAccountSyncJobView(APIView):
     permission_classes = [AllowAny]
 
-    def _authorized(self, request) -> bool:
-        configured = getattr(settings, "ACCOUNTS_SYNC_INTERNAL_TOKEN", "")
-        provided = request.headers.get("X-Vexxo-Internal-Token", "")
-        if configured:
-            return bool(provided and provided == configured)
-        user = getattr(request, "user", None)
-        return bool(user and user.is_authenticated and getattr(user, "is_staff", False))
-
     def post(self, request):
-        if not self._authorized(request):
+        try:
+            assert_internal_token(request, "ACCOUNTS_SYNC_INTERNAL_TOKEN", detail="No autorizado para sync interno.")
+        except Exception as exc:
             return Response({"detail": "No autorizado para sync interno."}, status=status.HTTP_403_FORBIDDEN)
 
         serializer = InternalAccountSyncJobSerializer(data=request.data)
@@ -110,16 +104,14 @@ class InternalAccountSyncJobView(APIView):
 class InternalAccountIntelligenceRefreshView(APIView):
     permission_classes = [AllowAny]
 
-    def _authorized(self, request) -> bool:
-        configured = getattr(settings, "ACCOUNTS_INTELLIGENCE_INTERNAL_TOKEN", "")
-        provided = request.headers.get("X-Vexxo-Internal-Token", "")
-        if configured:
-            return bool(provided and provided == configured)
-        user = getattr(request, "user", None)
-        return bool(user and user.is_authenticated and getattr(user, "is_staff", False))
-
     def post(self, request):
-        if not self._authorized(request):
+        try:
+            assert_internal_token(
+                request,
+                "ACCOUNTS_INTELLIGENCE_INTERNAL_TOKEN",
+                detail="No autorizado para refresh interno de inteligencia.",
+            )
+        except Exception:
             return Response(
                 {"detail": "No autorizado para refresh interno de inteligencia."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -145,16 +137,14 @@ class InternalAccountIntelligenceRefreshView(APIView):
 class InternalConsentRevocationView(APIView):
     permission_classes = [AllowAny]
 
-    def _authorized(self, request) -> bool:
-        configured = getattr(settings, "IDENTITY_CONSENTS_INTERNAL_TOKEN", "")
-        provided = request.headers.get("X-Vexxo-Internal-Token", "")
-        if configured:
-            return bool(provided and provided == configured)
-        user = getattr(request, "user", None)
-        return bool(user and user.is_authenticated and getattr(user, "is_staff", False))
-
     def post(self, request):
-        if not self._authorized(request):
+        try:
+            assert_internal_token(
+                request,
+                "IDENTITY_CONSENTS_INTERNAL_TOKEN",
+                detail="No autorizado para revocacion interna de consentimientos.",
+            )
+        except Exception:
             return Response(
                 {"detail": "No autorizado para revocacion interna de consentimientos."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -180,16 +170,14 @@ class InternalConsentRevocationView(APIView):
 class InternalTransactionsSyncBatchView(APIView):
     permission_classes = [AllowAny]
 
-    def _authorized(self, request) -> bool:
-        configured = getattr(settings, "TRANSACTIONS_INTAKE_INTERNAL_TOKEN", "")
-        provided = request.headers.get("X-Vexxo-Internal-Token", "")
-        if configured:
-            return bool(provided and provided == configured)
-        user = getattr(request, "user", None)
-        return bool(user and user.is_authenticated and getattr(user, "is_staff", False))
-
     def post(self, request):
-        if not self._authorized(request):
+        try:
+            assert_internal_token(
+                request,
+                "TRANSACTIONS_INTAKE_INTERNAL_TOKEN",
+                detail="No autorizado para sync interno de transacciones.",
+            )
+        except Exception:
             return Response({"detail": "No autorizado para sync interno de transacciones."}, status=status.HTTP_403_FORBIDDEN)
         request_id = str(request.headers.get("X-Request-Id", "") or "").strip()
         idempotency_key = str(request.headers.get("Idempotency-Key", "") or "").strip()
@@ -213,16 +201,14 @@ class InternalTransactionsSyncBatchView(APIView):
 class InternalTransactionsReconciliationResolutionView(APIView):
     permission_classes = [AllowAny]
 
-    def _authorized(self, request) -> bool:
-        configured = getattr(settings, "TRANSACTIONS_INTAKE_INTERNAL_TOKEN", "")
-        provided = request.headers.get("X-Vexxo-Internal-Token", "")
-        if configured:
-            return bool(provided and provided == configured)
-        user = getattr(request, "user", None)
-        return bool(user and user.is_authenticated and getattr(user, "is_staff", False))
-
     def post(self, request):
-        if not self._authorized(request):
+        try:
+            assert_internal_token(
+                request,
+                "TRANSACTIONS_INTAKE_INTERNAL_TOKEN",
+                detail="No autorizado para resolucion interna de transacciones.",
+            )
+        except Exception:
             return Response({"detail": "No autorizado para resolucion interna de transacciones."}, status=status.HTTP_403_FORBIDDEN)
         serializer = InternalTransactionsReconciliationResolutionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

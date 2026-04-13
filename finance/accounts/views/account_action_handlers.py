@@ -23,6 +23,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from common.internal_auth import assert_internal_token
 from finance.accounts.domain.guards import get_account_plan_snapshot
 from finance.accounts.models import AccountStatus
 from finance.accounts.serializers import AccountDetailSerializer, AccountMembershipSerializer, AccountSummarySerializer
@@ -85,6 +86,13 @@ def audit_account_action(*, acting_user, action_name: str, account, description:
 
 
 class AccountActionHandlersMixin:
+    def _assert_internal_sync_token(self) -> None:
+        assert_internal_token(
+            self.request,
+            "ACCOUNTS_SYNC_INTERNAL_TOKEN",
+            detail="No autorizado para sync interno.",
+        )
+
     def _assert_can_manage_account(self, account) -> None:
         assert_can_manage_account(acting_user=self.request.user, account=account)
 
@@ -353,8 +361,8 @@ class AccountActionHandlersMixin:
 
     @action(detail=True, methods=["post"])
     def mark_sync_running(self, request, pk=None):
+        self._assert_internal_sync_token()
         account = self.get_object()
-        self._assert_can_manage_account(account)
         if not account.has_external_link:
             raise ValidationError({"detail": "La cuenta no esta vinculada a un proveedor externo."})
 
@@ -373,8 +381,8 @@ class AccountActionHandlersMixin:
 
     @action(detail=True, methods=["post"])
     def mark_sync_success(self, request, pk=None):
+        self._assert_internal_sync_token()
         account = self.get_object()
-        self._assert_can_manage_account(account)
         if not account.has_external_link:
             raise ValidationError({"detail": "La cuenta no esta vinculada a un proveedor externo."})
 
@@ -395,8 +403,8 @@ class AccountActionHandlersMixin:
 
     @action(detail=True, methods=["post"])
     def mark_sync_error(self, request, pk=None):
+        self._assert_internal_sync_token()
         account = self.get_object()
-        self._assert_can_manage_account(account)
         if not account.has_external_link:
             raise ValidationError({"detail": "La cuenta no esta vinculada a un proveedor externo."})
 
@@ -417,8 +425,8 @@ class AccountActionHandlersMixin:
 
     @action(detail=True, methods=["post"])
     def mark_sync_stale(self, request, pk=None):
+        self._assert_internal_sync_token()
         account = self.get_object()
-        self._assert_can_manage_account(account)
         if not account.has_external_link:
             raise ValidationError({"detail": "La cuenta no esta vinculada a un proveedor externo."})
 

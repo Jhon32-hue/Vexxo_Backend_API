@@ -8,7 +8,7 @@ en query builders, helpers de auditoria y handlers de acciones.
 from __future__ import annotations
 
 from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 
 from finance.accounts.serializers import (
     AccountDetailSerializer,
@@ -34,6 +34,12 @@ from finance.accounts.views.account_query_builders import (
 class AccountViewSet(AccountActionHandlersMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     serializer_class = AccountDetailSerializer
+    INTERNAL_SYNC_ACTIONS = {"mark_sync_running", "mark_sync_success", "mark_sync_error", "mark_sync_stale"}
+
+    def get_permissions(self):
+        if getattr(self, "action", "") in self.INTERNAL_SYNC_ACTIONS:
+            return [AllowAny()]
+        return [permission() for permission in self.permission_classes]
 
     def get_queryset(self):
         if self.action in {"list", "summary"}:

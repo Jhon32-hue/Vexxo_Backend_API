@@ -19,7 +19,10 @@ class AuditoriaViewSet(viewsets.ReadOnlyModelViewSet):
         user = self.request.user
         params = self.request.query_params
 
-        queryset = AuditLog.objects.filter(user=user)
+        queryset = AuditLog.objects.all() if user.is_staff else AuditLog.objects.filter(user=user)
+
+        if user.is_staff and (user_id := params.get("user_id")):
+            queryset = queryset.filter(user_id=user_id)
 
         if module := params.get("module"):
             queryset = queryset.filter(module=module)

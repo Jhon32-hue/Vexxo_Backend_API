@@ -155,6 +155,19 @@ sequenceDiagram
     MAT->>TX: create or reuse Transaction
 ```
 
+## Nota operativa de rutas internas
+
+El reporte de worker ya tiene ruta interna canonica:
+
+- `POST /api/internal/payments/worker-report/`
+
+La ruta legacy:
+
+- `POST /api/payments/intents/worker-report/`
+
+sigue viva por compatibilidad, pero ambas ya fallan cerrado si
+`PAYMENTS_INTERNAL_TOKEN` no esta configurado.
+
 ## Flujos principales
 
 ### Pay now

@@ -63,6 +63,18 @@ Este modulo es el puente natural para migrar a:
 Cuando el servicio real exista, el ideal es mover el receptor y dejar intacta
 la semantica del caso de uso.
 
+## Nota operativa de rutas internas
+
+El stub ya tiene prefijo canonico adicional bajo:
+
+- `/api/internal/integrations/banks/...`
+
+El prefijo antiguo:
+
+- `/internal/integrations/banks/...`
+
+se mantiene por compatibilidad mientras migra la topologia de integraciones.
+
 ## Vista visual
 
 ```mermaid

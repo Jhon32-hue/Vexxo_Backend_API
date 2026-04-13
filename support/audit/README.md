@@ -27,7 +27,7 @@ Hace falta una superficie de auditoria entendible para:
 1. un bounded context ejecuta una accion critica
 2. llama `audit_log(...)`
 3. se persiste `AuditLog`
-4. soporte o backoffice consulta ese historial via API
+4. soporte o el propio usuario consulta ese historial via API
 
 ## Politica Del Modulo
 
@@ -67,6 +67,11 @@ Diferencia:
 ## Estado Actual
 
 Hoy existe como registro funcional persistente y helper comun `audit_log(...)`.
+
+La API actual se comporta asi:
+
+- usuario normal: ve solo su propia auditoria
+- staff: puede ver auditoria global y filtrar por `user_id`
 
 La arquitectura ya deja listo el camino para:
 
