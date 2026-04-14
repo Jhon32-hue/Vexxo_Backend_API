@@ -1,4 +1,4 @@
-# Auditoria de rutas API
+﻿# Auditoria de rutas API
 
 ## Objetivo
 
@@ -166,3 +166,37 @@ La superficie HTTP debe seguir el mismo principio que el eventing cloud:
 - separacion clara entre negocio e integraciones
 - fail-closed en rutas internas
 - ownership explicito por bounded context
+
+
+
+## Addendum 2026-04 Integraciones, Intake Y Contratos
+
+Rutas internas/documentos que deben considerarse parte del estado actual del
+backend:
+
+### Transactions intake
+
+- `POST /api/internal/transactions/intake/batches/`
+- `POST /api/internal/transactions/intake/batches/{id}/apply/`
+- `POST /api/internal/transactions/intake/row/`
+- `POST /api/internal/transactions/intake/message/`
+- `POST /api/internal/transactions/intake/reconcile/`
+- `POST /api/internal/transactions/reconciliation/issues/{id}/resolve/`
+
+### Implicaciones de auditoria
+
+- `POST /api/internal/transactions/intake/message/` ya existe y soporta
+  `message_inferred.normalized_payload`
+- el parser de mensajes ya no es solo una idea documental; es parte del
+  runtime de `transactions`
+- `TransactionExternalDetails` ya es pieza canonica del modulo
+- `payment_execution` y `payment_reflection` no deben auditarse como si fueran
+  la misma frontera
+
+### Documentos canonicos a cruzar durante auditoria
+
+- [INTEGRATION_SOURCE_CATALOG.md](/D:/Vexxo_Backend_API/INTEGRATION_SOURCE_CATALOG.md)
+- [finance/transactions/RAIL_NORMALIZATION_CONTRACTS.md](/D:/Vexxo_Backend_API/finance/transactions/RAIL_NORMALIZATION_CONTRACTS.md)
+- [payments/payment_intents/PAYMENT_EXECUTION_CONTRACTS.md](/D:/Vexxo_Backend_API/payments/payment_intents/PAYMENT_EXECUTION_CONTRACTS.md)
+- [integrations/README.md](/D:/Vexxo_Backend_API/integrations/README.md)
+

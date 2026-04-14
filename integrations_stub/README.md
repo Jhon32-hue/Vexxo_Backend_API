@@ -1,4 +1,4 @@
-# integrations_stub
+﻿# integrations_stub
 
 ## Que hace
 
@@ -161,3 +161,17 @@ Y el stub de bancos ya tiene un puente interno preparado para ese flujo:
 - puede recibir batches normalizados de movimientos
 - delega al intake canonico de `finance.transactions`
 - puede cerrar `TransactionReconciliationIssue` con acciones formales
+
+
+
+## Relacion con matrices por proveedor
+
+La clasificacion y matrices canonicas no viven en el stub.
+
+Viven en:
+
+- [INTEGRATION_SOURCE_CATALOG.md](/D:/Vexxo_Backend_API/INTEGRATION_SOURCE_CATALOG.md)
+- [integrations/README.md](/D:/Vexxo_Backend_API/integrations/README.md)
+
+El stub solo debe actuar como runtime temporal o puente interno.
+

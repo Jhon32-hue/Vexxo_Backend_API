@@ -1,4 +1,4 @@
-# payments.payment_intents
+﻿# payments.payment_intents
 
 ## Que hace
 
@@ -564,3 +564,15 @@ Esto permite cambiar de proveedor o rail sin mover:
 - guards comerciales
 - usage projection
 - contrato del dominio
+
+
+
+## Documento canonico de `payment_execution`
+
+La especificacion canonica de ejecucion del rail vive en:
+
+- [PAYMENT_EXECUTION_CONTRACTS.md](/D:/Vexxo_Backend_API/payments/payment_intents/PAYMENT_EXECUTION_CONTRACTS.md)
+
+Este README sigue explicando el contexto y sus flujos, pero el contrato de
+payload operativo del rail ya tiene documento propio.
+

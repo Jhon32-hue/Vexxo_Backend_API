@@ -1,4 +1,4 @@
-# Flujo de dtos
+﻿# Flujo de dtos
 
 ## Proposito
 
@@ -865,3 +865,44 @@ mas valiosa seria:
 1. consolidar proyecciones/materializaciones
 2. definir retention y observabilidad de feeds operativos
 3. preparar salida analitica a GCP sin cargar Cloud SQL
+
+
+
+## Addendum 2026-04 Integraciones Y Contratos Canonicos
+
+Este documento debe leerse ahora con estas reglas adicionales:
+
+- `bank_data` entra por `finance.accounts` y `finance.transactions`
+- `payment_execution` vive en `payments.payment_intents`
+- `payment_reflection` vive en `finance.transactions`
+- `market_data` vive en `finance.fx`
+- `message_inferred` entra por el parser interno de `transactions`
+
+Flujos relevantes incorporados en la arquitectura actual:
+
+1. `Belvo` / `Salt Edge` / agregador bancario
+   - bridge o integrador normaliza
+   - entra por intake de `transactions`
+   - materializa `Transaction`, `TransactionExternalDetails` y `TransactionSourceLink`
+
+2. `Wompi` o PSP
+   - callback y lifecycle operativo viven primero en `payments`
+   - cuando el movimiento ya vale para ledger, se genera `payment_reflection`
+   - solo entonces se materializa `Transaction`
+
+3. `SMS/email`
+   - entra por `POST /api/internal/transactions/intake/message/`
+   - parser determinista infiere monto/tipo/descripcion
+   - se persiste `Transaction` en `pending + confirmed=false`
+   - `TransactionExternalDetails` conserva metadata de inferencia
+
+4. `FX / tasas`
+   - no deben tocar `transactions`
+   - se persisten como snapshots en `finance.fx`
+
+Documentos canonicos relacionados:
+
+- [INTEGRATION_SOURCE_CATALOG.md](/D:/Vexxo_Backend_API/INTEGRATION_SOURCE_CATALOG.md)
+- [RAIL_NORMALIZATION_CONTRACTS.md](/D:/Vexxo_Backend_API/finance/transactions/RAIL_NORMALIZATION_CONTRACTS.md)
+- [PAYMENT_EXECUTION_CONTRACTS.md](/D:/Vexxo_Backend_API/payments/payment_intents/PAYMENT_EXECUTION_CONTRACTS.md)
+

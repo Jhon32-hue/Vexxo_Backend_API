@@ -1,4 +1,4 @@
-# Catalogo De Fuentes E Integraciones
+﻿# Catalogo De Fuentes E Integraciones
 
 ## Objetivo
 
@@ -444,3 +444,22 @@ Ejemplo:
 - [payments/payment_intents/README.md](payments/payment_intents/README.md)
 - [finance/fx/README.md](finance/fx/README.md)
 - [integrations_stub/README.md](integrations_stub/README.md)
+
+
+
+## Ubicacion canonica de matrices por proveedor
+
+La siguiente capa documental vive en:
+
+- [integrations/README.md](/D:/Vexxo_Backend_API/integrations/README.md)
+- [integrations/provider_mappings/README.md](/D:/Vexxo_Backend_API/integrations/provider_mappings/README.md)
+
+Ahi deben vivir matrices concretas como:
+
+- `belvo.md`
+- `salt_edge.md`
+- `bancolombia_accounts.md`
+- `wompi.md`
+- `fx_provider.md`
+- `sms_bank_template.md`
+

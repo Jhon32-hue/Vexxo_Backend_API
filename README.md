@@ -1,4 +1,4 @@
-# Vexxo Backend API
+﻿# Vexxo Backend API
 
 ## Que es
 
@@ -100,6 +100,8 @@ debemos mantener:
 - [Auditoria de rutas API](AUDITORIA_RUTAS_API.md)
 - [Convencion documental](CONVENCION_DOCUMENTAL.md)
 - [Catalogo de fuentes e integraciones](INTEGRATION_SOURCE_CATALOG.md)
+- [Matrices por proveedor](integrations/README.md)
+- [Contratos de ejecucion de pago](payments/payment_intents/PAYMENT_EXECUTION_CONTRACTS.md)
 - [Contratos canonicos por rail en transactions](finance/transactions/RAIL_NORMALIZATION_CONTRACTS.md)
 
 ## Core del negocio
@@ -2468,3 +2470,4 @@ La documentacion canonica de Vexxo sigue estas reglas:
 - explica tanto el por que de negocio como el como tecnico
 - conecta cada modulo con el resto del sistema y con la topologia GCP
 - sigue la convencion descrita en `CONVENCION_DOCUMENTAL.md`
+

@@ -369,3 +369,20 @@ Lo siguiente es crear matrices por proveedor:
 
 Ese paso si exige leer documentacion oficial o muestras reales por proveedor.
 
+
+
+## Frontera documental de `payment_execution`
+
+`payment_execution.normalized_payload` ya no debe tratarse como propiedad
+principal de `finance.transactions`.
+
+Su documento canonico vive en:
+
+- [PAYMENT_EXECUTION_CONTRACTS.md](/D:/Vexxo_Backend_API/payments/payment_intents/PAYMENT_EXECUTION_CONTRACTS.md)
+
+En `transactions` solo se mantiene la referencia a esa frontera para dejar clara
+la separacion entre:
+
+- ejecucion del rail en `payments`
+- reflejo contable en `transactions`
+
