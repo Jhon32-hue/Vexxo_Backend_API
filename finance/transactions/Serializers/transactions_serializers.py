@@ -9,6 +9,7 @@ from finance.transactions.Models.transacciones import (
     Transaction,
     TransactionParticipant,
 )
+from finance.transactions.Models.intake import TransactionExternalDetails
 from finance.transactions.transaction_validation_service import (
     apply_tag_selection,
     assert_ledger_owner,
@@ -163,11 +164,18 @@ class TransactionParticipantSerializer(BaseOwnerSerializer):
         return participant
 
 
+class TransactionExternalDetailsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TransactionExternalDetails
+        exclude = ("transaction",)
+
+
 class TransactionSerializer(BaseOwnerSerializer):
     account_name = serializers.CharField(source="account.name", read_only=True)
     category_name = serializers.CharField(source="category.name", read_only=True)
     vendor_name = serializers.CharField(source="vendor.name", read_only=True)
     participants = TransactionParticipantSerializer(many=True, read_only=True)
+    external_details = TransactionExternalDetailsSerializer(read_only=True)
 
     class Meta:
         model = Transaction

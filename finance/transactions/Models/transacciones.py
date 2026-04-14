@@ -77,6 +77,48 @@ class Transaction(models.Model):
         CANCELED = "canceled", _("cancelada")
         FAILED = "failed", _("fallida")
 
+    class CreditDebitIndicator(models.TextChoices):
+        UNSPECIFIED = "", _("sin dato")
+        DEBIT = "debit", _("debito")
+        CREDIT = "credit", _("credito")
+
+    class Rail(models.TextChoices):
+        UNSPECIFIED = "", _("sin dato")
+        MANUAL = "manual", _("manual")
+        OPEN_BANKING = "open_banking", _("open banking")
+        BANK_TRANSFER = "bank_transfer", _("transferencia bancaria")
+        CARD = "card", _("tarjeta")
+        WALLET = "wallet", _("wallet")
+        PAYMENT_NETWORK = "payment_network", _("red de pagos")
+        MESSAGE = "message", _("mensaje")
+        IMPORT = "import", _("importacion")
+        OTHER = "other", _("otro")
+
+    class Channel(models.TextChoices):
+        UNSPECIFIED = "", _("sin dato")
+        MANUAL = "manual", _("manual")
+        CARD_PRESENT = "card_present", _("tarjeta presente")
+        ECOMMERCE = "ecommerce", _("ecommerce")
+        BANK_TRANSFER = "bank_transfer", _("transferencia bancaria")
+        WALLET = "wallet", _("wallet")
+        SMS = "sms", _("sms")
+        EMAIL = "email", _("email")
+        MESSAGE_INFERRED = "message_inferred", _("mensaje inferido")
+        API = "api", _("api")
+        IMPORT = "import", _("importacion")
+        OTHER = "other", _("otro")
+
+    class DataOrigin(models.TextChoices):
+        UNSPECIFIED = "", _("sin dato")
+        MANUAL = "manual", _("manual")
+        OPEN_BANKING = "open_banking", _("open banking")
+        PAYMENT_NETWORK = "payment_network", _("red de pagos")
+        WALLET = "wallet", _("wallet")
+        MESSAGE = "message", _("mensaje")
+        IMPORT = "import", _("importacion")
+        INFERRED = "inferred", _("inferida")
+        PAYMENT_INTENT = "payment_intent", _("payment intent")
+
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="transactions")
     type = models.CharField(max_length=16, choices=Type.choices)
     status = models.CharField(
@@ -87,6 +129,59 @@ class Transaction(models.Model):
     )
     amount = models.DecimalField(max_digits=16, decimal_places=2)
     date = models.DateField()
+    description = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text=_("Descripcion corta canonica visible para consultas y UI."),
+    )
+    booking_datetime = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=_("Momento contable reportado por la fuente cuando existe."),
+    )
+    value_datetime = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=_("Momento de valor liquidado reportado por la fuente cuando existe."),
+    )
+    credit_debit_indicator = models.CharField(
+        max_length=16,
+        choices=CreditDebitIndicator.choices,
+        blank=True,
+        default=CreditDebitIndicator.UNSPECIFIED,
+    )
+    rail = models.CharField(
+        max_length=32,
+        choices=Rail.choices,
+        blank=True,
+        default=Rail.UNSPECIFIED,
+        help_text=_("Rail canonico del movimiento: open_banking, wallet, card, transfer, etc."),
+    )
+    channel = models.CharField(
+        max_length=32,
+        choices=Channel.choices,
+        blank=True,
+        default=Channel.UNSPECIFIED,
+        help_text=_("Canal canonico del movimiento: ecommerce, sms, email, api, etc."),
+    )
+    data_origin = models.CharField(
+        max_length=32,
+        choices=DataOrigin.choices,
+        blank=True,
+        default=DataOrigin.UNSPECIFIED,
+        help_text=_("Origen y nivel de confianza del dato materializado."),
+    )
+    confidence_score = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text=_("Confianza de 0-100 cuando la fuente es inferida o parcialmente confiable."),
+    )
+    country_code = models.CharField(max_length=2, blank=True, default="")
+    balance_after_transaction = models.DecimalField(max_digits=16, decimal_places=2, null=True, blank=True)
+    original_amount = models.DecimalField(max_digits=16, decimal_places=2, null=True, blank=True)
+    original_currency = models.CharField(max_length=3, blank=True, default="")
+    fx_rate = models.DecimalField(max_digits=16, decimal_places=8, null=True, blank=True)
     account = models.ForeignKey(
         "accounts.Account",
         on_delete=models.PROTECT,
@@ -225,6 +320,8 @@ class Transaction(models.Model):
             models.Index(fields=["owner", "account", "date"]),
             models.Index(fields=["owner", "type", "date"]),
             models.Index(fields=["owner", "status"]),
+            models.Index(fields=["owner", "rail"]),
+            models.Index(fields=["owner", "channel"]),
             models.Index(fields=["owner", "fingerprint"]),
             models.Index(fields=["external_id", "provider"]),
         ]

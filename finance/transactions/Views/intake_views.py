@@ -10,6 +10,7 @@ from finance.transactions.Models import TransactionIntakeBatch
 from finance.transactions.Serializers.intake_serializers import (
     TransactionIntakeBatchResponseSerializer,
     TransactionIntakeBatchSerializer,
+    TransactionMessageIntakeEnvelopeSerializer,
     TransactionIntakeSingleRowEnvelopeSerializer,
 )
 from finance.transactions.Serializers.reconciliation_serializers import (
@@ -22,6 +23,7 @@ from finance.transactions.transaction_intake_service import (
     receive_single_intake_row,
     reconcile_intake_batch,
 )
+from finance.transactions.transaction_message_parser_service import receive_message_intake
 from finance.transactions.transaction_reconciliation_service import resolve_reconciliation_issue
 from finance.transactions.Models import TransactionReconciliationIssue
 
@@ -111,6 +113,46 @@ class InternalTransactionIntakeRowView(InternalTransactionsBaseView):
             idempotency_key=self._idempotency_key(request),
             row=serializer.validated_data["row"],
         )
+        return Response(
+            {
+                "batch": TransactionIntakeBatchResponseSerializer(result.batch).data,
+                "counts": dict(result.counts),
+                "total": result.total,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class InternalTransactionMessageIntakeView(InternalTransactionsBaseView):
+    def post(self, request):
+        header_error = self._validate_transport_headers(request)
+        if header_error:
+            return header_error
+        serializer = TransactionMessageIntakeEnvelopeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            result = receive_message_intake(
+                provider=serializer.validated_data["provider"],
+                source=serializer.validated_data["source"],
+                provider_account_id=serializer.validated_data.get("provider_account_id", ""),
+                account_id=serializer.validated_data.get("account_id"),
+                internal_account_id=serializer.validated_data.get("internal_account_id"),
+                message_id=serializer.validated_data["message_id"],
+                sender_id=serializer.validated_data.get("sender_id", ""),
+                received_at=serializer.validated_data["received_at"],
+                text=serializer.validated_data["text"],
+                request_id=self._request_id(request),
+                idempotency_key=self._idempotency_key(request),
+                currency=serializer.validated_data.get("currency", ""),
+                amount=serializer.validated_data.get("amount"),
+                date=serializer.validated_data.get("date"),
+                tx_type=serializer.validated_data.get("type", ""),
+                description=serializer.validated_data.get("description", ""),
+                raw_payload=serializer.validated_data.get("raw_payload") or {},
+                metadata=serializer.validated_data.get("metadata") or {},
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(
             {
                 "batch": TransactionIntakeBatchResponseSerializer(result.batch).data,

@@ -13,6 +13,7 @@ from finance.debts.models import Debt, DebtInstallment
 from finance.transactions.Models import (
     Transaction,
     TransactionDomainEventOutbox,
+    TransactionExternalDetails,
     TransactionIntakeBatch,
     TransactionIntakeReceipt,
     TransactionReconciliationIssue,
@@ -30,6 +31,7 @@ from finance.transactions.transaction_intake_service import (
     receive_intake_batch,
     receive_single_intake_row,
 )
+from finance.transactions.transaction_message_parser_service import parse_message_transaction
 from finance.transactions.transaction_reconciliation_service import resolve_reconciliation_issue
 from integrations_stub.banks.transaction_bridge import (
     process_stub_transactions_reconciliation_resolution,
@@ -305,6 +307,14 @@ class TransactionIntakeServiceTests(TestCase):
                     "date": "2026-04-08",
                     "external_id": "txn-ext-001",
                     "description": "Compra supermercado",
+                    "booking_datetime": "2026-04-08T10:15:00-05:00",
+                    "merchant_name": "Supermercado Uno",
+                    "merchant_category_code": "5411",
+                    "counterparty_name": "Supermercado Uno SAS",
+                    "rail": "open_banking",
+                    "channel": "api",
+                    "data_origin": "open_banking",
+                    "confidence_score": 98,
                 }
             ],
         )
@@ -317,10 +327,27 @@ class TransactionIntakeServiceTests(TestCase):
         self.assertEqual(tx.owner_id, self.user.id)
         self.assertEqual(tx.account_id, self.account.id)
         self.assertEqual(tx.source, "open_finance")
+        self.assertEqual(tx.description, "Compra supermercado")
+        self.assertEqual(tx.rail, Transaction.Rail.OPEN_BANKING)
+        self.assertEqual(tx.channel, Transaction.Channel.API)
+        self.assertEqual(tx.data_origin, Transaction.DataOrigin.OPEN_BANKING)
+        self.assertEqual(tx.confidence_score, 98)
+        self.assertEqual(tx.country_code, "")
+        self.assertIsNotNone(tx.booking_datetime)
 
         link = TransactionSourceLink.objects.get(transaction=tx)
         self.assertEqual(link.provider, "belvo")
         self.assertEqual(link.provider_account_id, "acct-ext-001")
+        details = TransactionExternalDetails.objects.get(transaction=tx)
+        self.assertEqual(details.description, "Compra supermercado")
+        self.assertEqual(details.merchant_name, "Supermercado Uno")
+        self.assertEqual(details.merchant_category_code, "5411")
+        self.assertEqual(details.counterparty_name, "Supermercado Uno SAS")
+        self.assertEqual(details.rail, TransactionExternalDetails.Rail.OPEN_BANKING)
+        self.assertEqual(details.channel, TransactionExternalDetails.Channel.API)
+        self.assertEqual(details.data_origin, TransactionExternalDetails.DataOrigin.OPEN_BANKING)
+        self.assertEqual(details.confidence_score, 98)
+        self.assertIsNotNone(details.booking_datetime)
 
         self.assertTrue(
             TransactionDomainEventOutbox.objects.filter(
@@ -340,6 +367,54 @@ class TransactionIntakeServiceTests(TestCase):
                 aggregate_id=str(batch.pk),
             ).exists()
         )
+
+    def test_internal_intake_serializer_accepts_rich_external_fields(self):
+        batch, created = receive_intake_batch(
+            provider="belvo",
+            source="open_finance",
+            provider_account_id="acct-ext-001",
+            request_id="req-batch-rich-001",
+            idempotency_key="idem-batch-rich-001",
+            rows=[
+                {
+                    "type": Transaction.Type.EXPENSE,
+                    "status": Transaction.Status.POSTED,
+                    "amount": "8300.00",
+                    "date": "2026-04-09",
+                    "external_id": "txn-ext-rich-001",
+                    "description": "Compra cafeteria",
+                    "booking_datetime": "2026-04-09T08:00:00-05:00",
+                    "value_datetime": "2026-04-09T09:00:00-05:00",
+                    "credit_debit_indicator": "debit",
+                    "rail": "open_banking",
+                    "channel": "api",
+                    "data_origin": "open_banking",
+                    "confidence_score": 100,
+                    "original_amount": "8300.00",
+                    "original_currency": "COP",
+                    "fx_rate": "1.00000000",
+                }
+            ],
+        )
+        self.assertTrue(created)
+        result = apply_intake_batch(batch=batch)
+        self.assertEqual(result.counts["materialized"], 1)
+        tx = Transaction.objects.get(external_id="txn-ext-rich-001")
+        self.assertEqual(tx.credit_debit_indicator, Transaction.CreditDebitIndicator.DEBIT)
+        self.assertEqual(tx.rail, Transaction.Rail.OPEN_BANKING)
+        self.assertEqual(tx.channel, Transaction.Channel.API)
+        self.assertEqual(tx.data_origin, Transaction.DataOrigin.OPEN_BANKING)
+        self.assertEqual(tx.confidence_score, 100)
+
+    def test_message_parser_service_infers_amount_type_and_description(self):
+        parsed = parse_message_transaction(
+            text="Compra por $12.500 en SUPERMERCADO EXITO con tu tarjeta terminada en 1234.",
+            currency="COP",
+        )
+        self.assertEqual(parsed.amount, Decimal("12500.00"))
+        self.assertEqual(parsed.tx_type, Transaction.Type.EXPENSE)
+        self.assertIn("SUPERMERCADO EXITO", parsed.description)
+        self.assertGreaterEqual(parsed.confidence_score, 70)
 
     def test_single_row_duplicate_does_not_duplicate_ledger(self):
         first = receive_single_intake_row(
@@ -738,6 +813,36 @@ class TransactionIntakeInternalApiTests(TestCase):
         self.assertEqual(apply_response.status_code, 200)
         self.assertEqual(apply_response.data["counts"]["materialized"], 1)
         self.assertTrue(Transaction.objects.filter(external_id="txn-ext-api-001").exists())
+
+    def test_internal_message_intake_endpoint_materializes_pending_transaction(self):
+        response = self.client.post(
+            "/api/internal/transactions/intake/message/",
+            {
+                "provider": "message_parser",
+                "source": "sms",
+                "internal_account_id": self.account.pk,
+                "message_id": "msg-001",
+                "sender_id": "BANCOXYZ",
+                "received_at": "2026-04-08T12:00:00-05:00",
+                "text": "Compra por $12.500 en SUPERMERCADO EXITO con tu tarjeta.",
+            },
+            format="json",
+            HTTP_X_VEXXO_INTERNAL_TOKEN="internal-transactions-token",
+            HTTP_X_REQUEST_ID="req-api-msg-001",
+            HTTP_IDEMPOTENCY_KEY="idem-api-msg-001",
+        )
+        self.assertEqual(response.status_code, 201)
+        tx = Transaction.objects.get(external_id="msg-001")
+        self.assertEqual(tx.status, Transaction.Status.PENDING)
+        self.assertFalse(tx.confirmed)
+        self.assertEqual(tx.rail, Transaction.Rail.MESSAGE)
+        self.assertEqual(tx.channel, Transaction.Channel.SMS)
+        self.assertEqual(tx.data_origin, Transaction.DataOrigin.INFERRED)
+        self.assertTrue(tx.description)
+        details = TransactionExternalDetails.objects.get(transaction=tx)
+        self.assertTrue(details.needs_user_confirmation)
+        self.assertEqual(details.inference_status, TransactionExternalDetails.InferenceStatus.NEEDS_CONFIRMATION)
+        self.assertEqual(details.message_id, "msg-001")
 
     def test_internal_reconciliation_resolution_endpoint(self):
         receive_single_intake_row(

@@ -79,6 +79,7 @@ Si quieres seguir que pasa paso a paso cuando alguien usa el producto:
 - [manual transaction](finance/transactions/README.md#secuencias-criticas)
 - [payment confirmed](payments/payment_intents/README.md#secuencia-critica-payment-confirmed)
 - [external transaction intake](finance/transactions/README.md#secuencias-criticas)
+- [sms inferred transaction](finance/transactions/README.md#sms-inferido)
 
 ### 4. Cloud
 
@@ -210,6 +211,13 @@ classDiagram
         +status
         +amount
         +date
+        +description
+        +booking_datetime
+        +value_datetime
+        +rail
+        +channel
+        +data_origin
+        +confidence_score
         +source
         +provider
         +external_id
@@ -218,6 +226,21 @@ classDiagram
         +affects_balance
         +is_reimbursable
         +reimbursed
+    }
+
+    class TransactionExternalDetails {
+        +merchant_name
+        +merchant_category_code
+        +counterparty_name
+        +counterparty_account_ref
+        +rail_reference
+        +authorization_status
+        +settlement_status
+        +original_amount
+        +original_currency
+        +fx_rate
+        +needs_user_confirmation
+        +inference_status
     }
 
     class TransactionParticipant {
@@ -280,6 +303,7 @@ classDiagram
     User "1" --> "*" Transaction : ledger_owner
     Account "1" --> "*" Transaction : contains
     Transaction "1" --> "*" TransactionParticipant : participants
+    Transaction "1" --> "0..1" TransactionExternalDetails : enriches
     PaymentIntent "1" --> "0..1" Transaction : materializes_to
     Account "1" --> "*" TransactionIntakeBatch : intake_batches
     TransactionIntakeBatch "1" --> "*" TransactionIntakeReceipt : receipts
@@ -294,7 +318,10 @@ Lectura:
 
 - `User` es el root de identidad y plan
 - `Account` es el aggregate operativo donde vive el dinero
-- `Transaction` es el hecho contable final
+- `Transaction` es el hecho contable final y ahora carga un resumen canonico
+  transversal para filtros y lectura rapida
+- `TransactionExternalDetails` conserva la metadata rica del rail sin inflar
+  el ledger principal
 - `PaymentIntent` no es ledger; puede materializar una `Transaction`
 - `TransactionIntake*` y `TransactionSourceLink` separan ingreso externo de
   escritura contable
@@ -622,12 +649,33 @@ classDiagram
         +amount
         +currency
         +date
+        +description
+        +booking_datetime
+        +value_datetime
+        +rail
+        +channel
+        +data_origin
+        +confidence_score
         +source
         +provider
         +external_id
         +fingerprint
         +confirmed
         +affects_balance
+    }
+
+    class TransactionExternalDetails {
+        +merchant_name
+        +counterparty_name
+        +rail_reference
+        +authorization_status
+        +settlement_status
+        +original_amount
+        +original_currency
+        +fx_rate
+        +message_id
+        +needs_user_confirmation
+        +inference_status
     }
 
     class TransactionParticipant {
@@ -705,6 +753,7 @@ classDiagram
     Account "1" --> "*" TransactionIntakeBatch : receives_external_rows
     TransactionIntakeBatch "1" --> "*" TransactionIntakeReceipt : stores
     TransactionIntakeReceipt "0..1" --> "0..1" Transaction : materializes
+    Transaction "1" --> "0..1" TransactionExternalDetails : enriches
     Transaction "1" --> "*" TransactionSourceLink : binds_external_identity
     Transaction "1" --> "*" TransactionReconciliationIssue : raises
     TransactionIntakeReceipt "0..1" --> "0..1" TransactionReconciliationIssue : creates
@@ -715,6 +764,10 @@ classDiagram
 Lectura:
 
 - el ledger sigue en `Transaction`, no en `PaymentIntent`
+- `Transaction` ya carga un resumen canonico externo consultable
+- `TransactionExternalDetails` concentra la metadata rica por rail/origen
+- `transaction_message_parser_service.py` permite intake interno de sms/email
+  hacia movimientos `pending` con confirmacion explicita posterior
 - el intake externo ya no escribe al ledger directo; entra por batch/receipt
 - `TransactionSourceLink` e `Issue` formalizan dedupe, correcciones y reversos
 - el write path manual sigue conviviendo con signals, pero el camino nuevo ya
@@ -1019,6 +1072,35 @@ flowchart LR
     TX --> OUT
     ISSUE --> OUT
 ```
+
+##### 6.6 SMS inferred transaction
+
+```mermaid
+sequenceDiagram
+    participant MSG as sms/email bridge
+    participant API as internal transactions API
+    participant PARSER as transaction_message_parser_service
+    participant INTAKE as transaction_intake_service
+    participant TX as Transaction
+    participant EXT as TransactionExternalDetails
+    participant USER as user confirmation flow
+
+    MSG->>API: POST /api/internal/transactions/intake/message/
+    API->>PARSER: infer amount/type/description/counterparty
+    PARSER->>INTAKE: canonical row status=pending confirmed=false
+    INTAKE->>TX: materialize Transaction
+    INTAKE->>EXT: upsert external details
+    TX-->>USER: pending inferred transaction
+    USER-->>TX: confirm or reject
+```
+
+Lectura:
+
+- el parser de mensajes ya vive en `finance.transactions`
+- el movimiento se persiste en `Transaction`
+- mientras siga `pending + confirmed=False`, no es countable para ledger final
+- `TransactionExternalDetails` conserva `parsed_text`, `message_id`,
+  `sender_id`, `parser_version`, `confidence_score` e `inference_status`
 
 #### 7. Diagramas de despliegue e interaccion cloud
 

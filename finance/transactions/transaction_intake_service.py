@@ -4,16 +4,18 @@ import hashlib
 import json
 from collections import Counter
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from typing import Iterable
 
 from django.db import transaction as db_tx
 from django.utils import timezone
-from django.utils.dateparse import parse_date
+from django.utils.dateparse import parse_date, parse_datetime
 
 from finance.accounts.models.account import Account
 from finance.transactions.Models import (
     Transaction,
+    TransactionExternalDetails,
     TransactionIntakeBatch,
     TransactionIntakeReceipt,
     TransactionReconciliationIssue,
@@ -43,13 +45,155 @@ def _canonical_decimal(value) -> str:
     return str(Decimal(str(value or "0")).quantize(Decimal("0.01")))
 
 
+def _canonical_fx_rate(value) -> str:
+    return str(Decimal(str(value or "0")).quantize(Decimal("0.00000001")))
+
+
+def _normalized_choice(value, allowed_values: set[str]) -> str:
+    normalized = str(value or "").strip().lower()
+    return normalized if normalized in allowed_values else ""
+
+
+def _normalized_upper(value, *, max_length: int | None = None) -> str:
+    normalized = str(value or "").strip().upper()
+    if max_length is not None:
+        normalized = normalized[:max_length]
+    return normalized
+
+
+def _normalize_datetimeish(value) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    parsed = parse_datetime(raw)
+    if parsed is None:
+        parsed_date = parse_date(raw)
+        if parsed_date is None:
+            return ""
+        parsed = datetime.combine(parsed_date, datetime.min.time())
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+    return parsed.isoformat()
+
+
+def _normalize_transaction_information(value) -> dict:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, list):
+        return {"items": value}
+    text = str(value or "").strip()
+    return {"text": text} if text else {}
+
+
+def _normalize_confidence_score(value) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        score = int(value)
+    except (TypeError, ValueError):
+        return None
+    return max(0, min(100, score))
+
+
+def _normalize_external_details(row: dict) -> dict:
+    return {
+        "description": str(row.get("description") or row.get("transaction_description") or "").strip(),
+        "transaction_information": _normalize_transaction_information(
+            row.get("transaction_information") or row.get("description_structured")
+        ),
+        "booking_datetime": _normalize_datetimeish(row.get("booking_datetime") or row.get("booking_at")),
+        "value_datetime": _normalize_datetimeish(row.get("value_datetime") or row.get("value_at")),
+        "credit_debit_indicator": _normalized_choice(
+            row.get("credit_debit_indicator"),
+            set(TransactionExternalDetails.CreditDebitIndicator.values),
+        ),
+        "merchant_name": str(row.get("merchant_name") or "").strip(),
+        "merchant_category_code": str(row.get("merchant_category_code") or row.get("mcc") or "").strip(),
+        "counterparty_name": str(row.get("counterparty_name") or "").strip(),
+        "counterparty_account_ref": str(
+            row.get("counterparty_account_ref") or row.get("counterparty_account_reference") or ""
+        ).strip(),
+        "rail": _normalized_choice(row.get("rail"), set(TransactionExternalDetails.Rail.values)),
+        "rail_reference": str(row.get("rail_reference") or row.get("transaction_reference") or "").strip(),
+        "authorization_status": _normalized_choice(
+            row.get("authorization_status"),
+            set(TransactionExternalDetails.AuthorizationStatus.values),
+        ),
+        "settlement_status": _normalized_choice(
+            row.get("settlement_status"),
+            set(TransactionExternalDetails.SettlementStatus.values),
+        ),
+        "authorized_at": _normalize_datetimeish(row.get("authorized_at")),
+        "captured_at": _normalize_datetimeish(row.get("captured_at")),
+        "settled_at": _normalize_datetimeish(row.get("settled_at")),
+        "reversed_at": _normalize_datetimeish(row.get("reversed_at")),
+        "balance_after_transaction": _canonical_decimal(row.get("balance_after_transaction"))
+        if row.get("balance_after_transaction") not in (None, "")
+        else "",
+        "original_amount": _canonical_decimal(row.get("original_amount"))
+        if row.get("original_amount") not in (None, "")
+        else "",
+        "original_currency": _normalized_upper(row.get("original_currency"), max_length=3),
+        "fx_rate": _canonical_fx_rate(row.get("fx_rate")) if row.get("fx_rate") not in (None, "") else "",
+        "country_code": _normalized_upper(row.get("country_code"), max_length=2),
+        "channel": _normalized_choice(row.get("channel"), set(TransactionExternalDetails.Channel.values)),
+        "confidence_score": _normalize_confidence_score(row.get("confidence_score")),
+        "data_origin": _normalized_choice(row.get("data_origin"), set(TransactionExternalDetails.DataOrigin.values)),
+        "message_id": str(row.get("message_id") or "").strip(),
+        "sender_id": str(row.get("sender_id") or "").strip(),
+        "received_at": _normalize_datetimeish(row.get("received_at")),
+        "parsed_text": str(row.get("parsed_text") or "").strip(),
+        "parser_version": str(row.get("parser_version") or "").strip(),
+        "needs_user_confirmation": bool(row.get("needs_user_confirmation", False)),
+        "inference_status": _normalized_choice(
+            row.get("inference_status"),
+            set(TransactionExternalDetails.InferenceStatus.values),
+        ),
+    }
+
+
 def _normalize_row_payload(*, provider: str, source: str, provider_account_id: str, row: dict) -> dict:
     raw_status = str(row.get("status") or Transaction.Status.POSTED).strip().lower()
     status = raw_status if raw_status in Transaction.Status.values else Transaction.Status.POSTED
     description = str(row.get("description") or row.get("notes") or "").strip()
+    external_details = _normalize_external_details(row)
+    normalized_source = str(source or "").strip().lower()
+    if not external_details["data_origin"]:
+        if normalized_source in {"open_finance", "open_banking"}:
+            external_details["data_origin"] = TransactionExternalDetails.DataOrigin.OPEN_BANKING
+        elif normalized_source in {"payment_intent", "payment_network"}:
+            external_details["data_origin"] = TransactionExternalDetails.DataOrigin.PAYMENT_INTENT
+        elif normalized_source in {"import", "csv_import"}:
+            external_details["data_origin"] = TransactionExternalDetails.DataOrigin.IMPORT
+        elif normalized_source in {"message", "sms", "email"}:
+            external_details["data_origin"] = TransactionExternalDetails.DataOrigin.MESSAGE
+        elif normalized_source == "manual":
+            external_details["data_origin"] = TransactionExternalDetails.DataOrigin.MANUAL
+    if not external_details["rail"]:
+        if normalized_source in {"open_finance", "open_banking"}:
+            external_details["rail"] = TransactionExternalDetails.Rail.OPEN_BANKING
+        elif normalized_source in {"message", "sms", "email"}:
+            external_details["rail"] = TransactionExternalDetails.Rail.MESSAGE
+        elif normalized_source in {"import", "csv_import"}:
+            external_details["rail"] = TransactionExternalDetails.Rail.IMPORT
+        elif normalized_source == "manual":
+            external_details["rail"] = TransactionExternalDetails.Rail.MANUAL
+    if not external_details["channel"]:
+        if normalized_source in {"open_finance", "open_banking"}:
+            external_details["channel"] = TransactionExternalDetails.Channel.API
+        elif normalized_source == "sms":
+            external_details["channel"] = TransactionExternalDetails.Channel.SMS
+        elif normalized_source == "email":
+            external_details["channel"] = TransactionExternalDetails.Channel.EMAIL
+        elif normalized_source == "message":
+            external_details["channel"] = TransactionExternalDetails.Channel.MESSAGE_INFERRED
+        elif normalized_source in {"import", "csv_import"}:
+            external_details["channel"] = TransactionExternalDetails.Channel.IMPORT
+        elif normalized_source == "manual":
+            external_details["channel"] = TransactionExternalDetails.Channel.MANUAL
     normalized = {
         "provider": str(provider or "").strip().lower(),
-        "source": str(source or "").strip().lower(),
+        "source": normalized_source,
         "provider_account_id": str(provider_account_id or row.get("provider_account_id") or "").strip(),
         "account_id": row.get("account_id") or row.get("internal_account_id") or None,
         "external_id": str(row.get("external_id") or "").strip(),
@@ -66,6 +210,7 @@ def _normalize_row_payload(*, provider: str, source: str, provider_account_id: s
         "affects_balance": bool(row.get("affects_balance", status not in {Transaction.Status.CANCELED, Transaction.Status.FAILED})),
         "raw_payload": row.get("raw_payload") or row.get("raw") or {},
         "metadata": row.get("metadata") or {},
+        "external_details": external_details,
     }
     if normalized["status"] == Transaction.Status.PENDING and normalized["confirmed"]:
         normalized["status"] = Transaction.Status.POSTED
@@ -395,8 +540,86 @@ def _create_reconciliation_issue(*, tx: Transaction, source_link: TransactionSou
     )
 
 
+def _to_optional_decimal(value: str | None):
+    if value in (None, ""):
+        return None
+    return Decimal(str(value))
+
+
+def _to_optional_datetime(value: str | None):
+    if not value:
+        return None
+    parsed = parse_datetime(str(value))
+    if parsed is None:
+        return None
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+    return parsed
+
+
+def _upsert_transaction_external_details(*, tx: Transaction, normalized: dict) -> TransactionExternalDetails:
+    details_payload = dict(normalized.get("external_details") or {})
+    defaults = {
+        "description": details_payload.get("description", ""),
+        "transaction_information": details_payload.get("transaction_information") or {},
+        "booking_datetime": _to_optional_datetime(details_payload.get("booking_datetime")),
+        "value_datetime": _to_optional_datetime(details_payload.get("value_datetime")),
+        "credit_debit_indicator": details_payload.get("credit_debit_indicator", ""),
+        "merchant_name": details_payload.get("merchant_name", ""),
+        "merchant_category_code": details_payload.get("merchant_category_code", ""),
+        "counterparty_name": details_payload.get("counterparty_name", ""),
+        "counterparty_account_ref": details_payload.get("counterparty_account_ref", ""),
+        "rail": details_payload.get("rail", ""),
+        "rail_reference": details_payload.get("rail_reference", ""),
+        "authorization_status": details_payload.get("authorization_status", ""),
+        "settlement_status": details_payload.get("settlement_status", ""),
+        "authorized_at": _to_optional_datetime(details_payload.get("authorized_at")),
+        "captured_at": _to_optional_datetime(details_payload.get("captured_at")),
+        "settled_at": _to_optional_datetime(details_payload.get("settled_at")),
+        "reversed_at": _to_optional_datetime(details_payload.get("reversed_at")),
+        "balance_after_transaction": _to_optional_decimal(details_payload.get("balance_after_transaction")),
+        "original_amount": _to_optional_decimal(details_payload.get("original_amount")),
+        "original_currency": details_payload.get("original_currency", ""),
+        "fx_rate": _to_optional_decimal(details_payload.get("fx_rate")),
+        "country_code": details_payload.get("country_code", ""),
+        "channel": details_payload.get("channel", ""),
+        "confidence_score": details_payload.get("confidence_score"),
+        "data_origin": details_payload.get("data_origin", ""),
+        "message_id": details_payload.get("message_id", ""),
+        "sender_id": details_payload.get("sender_id", ""),
+        "received_at": _to_optional_datetime(details_payload.get("received_at")),
+        "parsed_text": details_payload.get("parsed_text", ""),
+        "parser_version": details_payload.get("parser_version", ""),
+        "needs_user_confirmation": bool(details_payload.get("needs_user_confirmation", False)),
+        "inference_status": details_payload.get("inference_status", ""),
+    }
+    details, _created = TransactionExternalDetails.objects.update_or_create(
+        transaction=tx,
+        defaults=defaults,
+    )
+    return details
+
+
+def _apply_transaction_external_summary(*, tx: Transaction, normalized: dict) -> Transaction:
+    details_payload = dict(normalized.get("external_details") or {})
+    tx.description = details_payload.get("description") or normalized.get("description", tx.description or "")
+    tx.booking_datetime = _to_optional_datetime(details_payload.get("booking_datetime"))
+    tx.value_datetime = _to_optional_datetime(details_payload.get("value_datetime"))
+    tx.credit_debit_indicator = details_payload.get("credit_debit_indicator", "")
+    tx.rail = details_payload.get("rail", "")
+    tx.channel = details_payload.get("channel", "")
+    tx.data_origin = details_payload.get("data_origin", "")
+    tx.confidence_score = details_payload.get("confidence_score")
+    tx.country_code = details_payload.get("country_code", "")
+    tx.balance_after_transaction = _to_optional_decimal(details_payload.get("balance_after_transaction"))
+    tx.original_amount = _to_optional_decimal(details_payload.get("original_amount"))
+    tx.original_currency = details_payload.get("original_currency", "")
+    tx.fx_rate = _to_optional_decimal(details_payload.get("fx_rate"))
+    return tx
+
+
 def _create_transaction_from_intake(*, account: Account, normalized: dict) -> Transaction:
-    return Transaction.objects.create(
+    tx = Transaction(
         owner=account.owner,
         account=account,
         type=normalized.get("type", Transaction.Type.EXPENSE),
@@ -412,6 +635,10 @@ def _create_transaction_from_intake(*, account: Account, normalized: dict) -> Tr
         affects_balance=bool(normalized.get("affects_balance", True)),
         notes=normalized.get("notes", ""),
     )
+    _apply_transaction_external_summary(tx=tx, normalized=normalized)
+    tx.save()
+    _upsert_transaction_external_details(tx=tx, normalized=normalized)
+    return tx
 
 
 def _update_transaction_from_intake(*, tx: Transaction, account: Account, normalized: dict) -> Transaction:
@@ -428,7 +655,9 @@ def _update_transaction_from_intake(*, tx: Transaction, account: Account, normal
     tx.confirmed = bool(normalized.get("confirmed", tx.confirmed))
     tx.affects_balance = bool(normalized.get("affects_balance", tx.affects_balance))
     tx.notes = normalized.get("notes", tx.notes)
+    _apply_transaction_external_summary(tx=tx, normalized=normalized)
     tx.save()
+    _upsert_transaction_external_details(tx=tx, normalized=normalized)
     return tx
 
 
@@ -500,6 +729,7 @@ def _apply_receipt(receipt: TransactionIntakeReceipt) -> str:
         return "duplicate"
 
     if provider_status in _REVERSE_PROVIDER_STATUSES or normalized.get("status") == Transaction.Status.CANCELED:
+        _upsert_transaction_external_details(tx=tx, normalized=normalized)
         if countable_now:
             issue = _create_reconciliation_issue(
                 tx=tx,
@@ -531,6 +761,7 @@ def _apply_receipt(receipt: TransactionIntakeReceipt) -> str:
         tx.confirmed = False
         tx.affects_balance = False
         tx.raw_payload = normalized.get("raw_payload") or {}
+        _apply_transaction_external_summary(tx=tx, normalized=normalized)
         tx.save()
         if link:
             _sync_source_link(source_link=link, normalized=normalized, tx=tx)
@@ -546,6 +777,7 @@ def _apply_receipt(receipt: TransactionIntakeReceipt) -> str:
         field for field in _MATERIAL_FIELDS if str(current_material.get(field, "")) != str(incoming_material.get(field, ""))
     ]
     if material_fields_changed and countable_now and any(field in {"account_id", "amount", "date", "type"} for field in material_fields_changed):
+        _upsert_transaction_external_details(tx=tx, normalized=normalized)
         issue = _create_reconciliation_issue(
             tx=tx,
             source_link=link,
@@ -592,6 +824,10 @@ def _apply_receipt(receipt: TransactionIntakeReceipt) -> str:
 
     if link:
         _sync_source_link(source_link=link, normalized=normalized, tx=tx)
+    _apply_transaction_external_summary(tx=tx, normalized=normalized)
+    tx.raw_payload = normalized.get("raw_payload") or tx.raw_payload
+    tx.save()
+    _upsert_transaction_external_details(tx=tx, normalized=normalized)
     receipt.status = TransactionIntakeReceipt.Status.NOOP
     receipt.materialized_transaction = tx
     receipt.last_error = ""

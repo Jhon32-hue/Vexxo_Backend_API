@@ -271,6 +271,153 @@ class TransactionIntakeReceipt(models.Model):
             self.save(update_fields=["seen_count", "last_seen_at", "duplicate_of", "status", "updated_at"])
 
 
+class TransactionExternalDetails(models.Model):
+    class CreditDebitIndicator(models.TextChoices):
+        UNSPECIFIED = "", _("sin dato")
+        DEBIT = "debit", _("debito")
+        CREDIT = "credit", _("credito")
+
+    class Rail(models.TextChoices):
+        UNSPECIFIED = "", _("sin dato")
+        MANUAL = "manual", _("manual")
+        OPEN_BANKING = "open_banking", _("open banking")
+        BANK_TRANSFER = "bank_transfer", _("transferencia bancaria")
+        CARD = "card", _("tarjeta")
+        WALLET = "wallet", _("wallet")
+        PAYMENT_NETWORK = "payment_network", _("red de pagos")
+        MESSAGE = "message", _("mensaje")
+        IMPORT = "import", _("importacion")
+        OTHER = "other", _("otro")
+
+    class Channel(models.TextChoices):
+        UNSPECIFIED = "", _("sin dato")
+        MANUAL = "manual", _("manual")
+        CARD_PRESENT = "card_present", _("tarjeta presente")
+        ECOMMERCE = "ecommerce", _("ecommerce")
+        BANK_TRANSFER = "bank_transfer", _("transferencia bancaria")
+        WALLET = "wallet", _("wallet")
+        SMS = "sms", _("sms")
+        EMAIL = "email", _("email")
+        MESSAGE_INFERRED = "message_inferred", _("mensaje inferido")
+        API = "api", _("api")
+        IMPORT = "import", _("importacion")
+        OTHER = "other", _("otro")
+
+    class AuthorizationStatus(models.TextChoices):
+        UNSPECIFIED = "", _("sin dato")
+        PENDING = "pending", _("pendiente")
+        AUTHORIZED = "authorized", _("autorizada")
+        DECLINED = "declined", _("rechazada")
+        CANCELED = "canceled", _("cancelada")
+        FAILED = "failed", _("fallida")
+        REVERSED = "reversed", _("revertida")
+
+    class SettlementStatus(models.TextChoices):
+        UNSPECIFIED = "", _("sin dato")
+        PENDING = "pending", _("pendiente")
+        SETTLED = "settled", _("liquidada")
+        PARTIAL = "partial", _("parcial")
+        FAILED = "failed", _("fallida")
+        CANCELED = "canceled", _("cancelada")
+        REVERSED = "reversed", _("revertida")
+
+    class DataOrigin(models.TextChoices):
+        UNSPECIFIED = "", _("sin dato")
+        MANUAL = "manual", _("manual")
+        OPEN_BANKING = "open_banking", _("open banking")
+        PAYMENT_NETWORK = "payment_network", _("red de pagos")
+        WALLET = "wallet", _("wallet")
+        MESSAGE = "message", _("mensaje")
+        IMPORT = "import", _("importacion")
+        INFERRED = "inferred", _("inferida")
+        PAYMENT_INTENT = "payment_intent", _("payment intent")
+
+    class InferenceStatus(models.TextChoices):
+        UNSPECIFIED = "", _("sin dato")
+        INFERRED = "inferred", _("inferida")
+        NEEDS_CONFIRMATION = "needs_confirmation", _("requiere confirmacion")
+        USER_CONFIRMED = "user_confirmed", _("confirmada por usuario")
+        PROVIDER_CONFIRMED = "provider_confirmed", _("confirmada por proveedor")
+        REJECTED = "rejected", _("rechazada")
+
+    transaction = models.OneToOneField(
+        "transactions.Transaction",
+        on_delete=models.CASCADE,
+        related_name="external_details",
+    )
+    description = models.CharField(max_length=255, blank=True, default="")
+    transaction_information = models.JSONField(default=dict, blank=True)
+    booking_datetime = models.DateTimeField(null=True, blank=True)
+    value_datetime = models.DateTimeField(null=True, blank=True)
+    credit_debit_indicator = models.CharField(
+        max_length=16,
+        choices=CreditDebitIndicator.choices,
+        default=CreditDebitIndicator.UNSPECIFIED,
+        blank=True,
+    )
+    merchant_name = models.CharField(max_length=160, blank=True, default="")
+    merchant_category_code = models.CharField(max_length=16, blank=True, default="")
+    counterparty_name = models.CharField(max_length=160, blank=True, default="")
+    counterparty_account_ref = models.CharField(max_length=128, blank=True, default="")
+    rail = models.CharField(max_length=32, choices=Rail.choices, default=Rail.UNSPECIFIED, blank=True)
+    rail_reference = models.CharField(max_length=128, blank=True, default="")
+    authorization_status = models.CharField(
+        max_length=16,
+        choices=AuthorizationStatus.choices,
+        default=AuthorizationStatus.UNSPECIFIED,
+        blank=True,
+    )
+    settlement_status = models.CharField(
+        max_length=16,
+        choices=SettlementStatus.choices,
+        default=SettlementStatus.UNSPECIFIED,
+        blank=True,
+    )
+    authorized_at = models.DateTimeField(null=True, blank=True)
+    captured_at = models.DateTimeField(null=True, blank=True)
+    settled_at = models.DateTimeField(null=True, blank=True)
+    reversed_at = models.DateTimeField(null=True, blank=True)
+    balance_after_transaction = models.DecimalField(max_digits=16, decimal_places=2, null=True, blank=True)
+    original_amount = models.DecimalField(max_digits=16, decimal_places=2, null=True, blank=True)
+    original_currency = models.CharField(max_length=3, blank=True, default="")
+    fx_rate = models.DecimalField(max_digits=16, decimal_places=8, null=True, blank=True)
+    country_code = models.CharField(max_length=2, blank=True, default="")
+    channel = models.CharField(max_length=32, choices=Channel.choices, default=Channel.UNSPECIFIED, blank=True)
+    confidence_score = models.PositiveSmallIntegerField(null=True, blank=True)
+    data_origin = models.CharField(
+        max_length=32,
+        choices=DataOrigin.choices,
+        default=DataOrigin.UNSPECIFIED,
+        blank=True,
+    )
+    message_id = models.CharField(max_length=128, blank=True, default="")
+    sender_id = models.CharField(max_length=128, blank=True, default="")
+    received_at = models.DateTimeField(null=True, blank=True)
+    parsed_text = models.TextField(blank=True, default="")
+    parser_version = models.CharField(max_length=64, blank=True, default="")
+    needs_user_confirmation = models.BooleanField(default=False)
+    inference_status = models.CharField(
+        max_length=32,
+        choices=InferenceStatus.choices,
+        default=InferenceStatus.UNSPECIFIED,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+        indexes = [
+            models.Index(fields=["rail", "channel"]),
+            models.Index(fields=["data_origin", "confidence_score"]),
+            models.Index(fields=["merchant_name"]),
+            models.Index(fields=["counterparty_name"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"external_details tx={self.transaction_id} rail={self.rail or 'n/a'}"
+
+
 class TransactionSourceLink(models.Model):
     transaction = models.ForeignKey(
         "transactions.Transaction",

@@ -101,21 +101,34 @@ class TransactionViewSet(OwnerScopedMixin, viewsets.ModelViewSet):
             "income_source",
             "scheduled_payment",
             "payment_intent",
+            "external_details",
         )
         .prefetch_related("tags", "participants")
         .all()
     )
     serializer_class = TransactionSerializer
     filter_backends = [filters.SearchFilter, DjangoFilterBackend, filters.OrderingFilter]
-    search_fields = ["notes", "vendor__name", "category__name"]
-    ordering_fields = ["date", "amount", "created_at"]
+    search_fields = [
+        "description",
+        "notes",
+        "vendor__name",
+        "category__name",
+        "external_details__description",
+        "external_details__merchant_name",
+        "external_details__counterparty_name",
+    ]
+    ordering_fields = ["date", "booking_datetime", "amount", "created_at"]
     filterset_fields = {
         "type": ["exact"],
         "status": ["exact"],
+        "rail": ["exact"],
+        "channel": ["exact"],
+        "data_origin": ["exact"],
         "category": ["exact"],
         "vendor": ["exact"],
         "priority": ["exact"],
         "date": ["exact", "gte", "lte"],
+        "booking_datetime": ["exact", "gte", "lte"],
         "confirmed": ["exact"],
         "tags": ["exact"],
         "account": ["exact"],

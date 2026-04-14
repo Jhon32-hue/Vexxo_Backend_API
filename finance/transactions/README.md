@@ -1,4 +1,4 @@
-# finance.transactions
+﻿# finance.transactions
 
 ## Que hace
 
@@ -72,6 +72,15 @@ classDiagram
         +seen_count
     }
 
+    class TransactionExternalDetails {
+        +rail
+        +channel
+        +booking_datetime
+        +merchant_name
+        +counterparty_name
+        +confidence_score
+    }
+
     class TransactionSourceLink {
         +provider
         +source
@@ -96,6 +105,7 @@ classDiagram
     Transaction "1" --> "*" TransactionParticipant : splits_to
     TransactionIntakeBatch "1" --> "*" TransactionIntakeReceipt : stores
     TransactionIntakeReceipt "0..1" --> "0..1" Transaction : materializes
+    Transaction "1" --> "0..1" TransactionExternalDetails : enriches
     Transaction "1" --> "*" TransactionSourceLink : binds_external_identity
     Transaction "1" --> "*" TransactionReconciliationIssue : opens
     TransactionDomainEventOutbox --> Transaction : publishes_events_for
@@ -129,10 +139,53 @@ Campos importantes:
 - `status`: `pending`, `posted`, `reconciled`, `canceled`, `failed`
 - `confirmed`: aceptacion de usuario o fuente confiable
 - `affects_balance`: permite separar hechos contables de splits analiticos
+- resumen canonico externo util para consultas:
+  - `description`
+  - `booking_datetime` / `value_datetime`
+  - `credit_debit_indicator`
+  - `rail` / `channel`
+  - `data_origin` / `confidence_score`
+  - `country_code`
+  - `balance_after_transaction`
+  - `original_amount` / `original_currency` / `fx_rate`
 - relaciones a `account`, `category`, `vendor`, `debt`, `installment`
 - vinculo opcional a `payment_intent`
 - metadata externa ligera: `source`, `provider`, `external_id`, `raw_payload`
 - soporte de split y reembolso
+
+### `TransactionExternalDetails`
+
+Vista normalizada rica del rail o del origen externo.
+
+No reemplaza al ledger ni al intake. Su trabajo es capturar metadata externa
+consultable sin inflar `Transaction` ni obligar a parsear `raw_payload`.
+
+Campos importantes:
+
+- `description`
+- `transaction_information`
+- `booking_datetime` / `value_datetime`
+- `credit_debit_indicator`
+- `merchant_name` / `merchant_category_code`
+- `counterparty_name` / `counterparty_account_ref`
+- `rail` / `rail_reference`
+- `authorization_status` / `settlement_status`
+- `authorized_at` / `captured_at` / `settled_at` / `reversed_at`
+- `balance_after_transaction`
+- `original_amount` / `original_currency` / `fx_rate`
+- `country_code`
+- `channel`
+- `data_origin`
+- `confidence_score`
+- `message_id` / `sender_id` / `received_at`
+- `parsed_text` / `parser_version`
+- `needs_user_confirmation` / `inference_status`
+
+Decision de diseno actual:
+
+- `Transaction` = ledger contable final + resumen canonico transversal
+- `TransactionIntakeReceipt` = staging/intake
+- `TransactionExternalDetails` = vista normalizada rica del rail
 
 ### `ScheduledPayment`
 
@@ -304,6 +357,65 @@ flowchart LR
     ISSUE --> OUT
 ```
 
+### Open banking intake
+
+```mermaid
+sequenceDiagram
+    participant INT as integration_service
+    participant API as internal transactions API
+    participant INTAKE as transaction_intake_service
+    participant DB as Cloud SQL
+    participant TX as Transaction
+    participant EXT as TransactionExternalDetails
+    participant OUT as transactions outbox
+
+    INT->>API: POST intake batch (open_banking rows)
+    API->>INTAKE: receive_intake_batch
+    INTAKE->>DB: persist batch + receipts
+    API->>INTAKE: apply_intake_batch
+    INTAKE->>DB: dedupe by source link / fingerprint
+    INTAKE->>DB: create or update Transaction
+    INTAKE->>DB: upsert TransactionExternalDetails
+    INTAKE->>OUT: enqueue imported / reconciled / corrected / reversed events
+```
+
+### Payment intent confirmado
+
+```mermaid
+sequenceDiagram
+    participant PAY as payments.payment_intents
+    participant MAT as payment_materialization_service
+    participant TX as Transaction
+    participant OUT as transactions outbox
+    participant ACC as finance.accounts
+
+    PAY->>MAT: payment confirmed / settled
+    MAT->>TX: create or reuse ledger transaction
+    MAT->>OUT: enqueue transactions.created.v1 or updated.v1
+    OUT->>ACC: downstream balance effects and consumers
+```
+
+### SMS inferido
+
+```mermaid
+sequenceDiagram
+    participant MSG as sms/email bridge
+    participant API as internal transactions API
+    participant PARSER as transaction_message_parser_service
+    participant INTAKE as transaction_intake_service
+    participant TX as Transaction
+    participant EXT as TransactionExternalDetails
+    participant USER as user confirmation flow
+
+    MSG->>API: POST intake/message
+    API->>PARSER: parse_message_transaction
+    PARSER->>INTAKE: receive_single_intake_row (pending, inferred)
+    INTAKE->>TX: materialize Transaction
+    INTAKE->>EXT: upsert TransactionExternalDetails
+    Note over TX,EXT: status=pending, confirmed=false,\nneeds_user_confirmation=true
+    USER->>TX: confirmar transaccion si aplica
+```
+
 ## Flujos principales
 
 ### 1. Transaccion manual
@@ -359,6 +471,27 @@ historial por usuario colaborador.
 3. `transactions` queda como reflejo contable
 4. el detalle rico del PSP sigue en `payments`
 
+### 2.a. Mensaje SMS o email inferido
+
+1. un bridge o integrador interno envia `POST /api/internal/transactions/intake/message/`
+2. `transaction_message_parser_service.py` intenta inferir monto, tipo, descripcion y contraparte
+3. el parser construye una fila canonica de intake con:
+   - `status=pending`
+   - `confirmed=False`
+   - `rail=message`
+   - `data_origin=inferred`
+   - `needs_user_confirmation=True`
+4. `transaction_intake_service.py` materializa `Transaction`
+5. `TransactionExternalDetails` conserva `parsed_text`, `message_id`, `sender_id`, `parser_version`, `confidence_score` e `inference_status`
+6. la transaccion queda persistida en `Transaction`, pero no es countable para ledger mientras siga `pending + confirmed=False`
+
+Limites actuales:
+
+- el parser es determinista y basado en patrones, no NLP libre
+- hoy infiere bien monto, tipo, descripcion corta y contraparte minima
+- si no puede inferir monto, el intake exige `amount` explicito
+- el flujo esta pensado para bridge interno de sms/email, no para ingestion directa desde cliente final
+
 ### 3. Pago programado legacy local
 
 1. el usuario crea `transactions.ScheduledPayment`
@@ -400,6 +533,10 @@ Servicios clave:
   - dedupe por source link o fingerprint
   - decision `noop/create/update/correct/reverse`
   - reconciliacion basica sin tocar el CRUD manual
+- `transaction_message_parser_service.py`
+  - parser determinista para sms/email
+  - infiere monto, tipo, descripcion y contraparte minima
+  - materializa movimientos `pending` y `needs_user_confirmation`
 - `transaction_reconciliation_service.py`
   - resuelve `TransactionReconciliationIssue`
   - soporta `apply_provider_update`, `create_adjustment`, `create_reversal`
@@ -413,7 +550,7 @@ Servicios clave:
 
 ## Eventos `transactions.*`
 
-El contexto ya emite eventos canónicos como:
+El contexto ya emite eventos canonicos como:
 
 - `transactions.created.v1`
 - `transactions.updated.v1`
@@ -747,9 +884,16 @@ Ahora tambien tiene una capa explicita de intake externo con:
 
 - `TransactionIntakeBatch`
 - `TransactionIntakeReceipt`
+- `TransactionExternalDetails`
 - `TransactionSourceLink`
 - `TransactionReconciliationIssue`
 - endpoints internos de intake
+
+Y la riqueza externa ya no queda solo atrapada en `raw_payload`:
+
+- `Transaction` conserva el hecho contable final
+- `TransactionIntakeReceipt` conserva staging y trazabilidad de entrada
+- `TransactionExternalDetails` conserva la vista normalizada del rail
 
 Ademas mejoro la proteccion de duplicados para fuentes no manuales:
 
@@ -767,3 +911,5 @@ Eso ayuda, pero no cierra todavia la deuda principal:
   signals
 - los signals siguen existiendo como compatibilidad para paths no migrados; la
   migracion no esta terminada
+
+
