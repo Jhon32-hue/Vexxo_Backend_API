@@ -99,6 +99,8 @@ debemos mantener:
 - [Mapa de rutas API](RUTAS_API.md)
 - [Auditoria de rutas API](AUDITORIA_RUTAS_API.md)
 - [Convencion documental](CONVENCION_DOCUMENTAL.md)
+- [Catalogo de fuentes e integraciones](INTEGRATION_SOURCE_CATALOG.md)
+- [Contratos canonicos por rail en transactions](finance/transactions/RAIL_NORMALIZATION_CONTRACTS.md)
 
 ## Core del negocio
 
@@ -766,6 +768,9 @@ Lectura:
 - el ledger sigue en `Transaction`, no en `PaymentIntent`
 - `Transaction` ya carga un resumen canonico externo consultable
 - `TransactionExternalDetails` concentra la metadata rica por rail/origen
+- rails de pago usan doble contrato:
+  - ejecucion del rail en `payments.payment_intents`
+  - reflejo contable en `finance.transactions`
 - `transaction_message_parser_service.py` permite intake interno de sms/email
   hacia movimientos `pending` con confirmacion explicita posterior
 - el intake externo ya no escribe al ledger directo; entra por batch/receipt

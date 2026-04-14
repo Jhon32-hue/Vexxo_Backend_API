@@ -23,6 +23,8 @@ Subdocumento derivado:
 - [banks/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/integrations_stub/banks/README.md)
   frontera temporal para sync bancario, refresh de inteligencia y puente hacia
   intake/reconciliacion de `transactions`
+- [Catalogo de fuentes e integraciones](/c:/Users/Alamb/Documents/Vexxo_Backend_API/INTEGRATION_SOURCE_CATALOG.md)
+  clasificacion transversal de proveedores, source types y bounded contexts
 
 ## Rol En La Arquitectura
 

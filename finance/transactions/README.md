@@ -4,6 +4,11 @@
 
 `finance.transactions` es el ledger transaccional personal de Vexxo.
 
+Documento complementario recomendado:
+
+- [Catalogo de fuentes e integraciones](/c:/Users/Alamb/Documents/Vexxo_Backend_API/INTEGRATION_SOURCE_CATALOG.md)
+- [Contratos canonicos por rail](RAIL_NORMALIZATION_CONTRACTS.md)
+
 Su trabajo no es ejecutar rails externos ni hablar con PSPs. Su trabajo es:
 
 - registrar el hecho contable final
@@ -547,6 +552,19 @@ Servicios clave:
   - deja signals como fallback para paths aun no migrados
 - `payment_materialization_service.py`
   - reflejo contable desde `payments`
+
+## Contratos canonicos por rail
+
+La especificacion detallada de `normalized_payload` por rail vive en:
+
+- [RAIL_NORMALIZATION_CONTRACTS.md](RAIL_NORMALIZATION_CONTRACTS.md)
+
+Lectura corta:
+
+- `open_banking` entra y se materializa aqui
+- `message_inferred` entra y se materializa aqui
+- `payment_reflection` entra aqui como reflejo contable
+- `payment_execution` no vive aqui; vive en `payments.payment_intents`
 
 ## Eventos `transactions.*`
 

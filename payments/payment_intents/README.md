@@ -36,6 +36,11 @@ Este README es derivado del documento canonico del bounded context:
 Su foco es el aggregate operativo `PaymentIntent`, callbacks, outbox,
 settlement, casos operativos y payouts.
 
+Documentos complementarios:
+
+- [Catalogo de fuentes e integraciones](/c:/Users/Alamb/Documents/Vexxo_Backend_API/INTEGRATION_SOURCE_CATALOG.md)
+- [Contratos canonicos por rail de transactions](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/transactions/RAIL_NORMALIZATION_CONTRACTS.md)
+
 ## Rol En El Producto
 
 De cara al cliente, este modulo sostiene la experiencia de pago externo dentro
@@ -228,6 +233,35 @@ se guarda primero aqui, no en `finance.transactions`.
 - `payments.payment_intents.callback_service`: intake canonico de callbacks
 - `payments.payment_intents.reconciliation_service`: settlement y casos operativos
 - `payments.payment_intents.realtime_services`: senales UX complementarias
+
+## Contrato de rail vs reflejo contable
+
+`payments.payment_intents` y `finance.transactions` no comparten exactamente el
+mismo contrato de datos.
+
+Regla:
+
+- `payments` es dueno del contrato de ejecucion del rail
+- `transactions` es dueno del contrato de reflejo contable
+
+Por eso:
+
+- autorizacion
+- captura
+- settlement
+- callback del PSP
+- wallet metadata
+- tokenizacion
+- risk metadata
+
+viven primero aqui.
+
+Solo cuando el pago ya vale para ledger, se refleja en `finance.transactions`
+mediante el contrato `payment_reflection.normalized_payload`.
+
+Documento relacionado:
+
+- [Contratos canonicos por rail de transactions](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/transactions/RAIL_NORMALIZATION_CONTRACTS.md)
 
 ## Casos De Uso
 
