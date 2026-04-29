@@ -103,6 +103,7 @@ class Transaction(models.Model):
         WALLET = "wallet", _("wallet")
         SMS = "sms", _("sms")
         EMAIL = "email", _("email")
+        VOICE = "voice", _("voz")
         MESSAGE_INFERRED = "message_inferred", _("mensaje inferido")
         API = "api", _("api")
         IMPORT = "import", _("importacion")

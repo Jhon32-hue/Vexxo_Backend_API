@@ -61,6 +61,32 @@ def confirm_transaction(*, tx: Transaction, actor) -> Transaction:
 
 
 @db_tx.atomic
+def reject_inferred_transaction(*, tx: Transaction, actor, reason: str = "") -> Transaction:
+    if tx.confirmed or tx.status != Transaction.Status.PENDING:
+        raise ValueError("Solo puedes rechazar transacciones inferidas pendientes.")
+    details = getattr(tx, "external_details", None)
+    if details is None or not getattr(details, "needs_user_confirmation", False):
+        raise ValueError("La transaccion no esta marcada como inferida pendiente de confirmacion.")
+    before = serialize_transaction_state(tx)
+    tx.status = Transaction.Status.CANCELED
+    tx.confirmed = False
+    tx.affects_balance = False
+    tx.notes = reason or tx.notes
+    tx = save_transaction_with_events(
+        instance=tx,
+        actor=actor,
+        before=before,
+        created=False,
+        event_source="finance.transactions.transaction_actions_service.reject_inferred_transaction",
+        update_fields=["status", "confirmed", "affects_balance", "notes", "updated_at"],
+    )
+    details.inference_status = details.InferenceStatus.REJECTED
+    details.needs_user_confirmation = False
+    details.save(update_fields=["inference_status", "needs_user_confirmation", "updated_at"])
+    return tx
+
+
+@db_tx.atomic
 def add_transaction_comment(*, tx: Transaction, text: str, actor) -> Transaction:
     before = serialize_transaction_state(tx)
     comments = list(tx.comments or [])

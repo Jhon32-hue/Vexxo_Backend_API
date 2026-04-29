@@ -19,6 +19,8 @@ al contrato canonico correcto.
 - `provider_mappings/payment_execution/`
 - `provider_mappings/market_data/`
 - `provider_mappings/message_sources/`
+  - `sms_bank_template.md`
+  - `voice_ai.md`
 
 ## Regla de documentacion
 

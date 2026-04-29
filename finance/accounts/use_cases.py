@@ -17,7 +17,7 @@ Que se puede hacer despues:
 - agregar metricas de drift entre incremental y full recalc
 - introducir retries o colas si el throughput de transacciones crece mucho
 - si Vexxo migra a precision financiera superior para `Account` y
-  `Transaction`, alinear este modulo con la nueva escala global
+  `Transaction`, alinear este modulo con la nueva escala global (en actualziacion)
 """
 
 from __future__ import annotations

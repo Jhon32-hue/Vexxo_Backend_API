@@ -63,7 +63,20 @@ class TransactionIntakeRowSerializer(serializers.Serializer):
     fx_rate = serializers.DecimalField(max_digits=16, decimal_places=8, required=False)
     country_code = serializers.CharField(required=False, allow_blank=True, max_length=2)
     channel = serializers.ChoiceField(
-        choices=["manual", "card_present", "ecommerce", "bank_transfer", "wallet", "sms", "email", "message_inferred", "api", "import", "other"],
+        choices=[
+            "manual",
+            "card_present",
+            "ecommerce",
+            "bank_transfer",
+            "wallet",
+            "sms",
+            "email",
+            "voice",
+            "message_inferred",
+            "api",
+            "import",
+            "other",
+        ],
         required=False,
         allow_blank=True,
     )

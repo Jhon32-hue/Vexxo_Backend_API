@@ -30,6 +30,7 @@ from finance.transactions.transaction_actions_service import (
     confirm_transaction,
     materialize_transaction_from_legacy_scheduled_payment,
     reassign_transaction_account,
+    reject_inferred_transaction,
     register_transaction_reimbursement,
 )
 from finance.transactions.transaction_write_service import delete_transaction
@@ -186,6 +187,22 @@ class TransactionViewSet(OwnerScopedMixin, viewsets.ModelViewSet):
         with bind_transaction_actor(request.user):
             confirm_transaction(tx=tx, actor=request.user)
         return Response({"detail": "Transaccion marcada como confirmada."}, status=status.HTTP_200_OK)
+
+    @db_tx.atomic
+    @action(detail=True, methods=["post"])
+    def rechazar_inferida(self, request, pk=None):
+        tx = self.get_object()
+        if not user_can_post_transactions(request.user, tx.account):
+            return Response({"detail": "No tienes permisos para rechazar transacciones en esta cuenta."}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            reject_inferred_transaction(
+                tx=tx,
+                actor=request.user,
+                reason=(request.data.get("reason") or "").strip(),
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"detail": "Transaccion inferida rechazada."}, status=status.HTTP_200_OK)
 
     @db_tx.atomic
     @action(detail=True, methods=["post"])

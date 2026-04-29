@@ -38,8 +38,9 @@ Las fuentes externas de Vexxo deben clasificarse asi:
 3. `payment_reflection`
 4. `market_data`
 5. `message_inferred`
-6. `manual_import`
-7. `document_data`
+6. `voice_inferred`
+7. `manual_import`
+8. `document_data`
 
 No todas existen igual de maduras hoy, pero esta es la taxonomia correcta para
 ordenar el sistema.
@@ -53,6 +54,7 @@ ordenar el sistema.
 | `payment_reflection` | reflejo contable final de un pago ya confirmado | `finance.transactions` | `payment_reflection.normalized_payload` | transactions |
 | `market_data` | tasas FX, precios, curvas, indicadores de mercado | `finance.fx` o futuro `market_data` | `fx_rate.normalized_payload` / `market_quote.normalized_payload` | fx + analytics |
 | `message_inferred` | sms, email, push, texto parseado | `finance.transactions` | `message_inferred.normalized_payload` | transactions |
+| `voice_inferred` | audio del usuario, transcripcion, filas inferidas por IA | `finance.transactions` | `voice_inferred.normalized_payload` | transaction inference requests + transactions |
 | `manual_import` | CSV, XLSX, extractos procesados, lotes manuales | `finance.transactions` | `manual_import.normalized_payload` | transactions |
 | `document_data` | OCR, PDFs, facturas, soportes | `documents` y consumidores derivados | `document_extraction.normalized_payload` | documents + downstream contexts |
 
@@ -304,7 +306,66 @@ Texto inferido desde:
 - parser versionado
 - reconciliacion futura con movimiento bancario real si aparece despues
 
-## 6. `manual_import`
+## 6. `voice_inferred`
+
+### Que es
+
+Audio capturado por mobile/web y procesado por un worker de IA para producir
+uno o varios borradores de transaccion.
+
+Incluye:
+
+- referencia de audio almacenado fuera del request path
+- transcripcion
+- extraccion estructurada de movimientos
+- confianza del parser/modelo
+- estado operativo de inferencia
+
+### Bounded context dueno
+
+- `finance.transactions`
+
+El runtime temporal puede estar en `integrations_stub.llm`, pero la fuente de
+verdad de estado es `TransactionInferenceRequest` dentro de `transactions`.
+
+### Contrato canonico
+
+- [voice_inferred.normalized_payload](finance/transactions/RAIL_NORMALIZATION_CONTRACTS.md)
+
+### Persistencia inicial
+
+- `TransactionInferenceRequest` con `queued`, `processing`, fallas, retries y
+  referencia de audio
+- `TransactionIntakeBatch` y `TransactionIntakeReceipt` cuando la IA produce
+  filas validas
+- `Transaction` en estado `pending` y `confirmed=false`
+- `TransactionExternalDetails` con transcripcion, parser, confianza y
+  `needs_user_confirmation`
+
+### Riesgos operativos
+
+- transcripcion fallida
+- extraccion ambigua o incompleta
+- una nota con multiples movimientos
+- falsos positivos por lenguaje natural
+- duplicados al reintentar o repetir audio
+- proveedor LLM caido o respuesta parcial
+
+### Requisitos
+
+- `X-Request-Id` e `Idempotency-Key` en la solicitud publica
+- el endpoint publico solo acepta referencia/metadatos del audio, no filas
+  inferidas ni `raw_payload` arbitrario
+- task naming idempotente en Cloud Tasks
+- `AlreadyExists` en Cloud Tasks cuenta como solicitud ya encolada
+- fallback local no bloqueante y fuera del request path
+- `retry_count`, `next_attempt_at`, `last_error` y `dead_letter`
+- retry explicito reinicia contadores/fechas operativas antes de reencolar
+- no escribir `Transaction` directo desde el worker
+- ignorar estados terminales para evitar reprocesos tardios
+- confirmacion explicita del usuario antes de contabilizar
+
+## 7. `manual_import`
 
 ### Que es
 
@@ -334,7 +395,7 @@ Carga manual estructurada de:
 - trazabilidad del usuario/operador
 - validacion previa de columnas
 
-## 7. `document_data`
+## 8. `document_data`
 
 ### Que es
 
@@ -372,6 +433,7 @@ Solo ordena ownership y destino.
 | `API de tasas FX` | `market_data` | ninguna | `finance.fx` | no debe escribir ledger |
 | `SMS banco/comercio` | `message_inferred` | ninguna | `finance.transactions` | requiere confirmacion o alta confianza |
 | `Email banco/comercio` | `message_inferred` | ninguna | `finance.transactions` | requiere confirmacion o alta confianza |
+| `Nota de voz mobile` | `voice_inferred` | ninguna | `finance.transactions` | solicitud asincronica, IA no escribe ledger directo |
 
 ## Flujo de decision
 
@@ -383,7 +445,8 @@ flowchart TD
     Q3{Solo refleja un pago\\ya confirmado?}
     Q4{Trae tasas o precios\\de mercado?}
     Q5{Es texto inferido\\sms/email/push?}
-    Q6{Es archivo o import\\manual estructurado?}
+    Q6{Es audio o nota de voz\\para inferir transacciones?}
+    Q7{Es archivo o import\\manual estructurado?}
 
     SRC --> Q1
     Q1 -- Si --> B1[bank_data]
@@ -396,8 +459,10 @@ flowchart TD
     Q4 -- No --> Q5
     Q5 -- Si --> B5[message_inferred]
     Q5 -- No --> Q6
-    Q6 -- Si --> B6[manual_import]
-    Q6 -- No --> B7[document_data u otra categoria futura]
+    Q6 -- Si --> B6[voice_inferred]
+    Q6 -- No --> Q7
+    Q7 -- Si --> B7[manual_import]
+    Q7 -- No --> B8[document_data u otra categoria futura]
 ```
 
 ## Matriz canonica que viene despues
@@ -416,6 +481,7 @@ Ejemplo:
 | Wompi | payment_execution | payment_execution.normalized_payload | payments | payment_intents | maybe | high | webhook/worker | ledger solo via reflection posterior |
 | PaymentIntent settled | payment_reflection | payment_reflection.normalized_payload | transactions | transactions | no | high | internal event | debe incluir `payment_intent_id` |
 | SMS Banco X | message_inferred | message_inferred.normalized_payload | transactions | transactions | no | medium | internal bridge | `pending + confirmed=false` |
+| Voice AI | voice_inferred | voice_inferred.normalized_payload | transactions | inference request, intake receipts, transactions | no | medium | async worker | request publica solo con audio; worker idempotente + confirmacion usuario |
 | FX Provider X | market_data | fx_rate.normalized_payload | fx | exchange rates | no | high | scheduled job | no toca ledger |
 
 ## Orden recomendado de trabajo
@@ -433,6 +499,7 @@ Ejemplo:
 - `Wompi` no debe modelarse como feed bancario
 - `FX` no debe crear `Transaction`
 - `SMS` no debe tratarse como open banking
+- `voice_inferred` no debe entrar por CRUD manual ni escribir ledger directo
 - `payment_execution` no debe vivir en `transactions`
 - `payment_reflection` no debe reemplazar `payments`
 
@@ -462,4 +529,5 @@ Ahi deben vivir matrices concretas como:
 - `wompi.md`
 - `fx_provider.md`
 - `sms_bank_template.md`
+- `voice_ai.md`
 

@@ -23,6 +23,9 @@ Subdocumento derivado:
 - [banks/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/integrations_stub/banks/README.md)
   frontera temporal para sync bancario, refresh de inteligencia y puente hacia
   intake/reconciliacion de `transactions`
+- [llm/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/integrations_stub/llm/README.md)
+  runtime temporal para inferencia de voz transaccional antes de extraer
+  `llm_gateway`
 - [Catalogo de fuentes e integraciones](/c:/Users/Alamb/Documents/Vexxo_Backend_API/INTEGRATION_SOURCE_CATALOG.md)
   clasificacion transversal de proveedores, source types y bounded contexts
 
@@ -70,10 +73,12 @@ la semantica del caso de uso.
 El stub ya tiene prefijo canonico adicional bajo:
 
 - `/api/internal/integrations/banks/...`
+- `/api/internal/integrations/llm/...`
 
 El prefijo antiguo:
 
 - `/internal/integrations/banks/...`
+- `/internal/integrations/llm/...`
 
 se mantiene por compatibilidad mientras migra la topologia de integraciones.
 
@@ -105,7 +110,8 @@ Lectura:
 - `banks`
   sync de cuentas, refresh de inteligencia y revocacion de consentimientos
 - `llm`
-  frontera temporal para tareas de IA
+  frontera temporal para tareas de IA; hoy procesa `TransactionInferenceRequest`
+  de voz y delega al intake canonico de `finance.transactions`
 - `ocr`
   frontera temporal para OCR/documentos
 - `payments`
@@ -161,6 +167,14 @@ Y el stub de bancos ya tiene un puente interno preparado para ese flujo:
 - puede recibir batches normalizados de movimientos
 - delega al intake canonico de `finance.transactions`
 - puede cerrar `TransactionReconciliationIssue` con acciones formales
+
+El stub LLM ya tiene un worker interno preparado para voz transaccional:
+
+- recibe `TransactionInferenceRequest` por id
+- simula o puentea transcripcion/extraccion
+- devuelve filas `voice_inferred.normalized_payload`
+- delega materializacion a `transaction_intake_service.py`
+- no escribe ledger directo
 
 
 

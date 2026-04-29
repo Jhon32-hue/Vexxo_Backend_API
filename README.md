@@ -775,10 +775,12 @@ Lectura:
   - reflejo contable en `finance.transactions`
 - `transaction_message_parser_service.py` permite intake interno de sms/email
   hacia movimientos `pending` con confirmacion explicita posterior
+- el intake de voz debe entrar como borrador inferido via `source=voice`,
+  `rail=manual`, `channel=voice` y `data_origin=inferred`
 - el intake externo ya no escribe al ledger directo; entra por batch/receipt
 - `TransactionSourceLink` e `Issue` formalizan dedupe, correcciones y reversos
-- el write path manual sigue conviviendo con signals, pero el camino nuevo ya
-  existe para intake y reconciliacion
+- el write path manual principal ya publica desde `transaction_write_service.py`;
+  signals quedan como compatibilidad para paths no migrados
 
 ##### 5.4 Payments
 
@@ -1109,6 +1111,54 @@ Lectura:
 - `TransactionExternalDetails` conserva `parsed_text`, `message_id`,
   `sender_id`, `parser_version`, `confidence_score` e `inference_status`
 
+##### 6.7 Voice inferred transaction
+
+```mermaid
+sequenceDiagram
+    participant APP as mobile app
+    participant API as transactions API
+    participant REQ as TransactionInferenceRequest
+    participant TASK as Cloud Tasks / local fallback
+    participant LLM as integrations_stub.llm / llm_gateway
+    participant INTAKE as transaction_intake_service
+    participant TX as Transaction
+    participant USER as user confirmation flow
+
+    APP->>API: POST /api/finance/transactions/inference-requests/
+    API->>REQ: persist queued request + audio ref
+    API->>TASK: enqueue idempotent worker task
+    TASK->>LLM: process inference request
+    LLM->>LLM: transcribe + extract transaction rows
+    LLM->>INTAKE: apply voice_inferred.normalized_payload as batch
+    INTAKE->>REQ: link batch + receipts
+    INTAKE->>TX: materialize pending inferred Transaction
+    TX-->>USER: user reviews draft
+    USER-->>TX: confirm, edit or reject
+```
+
+Lectura:
+
+- voz no entra por el CRUD manual directo
+- mobile crea una solicitud asincronica en `TransactionInferenceRequest`
+- el `POST` publico solo acepta referencia y metadatos del audio; no acepta
+  filas inferidas desde cliente
+- el worker de IA vive detras de Cloud Tasks o fallback local controlado
+- si Cloud Tasks responde `AlreadyExists`, se trata como exito idempotente y no
+  dispara un segundo procesamiento
+- el fallback local se encola en background; no debe ejecutar inferencia pesada
+  dentro del request path
+- el runtime temporal esta en `integrations_stub.llm`; el servicio real futuro
+  sera `llm_gateway`
+- una nota con uno o varios movimientos termina como batch de intake canonico
+- cada fila debe iniciar como `status=pending`, `confirmed=False`,
+  `needs_user_confirmation=True`
+- el contrato canonico usa `rail=manual`, `channel=voice` y
+  `data_origin=inferred`
+- si transcripcion o extraccion fallan, no se crea ledger; queda solicitud
+  fallida o `dead_letter` con opcion de retry
+- un retry explicito reinicia contador operativo y fechas de fallo antes de
+  volver a encolar
+
 #### 7. Diagramas de despliegue e interaccion cloud
 
 Esta capa separa dos cosas:
@@ -1129,6 +1179,7 @@ flowchart TB
     TASKS[Cloud Tasks]
     BUS[Pub/Sub]
     INT[Cloud Run: integration_service]
+    LLM[Cloud Run: llm_gateway]
     NOTI[Cloud Run: notifications / workers]
     DATA[Cloud Run: data_service]
     BQ[(BigQuery)]
@@ -1139,10 +1190,12 @@ flowchart TB
     API --> SQL
     API --> TASKS
     API --> BUS
+    TASKS --> LLM
     BUS --> INT
     BUS --> NOTI
     BUS --> DATA
     INT --> API
+    LLM --> API
     DATA --> BQ
 ```
 
@@ -1150,6 +1203,8 @@ Lectura:
 
 - `backend api` sigue siendo duenio de Cloud SQL y del write canonico
 - `integration_service` consume eventos y devuelve resultados al backend
+- `llm_gateway` procesa inferencias asincronicas y devuelve payload canonico,
+  no escribe ledger directo
 - `Pub/Sub` distribuye trabajo entre consumidores cloud sin volver al request
   sincrono
 - `BigQuery` recibe analitica y lecturas de datos, no ownership transaccional

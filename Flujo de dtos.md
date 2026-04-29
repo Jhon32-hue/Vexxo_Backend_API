@@ -5,7 +5,7 @@
 Este documento explica la estructura de datos actual de Vexxo y su ciclo de
 vida operativo.
 
-No es un inventario aislado de tablas. Su objetivo es dejar claro:
+Su objetivo es dejar claro:
 
 - que guarda cada capa del sistema
 - quien escribe cada dato
@@ -16,7 +16,8 @@ No es un inventario aislado de tablas. Su objetivo es dejar claro:
 
 ## Principio general
 
-Vexxo no trata todas las tablas igual. El sistema separa:
+Lo primero que hay que tener en cuenta es que en Vexxo no tratamos todas las tablas 
+de la misma manera. Arquitectonicamente, el sistema separa:
 
 - framework y auth base
 - identidad y politica de producto
@@ -26,6 +27,7 @@ Vexxo no trata todas las tablas igual. El sistema separa:
 - proyecciones, snapshots y outbox
 - alertas, inbox, realtime y auditoria
 - catalogos auxiliares
+(Falta agregar los estados de los modulos no construidos hasta ahora)
 
 Tambien distingue entre:
 

@@ -6,6 +6,7 @@ from finance.transactions.Models.intake import (
     TransactionReconciliationIssue,
     TransactionSourceLink,
 )
+from finance.transactions.Models.inference import TransactionInferenceRequest
 from finance.transactions.Models.transacciones import (
     IncomeSource,
     ScheduledPayment,
@@ -26,4 +27,5 @@ __all__ = [
     "TransactionExternalDetails",
     "TransactionSourceLink",
     "TransactionReconciliationIssue",
+    "TransactionInferenceRequest",
 ]

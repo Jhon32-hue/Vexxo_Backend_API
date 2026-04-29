@@ -35,7 +35,9 @@ Su objetivo es servir como mapa rapido para:
 | `/admin/` | `GET` | Admin de Django |
 | `/api/` | varios | API principal versionada |
 | `/api/internal/integrations/banks/` | varios | prefijo canonico interno del stub de integraciones |
+| `/api/internal/integrations/llm/` | varios | prefijo canonico interno del stub LLM |
 | `/internal/integrations/banks/` | varios | Puente interno temporal para integraciones |
+| `/internal/integrations/llm/` | varios | Puente interno temporal para inferencia LLM |
 
 ## Identity
 
@@ -273,8 +275,20 @@ Base: `/api/finance/transactions/transactions/`
 | `/api/finance/transactions/transactions/{id}/` | `DELETE` | `Bearer` | eliminar transaccion |
 | `/api/finance/transactions/transactions/{id}/reasignar_cuenta/` | `POST` | `Bearer` | reasignar cuenta |
 | `/api/finance/transactions/transactions/{id}/marcar_confirmada/` | `POST` | `Bearer` | marcar confirmada |
+| `/api/finance/transactions/transactions/{id}/rechazar_inferida/` | `POST` | `Bearer` | rechazar borrador inferido pendiente |
 | `/api/finance/transactions/transactions/{id}/add_comment/` | `POST` | `Bearer` | agregar comentario |
 | `/api/finance/transactions/transactions/{id}/registrar_reembolso/` | `POST` | `Bearer` | registrar reembolso |
+
+### inference-requests
+
+Base: `/api/finance/transactions/inference-requests/`
+
+| Ruta | Metodos | Auth | Uso |
+|---|---|---|---|
+| `/api/finance/transactions/inference-requests/` | `GET` | `Bearer` | listar solicitudes de inferencia transaccional visibles |
+| `/api/finance/transactions/inference-requests/` | `POST` | `Bearer` | crear solicitud asincronica de voz con `X-Request-Id` e `Idempotency-Key`; solo audio/metadatos |
+| `/api/finance/transactions/inference-requests/{id}/` | `GET` | `Bearer` | detalle de solicitud, estado, batch, receipts y transacciones derivadas |
+| `/api/finance/transactions/inference-requests/{id}/retry/` | `POST` | `Bearer` | reintentar solicitud fallida o `dead_letter` |
 
 ### tags
 
@@ -339,6 +353,15 @@ Base: `/api/internal/transactions/`
 | `/api/internal/transactions/intake/row/` | `POST` | `Internal token` | intake de una sola fila |
 | `/api/internal/transactions/intake/reconcile/` | `POST` | `Internal token` | reconciliar intake externo |
 | `/api/internal/transactions/reconciliation/issues/{issue_id}/resolve/` | `POST` | `Internal token` | resolver issue de reconciliacion |
+
+### integrations llm internal worker
+
+Base: `/api/internal/integrations/llm/`
+
+| Ruta | Metodos | Auth | Uso |
+|---|---|---|---|
+| `/api/internal/integrations/llm/transactions/inference/worker/` | `POST` | `Internal token` | worker temporal para procesar `TransactionInferenceRequest` de voz |
+| `/internal/integrations/llm/transactions/inference/worker/` | `POST` | `Internal token` | prefijo legacy compatible del mismo worker |
 
 ### accounts internal sync callbacks
 

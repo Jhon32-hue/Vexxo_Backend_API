@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from rest_framework.test import APIClient, APIRequestFactory, force_authenticate
 
 from common.domain_events import EventContext, VexxoAppDomainEvent
@@ -14,6 +16,7 @@ from finance.transactions.Models import (
     Transaction,
     TransactionDomainEventOutbox,
     TransactionExternalDetails,
+    TransactionInferenceRequest,
     TransactionIntakeBatch,
     TransactionIntakeReceipt,
     TransactionReconciliationIssue,
@@ -31,12 +34,15 @@ from finance.transactions.transaction_intake_service import (
     receive_intake_batch,
     receive_single_intake_row,
 )
+from finance.transactions.transaction_inference_service import create_voice_transaction_inference_request
+from finance.transactions.transaction_inference_dispatch_service import dispatch_transaction_inference
 from finance.transactions.transaction_message_parser_service import parse_message_transaction
 from finance.transactions.transaction_reconciliation_service import resolve_reconciliation_issue
 from integrations_stub.banks.transaction_bridge import (
     process_stub_transactions_reconciliation_resolution,
     process_stub_transactions_sync_batch,
 )
+from integrations_stub.llm.services import process_stub_transaction_inference_request
 
 User = get_user_model()
 
@@ -405,6 +411,46 @@ class TransactionIntakeServiceTests(TestCase):
         self.assertEqual(tx.channel, Transaction.Channel.API)
         self.assertEqual(tx.data_origin, Transaction.DataOrigin.OPEN_BANKING)
         self.assertEqual(tx.confidence_score, 100)
+
+    def test_voice_inferred_row_materializes_pending_manual_rail_transaction(self):
+        result = receive_single_intake_row(
+            provider="voice_ai",
+            source="voice",
+            provider_account_id="",
+            request_id="req-voice-001",
+            idempotency_key="idem-voice-001",
+            row={
+                "account_id": self.account.pk,
+                "external_id": "voice-note-001",
+                "provider_event_id": "voice-note-001",
+                "provider_status": "inferred_pending_confirmation",
+                "type": Transaction.Type.EXPENSE,
+                "status": Transaction.Status.PENDING,
+                "amount": "24900.00",
+                "date": "2026-04-08",
+                "description": "Compra en cafeteria",
+                "parsed_text": "Registra un gasto de 24.900 en cafeteria",
+                "parser_version": "transactions.voice_parser.v1",
+                "needs_user_confirmation": True,
+                "inference_status": TransactionExternalDetails.InferenceStatus.NEEDS_CONFIRMATION,
+                "confidence_score": 82,
+            },
+        )
+
+        self.assertEqual(result.counts["materialized"], 1)
+        tx = Transaction.objects.get(external_id="voice-note-001")
+        self.assertEqual(tx.status, Transaction.Status.PENDING)
+        self.assertFalse(tx.confirmed)
+        self.assertEqual(tx.rail, Transaction.Rail.MANUAL)
+        self.assertEqual(tx.channel, Transaction.Channel.VOICE)
+        self.assertEqual(tx.data_origin, Transaction.DataOrigin.INFERRED)
+
+        details = TransactionExternalDetails.objects.get(transaction=tx)
+        self.assertEqual(details.rail, TransactionExternalDetails.Rail.MANUAL)
+        self.assertEqual(details.channel, TransactionExternalDetails.Channel.VOICE)
+        self.assertEqual(details.data_origin, TransactionExternalDetails.DataOrigin.INFERRED)
+        self.assertTrue(details.needs_user_confirmation)
+        self.assertEqual(details.inference_status, TransactionExternalDetails.InferenceStatus.NEEDS_CONFIRMATION)
 
     def test_message_parser_service_infers_amount_type_and_description(self):
         parsed = parse_message_transaction(
@@ -844,6 +890,53 @@ class TransactionIntakeInternalApiTests(TestCase):
         self.assertEqual(details.inference_status, TransactionExternalDetails.InferenceStatus.NEEDS_CONFIRMATION)
         self.assertEqual(details.message_id, "msg-001")
 
+    def test_internal_voice_intake_row_endpoint_materializes_pending_transaction(self):
+        response = self.client.post(
+            "/api/internal/transactions/intake/row/",
+            {
+                "provider": "voice_ai",
+                "source": "voice",
+                "row": {
+                    "internal_account_id": self.account.pk,
+                    "external_id": "voice-api-001:item-001",
+                    "provider_event_id": "voice-api-001:item-001",
+                    "provider_status": "inferred_pending_confirmation",
+                    "type": "expense",
+                    "status": "pending",
+                    "amount": "24900.00",
+                    "date": "2026-04-08",
+                    "currency": "COP",
+                    "confirmed": False,
+                    "rail": "manual",
+                    "channel": "voice",
+                    "data_origin": "inferred",
+                    "description": "Compra en farmacia",
+                    "parsed_text": "Registra un gasto de 24.900 en farmacia",
+                    "parser_version": "transactions.voice_parser.v1",
+                    "needs_user_confirmation": True,
+                    "inference_status": "needs_confirmation",
+                    "confidence_score": 82,
+                },
+            },
+            format="json",
+            HTTP_X_VEXXO_INTERNAL_TOKEN="internal-transactions-token",
+            HTTP_X_REQUEST_ID="req-api-voice-001",
+            HTTP_IDEMPOTENCY_KEY="idem-api-voice-001",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["counts"]["materialized"], 1)
+        tx = Transaction.objects.get(external_id="voice-api-001:item-001")
+        self.assertEqual(tx.status, Transaction.Status.PENDING)
+        self.assertFalse(tx.confirmed)
+        self.assertEqual(tx.rail, Transaction.Rail.MANUAL)
+        self.assertEqual(tx.channel, Transaction.Channel.VOICE)
+        self.assertEqual(tx.data_origin, Transaction.DataOrigin.INFERRED)
+
+        details = TransactionExternalDetails.objects.get(transaction=tx)
+        self.assertTrue(details.needs_user_confirmation)
+        self.assertEqual(details.inference_status, TransactionExternalDetails.InferenceStatus.NEEDS_CONFIRMATION)
+
     def test_internal_reconciliation_resolution_endpoint(self):
         receive_single_intake_row(
             provider="belvo",
@@ -895,6 +988,211 @@ class TransactionIntakeInternalApiTests(TestCase):
         self.assertEqual(issue.status, TransactionReconciliationIssue.Status.RESOLVED)
         self.assertEqual(issue.resolution_action, TransactionReconciliationIssue.ResolutionAction.CREATE_ADJUSTMENT)
         self.assertTrue(Transaction.objects.filter(source="reconciliation_adjustment").exists())
+
+
+class TransactionInferenceRequestApiTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username="tx-inference-api",
+            email="tx-inference-api@example.com",
+            password="secret123",
+            plan="pro",
+        )
+        self.account = Account.objects.create(
+            owner=self.user,
+            name="Cuenta Voz",
+            currency="COP",
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_mobile_can_create_and_read_voice_inference_request(self):
+        response = self.client.post(
+            "/api/finance/transactions/inference-requests/",
+            {
+                "account_id": self.account.pk,
+                "audio_object_ref": "gs://vexxo-audio/voice-001.m4a",
+                "audio_content_type": "audio/mp4",
+                "audio_duration_ms": 3500,
+                "language": "es-CO",
+            },
+            format="json",
+            HTTP_X_REQUEST_ID="req-voice-mobile-001",
+            HTTP_IDEMPOTENCY_KEY="idem-voice-mobile-001",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        request_id = response.data["inference_request"]["id"]
+        inference_request = TransactionInferenceRequest.objects.get(pk=request_id)
+        self.assertEqual(inference_request.owner_id, self.user.id)
+        self.assertEqual(inference_request.requested_by_id, self.user.id)
+        self.assertEqual(inference_request.status, TransactionInferenceRequest.Status.QUEUED)
+
+        detail_response = self.client.get(f"/api/finance/transactions/inference-requests/{request_id}/")
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertEqual(detail_response.data["id"], request_id)
+
+    def test_mobile_create_rejects_client_injected_raw_payload(self):
+        response = self.client.post(
+            "/api/finance/transactions/inference-requests/",
+            {
+                "account_id": self.account.pk,
+                "audio_object_ref": "gs://vexxo-audio/voice-unsafe-001.m4a",
+                "raw_payload": {
+                    "normalized_rows": [
+                        {
+                            "type": "expense",
+                            "amount": "24900.00",
+                            "date": "2026-04-08",
+                            "description": "Cliente intenta inyectar filas",
+                        }
+                    ]
+                },
+            },
+            format="json",
+            HTTP_X_REQUEST_ID="req-voice-mobile-unsafe-001",
+            HTTP_IDEMPOTENCY_KEY="idem-voice-mobile-unsafe-001",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("raw_payload", response.data)
+
+    def test_stub_llm_processes_request_through_canonical_intake(self):
+        inference_request, created = create_voice_transaction_inference_request(
+            actor=self.user,
+            account=self.account,
+            request_id="req-voice-stub-001",
+            idempotency_key="idem-voice-stub-001",
+            audio_object_ref="gs://vexxo-audio/voice-002.m4a",
+            raw_payload={
+                "transcript": "Registra gasto de 18000 en cafe",
+                "transcript_confidence": "0.9200",
+                "normalized_rows": [
+                    {
+                        "type": "expense",
+                        "amount": "18000.00",
+                        "date": "2026-04-08",
+                        "description": "Cafe",
+                    }
+                ],
+            },
+        )
+        self.assertTrue(created)
+
+        result = process_stub_transaction_inference_request(
+            inference_request_id=inference_request.pk,
+            request_id="req-voice-stub-worker-001",
+            source="tests",
+        )
+
+        self.assertEqual(result["result"], "processed")
+        inference_request.refresh_from_db()
+        self.assertEqual(inference_request.status, TransactionInferenceRequest.Status.APPLIED)
+        self.assertIsNotNone(inference_request.intake_batch_id)
+        tx = Transaction.objects.get(external_id=f"{inference_request.pk}:item-1")
+        self.assertEqual(tx.status, Transaction.Status.PENDING)
+        self.assertFalse(tx.confirmed)
+        self.assertEqual(tx.channel, Transaction.Channel.VOICE)
+
+    def test_stub_llm_skips_terminal_request(self):
+        inference_request = TransactionInferenceRequest.objects.create(
+            owner=self.user,
+            requested_by=self.user,
+            account=self.account,
+            source=TransactionInferenceRequest.Source.VOICE,
+            provider="voice_ai",
+            request_id="req-voice-terminal-001",
+            idempotency_key="idem-voice-terminal-001",
+            status=TransactionInferenceRequest.Status.APPLIED,
+            audio_object_ref="gs://vexxo-audio/voice-terminal.m4a",
+            raw_payload={
+                "normalized_rows": [
+                    {
+                        "type": "expense",
+                        "amount": "18000.00",
+                        "date": "2026-04-08",
+                        "description": "No debe reprocesarse",
+                    }
+                ]
+            },
+        )
+
+        result = process_stub_transaction_inference_request(
+            inference_request_id=inference_request.pk,
+            request_id="req-voice-terminal-worker-001",
+            source="tests",
+        )
+
+        self.assertEqual(result["result"], "skipped")
+        inference_request.refresh_from_db()
+        self.assertEqual(inference_request.status, TransactionInferenceRequest.Status.APPLIED)
+        self.assertFalse(Transaction.objects.filter(external_id=f"{inference_request.pk}:item-1").exists())
+
+    def test_failed_voice_inference_can_be_retried(self):
+        inference_request = TransactionInferenceRequest.objects.create(
+            owner=self.user,
+            requested_by=self.user,
+            account=self.account,
+            source=TransactionInferenceRequest.Source.VOICE,
+            provider="voice_ai",
+            request_id="req-voice-failed-001",
+            idempotency_key="idem-voice-failed-001",
+            status=TransactionInferenceRequest.Status.EXTRACTION_FAILED,
+            audio_object_ref="gs://vexxo-audio/voice-failed.m4a",
+            retry_count=4,
+            last_error="No rows.",
+            failed_at=timezone.now(),
+            processing_started_at=timezone.now(),
+        )
+
+        response = self.client.post(f"/api/finance/transactions/inference-requests/{inference_request.pk}/retry/")
+
+        self.assertEqual(response.status_code, 200)
+        inference_request.refresh_from_db()
+        self.assertEqual(inference_request.status, TransactionInferenceRequest.Status.QUEUED)
+        self.assertEqual(inference_request.retry_count, 0)
+        self.assertEqual(inference_request.last_error, "")
+        self.assertIsNone(inference_request.failed_at)
+        self.assertIsNone(inference_request.processing_started_at)
+
+
+class TransactionInferenceDispatchServiceTests(TestCase):
+    @patch("finance.transactions.transaction_inference_dispatch_service.enqueue_transaction_inference_task")
+    def test_dispatch_treats_already_enqueued_as_success(self, enqueue_mock):
+        enqueue_mock.return_value = {
+            "result": "already_enqueued",
+            "task_name": "projects/demo/locations/us-central1/queues/q/tasks/tx-inference-1",
+        }
+
+        result = dispatch_transaction_inference(
+            inference_request_id="inference-1",
+            request_id="req-dispatch-001",
+            source="tests",
+        )
+
+        self.assertEqual(result["result"], "already_enqueued")
+        self.assertIn("task_name", result)
+
+    @override_settings(
+        TRANSACTION_INFERENCE_CLOUD_TASKS_ENABLED=False,
+        TRANSACTION_INFERENCE_LOCAL_FALLBACK_ENABLED=True,
+    )
+    @patch("finance.transactions.transaction_inference_dispatch_service._dispatch_local_fallback_async")
+    def test_dispatch_uses_background_local_fallback(self, local_fallback_mock):
+        local_fallback_mock.return_value = {
+            "result": "local_fallback_enqueued",
+            "mode": "background_thread",
+            "inference_request_id": "inference-2",
+        }
+
+        result = dispatch_transaction_inference(
+            inference_request_id="inference-2",
+            request_id="req-dispatch-002",
+            source="tests",
+        )
+
+        self.assertEqual(result["result"], "local_fallback_enqueued")
+        local_fallback_mock.assert_called_once()
 
 
 class IntegrationsStubTransactionsBridgeTests(TestCase):

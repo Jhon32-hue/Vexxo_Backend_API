@@ -42,13 +42,14 @@ Hoy conviene formalizar estos contratos:
 
 1. `open_banking.normalized_payload`
 2. `message_inferred.normalized_payload`
-3. `payment_reflection.normalized_payload`
+3. `voice_inferred.normalized_payload`
+4. `payment_reflection.normalized_payload`
 
 Y en paralelo, fuera de `transactions`:
 
-4. `payment_execution.normalized_payload`
+5. `payment_execution.normalized_payload`
 
-El `4` vive en `payments.payment_intents`, no aqui.
+El `5` vive en `payments.payment_intents`, no aqui.
 
 ## Reglas de diseno
 
@@ -198,7 +199,100 @@ Para SMS, email u otras fuentes textuales inferidas por parser.
 - no es countable para ledger mientras siga `pending + confirmed=false`
 - `TransactionExternalDetails` guarda el rastro completo de inferencia
 
-## Contrato 3: `payment_reflection.normalized_payload`
+## Contrato 3: `voice_inferred.normalized_payload`
+
+### Uso
+
+Para notas de voz transcritas y estructuradas por un worker interno de voz o
+futuro `llm_gateway`.
+
+Este contrato modela intencion del usuario, no evidencia bancaria.
+
+El punto de entrada operativo no es el CRUD manual ni el intake interno directo
+desde mobile. Mobile crea una `TransactionInferenceRequest`; el worker procesa
+esa solicitud y solo entonces `transactions` aplica este contrato por intake
+canonico.
+
+El cliente publico no envia este payload normalizado. El `POST` publico de voz
+solo envia referencia y metadatos del audio; `voice_inferred.normalized_payload`
+es un contrato interno entre el worker de IA y `finance.transactions`.
+
+### Campos obligatorios
+
+```json
+{
+  "account_id": 123,
+  "external_id": "voice-note-001:item-001",
+  "provider_status": "inferred_pending_confirmation",
+  "type": "expense",
+  "status": "pending",
+  "amount": "24900.00",
+  "date": "2026-04-10",
+  "currency": "COP",
+  "confirmed": false,
+  "rail": "manual",
+  "channel": "voice",
+  "data_origin": "inferred",
+  "confidence_score": 82
+}
+```
+
+### Campos obligatorios de inferencia
+
+```json
+{
+  "message_id": "voice-note-001:item-001",
+  "sender_id": "user-audio",
+  "received_at": "2026-04-10T18:22:00-05:00",
+  "parsed_text": "Registra un gasto de 24.900 en farmacia",
+  "parser_version": "transactions.voice_parser.v1",
+  "needs_user_confirmation": true,
+  "inference_status": "needs_confirmation"
+}
+```
+
+### Campos recomendados
+
+```json
+{
+  "description": "Compra en farmacia",
+  "merchant_name": "Farmacia",
+  "counterparty_name": "",
+  "raw_payload": {
+    "audio_object_ref": "gs://bucket/voice-note-001.m4a",
+    "transcript_confidence": 0.91
+  },
+  "metadata": {
+    "parser": "transactions.voice_parser.v1",
+    "language": "es-CO"
+  }
+}
+```
+
+### Semantica
+
+- `rail=manual` porque el usuario esta declarando un movimiento
+- `channel=voice` identifica la captura original
+- `status` debe iniciar como `pending`
+- `confirmed` debe iniciar como `false`
+- `needs_user_confirmation=true` es obligatorio
+- `data_origin=inferred` es obligatorio
+- si una nota contiene varias transacciones, se envia como batch con una fila
+  por movimiento inferido
+- el `idempotency_key` del batch se deriva de la solicitud de inferencia para
+  evitar duplicados por retry
+- el worker debe ignorar solicitudes fuera de `queued` para no reprocesar
+  resultados tardios sobre estados terminales
+
+### Donde termina
+
+- `TransactionInferenceRequest` conserva estado, audio, errores, retries y
+  vinculo al batch
+- se persiste en `Transaction`
+- no es countable para ledger mientras siga `pending + confirmed=false`
+- `TransactionExternalDetails` guarda transcripcion, parser y evidencia de audio
+
+## Contrato 4: `payment_reflection.normalized_payload`
 
 ### Uso
 
@@ -265,7 +359,7 @@ Ese detalle vive en `payments.payment_intents`.
 - `payments` conserva el detalle rico del rail
 - `transactions` conserva el reflejo contable final y sus campos consultables
 
-## Contrato 4: `payment_execution.normalized_payload`
+## Contrato 5: `payment_execution.normalized_payload`
 
 ### Uso
 
@@ -316,6 +410,7 @@ Solo el reflejo contable confirmado pasa a `transactions`.
 | TrueLayer transactions | `open_banking.normalized_payload` | `finance.transactions` | intake bancario canonico |
 | SMS Banco X | `message_inferred.normalized_payload` | `finance.transactions` | parser + confirmacion usuario |
 | Email Banco X | `message_inferred.normalized_payload` | `finance.transactions` | parser + confirmacion usuario |
+| Nota de voz mobile | `voice_inferred.normalized_payload` | `finance.transactions` | transcripcion + IA + confirmacion usuario |
 | Google Pay + PSP | `payment_execution.normalized_payload` | `payments.payment_intents` | detalle operativo del rail |
 | PSP settled callback | `payment_execution.normalized_payload` | `payments.payment_intents` | settlement y callback |
 | PaymentIntent materialized | `payment_reflection.normalized_payload` | `finance.transactions` | reflejo final en ledger |
@@ -341,6 +436,7 @@ Fuente externa confiable con enrichment parcial:
 Fuente inferida util pero no definitiva:
 
 - sms/email con monto, tipo y contraparte parcial
+- voz con monto, tipo y descripcion extraidos por IA
 
 ### `0-49`
 
@@ -366,6 +462,7 @@ Lo siguiente es crear matrices por proveedor:
 - `Google Pay + PSP -> payment_execution.normalized_payload`
 - `PaymentIntent -> payment_reflection.normalized_payload`
 - `SMS Banco X -> message_inferred.normalized_payload`
+- `Voice AI -> voice_inferred.normalized_payload`
 
 Ese paso si exige leer documentacion oficial o muestras reales por proveedor.
 

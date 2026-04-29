@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "1f2d8d95-f8c0-4b62-a321-7e0d8fe3e001",
     "name": "Vexxo Local",
-    "description": "Coleccion unica para probar Vexxo en local contra http://127.0.0.1:8000.\n\nOrden recomendado:\n1. Auth -> Register\n2. Auth -> Login\n3. Identity -> Me\n4. Accounts -> Create Account\n5. Transactions -> Create Transaction\n6. Luego Payments, Alerts, Notifications y Realtime\n\nVariables importantes:\n- access_token y refresh_token se llenan automatico tras Login\n- account_id, transaction_id, alert_id, notification_id y payment_intent_id se llenan con requests helper\n- internal_token solo aplica para endpoints internos",
+    "description": "Coleccion unica para probar Vexxo en local contra http://127.0.0.1:8000.\n\nOrden recomendado:\n1. Auth -> Register\n2. Auth -> Login\n3. Identity -> Me\n4. Accounts -> Create Account\n5. Transactions -> Create Transaction\n6. Luego Payments, Alerts, Notifications y Realtime\n\nVariables importantes:\n- access_token y refresh_token se llenan automatico tras Login\n- account_id, transaction_id, inference_request_id, alert_id, notification_id y payment_intent_id se llenan con requests helper\n- internal_token solo aplica para endpoints internos",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -13,6 +13,7 @@
     { "key": "refresh_token", "value": "" },
     { "key": "account_id", "value": "" },
     { "key": "transaction_id", "value": "" },
+    { "key": "inference_request_id", "value": "" },
     { "key": "alert_id", "value": "" },
     { "key": "notification_id", "value": "" },
     { "key": "payment_intent_id", "value": "" },
@@ -230,6 +231,77 @@
               { "key": "Authorization", "value": "Bearer {{access_token}}" }
             ],
             "url": "{{base_url}}/api/finance/transactions/transactions/{{transaction_id}}/marcar_confirmada/"
+          }
+        },
+        {
+          "name": "Create Voice Inference Request",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "  const data = pm.response.json();",
+                  "  const req = data.inference_request || {};",
+                  "  pm.collectionVariables.set('inference_request_id', req.id || '');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Crea una solicitud asincronica de voz. El endpoint publico solo acepta referencia y metadatos del audio; la inferencia estructurada la produce el worker interno.",
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Request-Id", "value": "postman-voice-request-001" },
+              { "key": "Idempotency-Key", "value": "postman-voice-request-001" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"account_id\": {{account_id}},\n  \"audio_object_ref\": \"gs://vexxo-local-demo/audio/postman-voice-001.m4a\",\n  \"audio_content_type\": \"audio/mp4\",\n  \"audio_duration_ms\": 8400,\n  \"language\": \"es-CO\",\n  \"provider\": \"voice_ai\"\n}"
+            },
+            "url": "{{base_url}}/api/finance/transactions/inference-requests/"
+          }
+        },
+        {
+          "name": "List Voice Inference Requests",
+          "request": {
+            "description": "Lista solicitudes de inferencia transaccional visibles para el usuario.",
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/finance/transactions/inference-requests/"
+          }
+        },
+        {
+          "name": "Retry Voice Inference Request",
+          "request": {
+            "description": "Reintenta una solicitud fallida o dead_letter.",
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/finance/transactions/inference-requests/{{inference_request_id}}/retry/"
+          }
+        },
+        {
+          "name": "Reject Inferred Transaction",
+          "request": {
+            "description": "Rechaza un borrador inferido pendiente sin usar PATCH ambiguo.",
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"No corresponde a un gasto real\"\n}"
+            },
+            "url": "{{base_url}}/api/finance/transactions/transactions/{{transaction_id}}/rechazar_inferida/"
           }
         }
       ]

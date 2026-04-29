@@ -421,6 +421,34 @@ sequenceDiagram
     USER->>TX: confirmar transaccion si aplica
 ```
 
+### Voz inferida
+
+```mermaid
+sequenceDiagram
+    participant APP as mobile app
+    participant API as TransactionInferenceRequestViewSet
+    participant REQ as TransactionInferenceRequest
+    participant TASK as Cloud Tasks / local fallback
+    participant LLM as integrations_stub.llm / llm_gateway
+    participant INTAKE as transaction_intake_service
+    participant TX as Transaction
+    participant EXT as TransactionExternalDetails
+    participant USER as user confirmation flow
+
+    APP->>API: POST inference-requests con audio_object_ref
+    API->>REQ: queued + idempotency_key
+    API->>TASK: enqueue worker idempotente
+    TASK->>LLM: POST internal llm worker
+    LLM->>LLM: transcribe + extract structured rows
+    LLM->>INTAKE: receive_intake_batch voice_inferred
+    INTAKE->>REQ: link intake_batch + receipts
+    INTAKE->>TX: materialize pending Transaction
+    INTAKE->>EXT: upsert voice inference details
+    Note over TX,EXT: rail=manual, channel=voice,\ndata_origin=inferred, confirmed=false
+    TX-->>USER: draft transaction for confirmation
+    USER->>TX: confirmar, editar o rechazar
+```
+
 ## Flujos principales
 
 ### 1. Transaccion manual
@@ -428,9 +456,10 @@ sequenceDiagram
 1. la API crea o actualiza `Transaction`
 2. serializer valida reglas de acceso a cuenta, tipo, deuda, categoria y limites
 3. model normaliza `status + confirmed`
-4. signal fino encola `transactions.*` en outbox
-5. worker publica
-6. listeners locales disparan side effects desacoplados
+4. `transaction_write_service.py` persiste el cambio con actor y estado previo
+5. el write service publica `transactions.*` en outbox de forma explicita
+6. worker publica
+7. listeners locales disparan side effects desacoplados
 
 ### 1.a. Intake externo canonico
 
@@ -497,6 +526,68 @@ Limites actuales:
 - si no puede inferir monto, el intake exige `amount` explicito
 - el flujo esta pensado para bridge interno de sms/email, no para ingestion directa desde cliente final
 
+### 2.b. Voz inferida
+
+1. mobile captura/sube audio y crea `TransactionInferenceRequest` con `POST /api/finance/transactions/inference-requests/`
+2. el `POST` publico solo acepta referencia y metadatos del audio; no acepta `raw_payload` ni filas inferidas desde cliente
+3. `transactions` persiste la solicitud con `request_id`, `idempotency_key`, estado y referencia del audio
+4. despues del commit se despacha trabajo de forma no bloqueante a Cloud Tasks o al fallback local controlado
+5. si Cloud Tasks devuelve `AlreadyExists`, la solicitud se considera ya encolada y no cae a fallback ni reproceso
+6. `integrations_stub.llm` actua como runtime temporal del futuro `llm_gateway`
+7. el worker transcribe y extrae uno o varios movimientos estructurados
+8. el resultado vuelve a `finance.transactions` como batch interno `voice_inferred.normalized_payload`
+9. cada fila usa:
+   - `source=voice`
+   - `rail=manual`
+   - `channel=voice`
+   - `data_origin=inferred`
+   - `status=pending`
+   - `confirmed=false`
+   - `needs_user_confirmation=true`
+10. `transaction_intake_service.py` materializa `Transaction` como borrador no confirmado
+11. el usuario confirma, edita o rechaza antes de que el movimiento sea contable
+
+Regla:
+
+- voz no usa el CRUD manual directo
+- el frontend consulta la solicitud estable, no el worker
+- el modelo de IA no escribe ledger final; produce intake inferido trazable
+- la confirmacion del usuario es la frontera que convierte el borrador en movimiento contable
+- transcripcion fallida, extraccion fallida y `dead_letter` no crean ledger
+- el worker ignora solicitudes en estado terminal o fuera de cola para evitar reprocesos tardios
+
+Estados de `TransactionInferenceRequest`:
+
+- `queued`: solicitud persistida y pendiente de worker
+- `processing`: worker activo o proveedor externo procesando
+- `transcription_failed`: fallo antes de tener texto util
+- `extraction_failed`: hubo texto o payload, pero no filas canonicas validas
+- `applied`: intake aplicado y batch vinculado
+- `partial`: intake aplicado con resultado parcial o issues de reconciliacion
+- `dead_letter`: retries agotados, requiere accion operativa o retry explicito
+- `canceled`: solicitud anulada antes de aplicar
+
+Endpoints publicos para mobile:
+
+- `POST /api/finance/transactions/inference-requests/`
+  crea solicitud de voz. Requiere `X-Request-Id` e `Idempotency-Key`. Solo
+  acepta referencia/metadatos del audio.
+- `GET /api/finance/transactions/inference-requests/`
+  lista solicitudes visibles para el usuario.
+- `GET /api/finance/transactions/inference-requests/{id}/`
+  consulta estado, batch, receipts y transacciones derivadas.
+- `POST /api/finance/transactions/inference-requests/{id}/retry/`
+  reintenta solicitudes fallidas y reinicia `retry_count`, `failed_at` y
+  `processing_started_at` antes de reencolar.
+- `POST /api/finance/transactions/transactions/{id}/rechazar_inferida/`
+  rechaza un borrador inferido pendiente sin usar un `PATCH` ambiguo.
+
+Endpoint interno del worker temporal:
+
+- `POST /api/internal/integrations/llm/transactions/inference/worker/`
+  recibe `inference_request_id`, valida `X-Vexxo-Internal-Token` y delega al
+  servicio canonico de `transactions`.
+
 ### 3. Pago programado legacy local
 
 1. el usuario crea `transactions.ScheduledPayment`
@@ -542,6 +633,14 @@ Servicios clave:
   - parser determinista para sms/email
   - infiere monto, tipo, descripcion y contraparte minima
   - materializa movimientos `pending` y `needs_user_confirmation`
+- `transaction_inference_service.py`
+  - crea y reintenta `TransactionInferenceRequest`
+  - aplica resultados de voz por `receive_intake_batch` y `apply_intake_batch`
+  - conserva `rail=manual`, `channel=voice` y `data_origin=inferred`
+- `transaction_inference_dispatch_service.py`
+  - despacha Cloud Tasks con nombre idempotente
+  - trata `AlreadyExists` como exito idempotente
+  - usa fallback local asincrono solo fuera de produccion o si esta habilitado
 - `transaction_reconciliation_service.py`
   - resuelve `TransactionReconciliationIssue`
   - soporta `apply_provider_update`, `create_adjustment`, `create_reversal`
@@ -563,6 +662,7 @@ Lectura corta:
 
 - `open_banking` entra y se materializa aqui
 - `message_inferred` entra y se materializa aqui
+- `voice_inferred` entra como borrador pendiente de confirmacion
 - `payment_reflection` entra aqui como reflejo contable
 - `payment_execution` no vive aqui; vive en `payments.payment_intents`
 
@@ -890,9 +990,9 @@ Ya existe:
   - politicas mas ricas de fingerprint por proveedor
   - reconciliacion y correccion formal para open banking
 - seguir adelgazando signals:
-  - hoy ya son mas finos
-  - pero el lifecycle critico todavia depende bastante de ellos frente a imports
-    futuros o paths no estandar
+  - el CRUD manual principal ya publica desde `transaction_write_service.py`
+  - los signals quedan como compatibilidad para paths no migrados, imports futuros
+    o materializaciones que aun no pasen por servicios explicitos
 
 ## Nota operativa despues de la ultima pasada
 
@@ -927,7 +1027,7 @@ Eso ayuda, pero no cierra todavia la deuda principal:
   correccion por proveedor
 - el CRUD manual principal y varias acciones operativas ya no dependen solo de
   signals
-- los signals siguen existiendo como compatibilidad para paths no migrados; la
-  migracion no esta terminada
+- los signals siguen existiendo como compatibilidad para paths no migrados; no
+  son el coordinador principal del CRUD manual
 
 

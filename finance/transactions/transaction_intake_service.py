@@ -165,6 +165,8 @@ def _normalize_row_payload(*, provider: str, source: str, provider_account_id: s
             external_details["data_origin"] = TransactionExternalDetails.DataOrigin.PAYMENT_INTENT
         elif normalized_source in {"import", "csv_import"}:
             external_details["data_origin"] = TransactionExternalDetails.DataOrigin.IMPORT
+        elif normalized_source == "voice":
+            external_details["data_origin"] = TransactionExternalDetails.DataOrigin.INFERRED
         elif normalized_source in {"message", "sms", "email"}:
             external_details["data_origin"] = TransactionExternalDetails.DataOrigin.MESSAGE
         elif normalized_source == "manual":
@@ -172,6 +174,8 @@ def _normalize_row_payload(*, provider: str, source: str, provider_account_id: s
     if not external_details["rail"]:
         if normalized_source in {"open_finance", "open_banking"}:
             external_details["rail"] = TransactionExternalDetails.Rail.OPEN_BANKING
+        elif normalized_source == "voice":
+            external_details["rail"] = TransactionExternalDetails.Rail.MANUAL
         elif normalized_source in {"message", "sms", "email"}:
             external_details["rail"] = TransactionExternalDetails.Rail.MESSAGE
         elif normalized_source in {"import", "csv_import"}:
@@ -185,6 +189,8 @@ def _normalize_row_payload(*, provider: str, source: str, provider_account_id: s
             external_details["channel"] = TransactionExternalDetails.Channel.SMS
         elif normalized_source == "email":
             external_details["channel"] = TransactionExternalDetails.Channel.EMAIL
+        elif normalized_source == "voice":
+            external_details["channel"] = TransactionExternalDetails.Channel.VOICE
         elif normalized_source == "message":
             external_details["channel"] = TransactionExternalDetails.Channel.MESSAGE_INFERRED
         elif normalized_source in {"import", "csv_import"}:

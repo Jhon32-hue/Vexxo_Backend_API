@@ -310,6 +310,86 @@ Carpeta informativa en Postman. No contiene requests funcionales.
   - `Authorization: Bearer {{access_token}}`
 - Body: `sin body`
 
+### Create Voice Inference Request
+
+- Accion de usuario:
+  - registrar una nota de voz para inferir transacciones
+- Para que sirve:
+  - crear una solicitud asincronica sin escribir ledger directo
+- Metodo: `POST`
+- URL: `{{base_url}}/api/finance/transactions/inference-requests/`
+- Bearer: `Si`
+- Headers:
+  - `Authorization: Bearer {{access_token}}`
+  - `Content-Type: application/json`
+  - `X-Request-Id: postman-voice-request-001`
+  - `Idempotency-Key: postman-voice-request-001`
+- Body:
+
+```json
+{
+  "account_id": {{account_id}},
+  "audio_object_ref": "gs://vexxo-local-demo/audio/postman-voice-001.m4a",
+  "audio_content_type": "audio/mp4",
+  "audio_duration_ms": 8400,
+  "language": "es-CO",
+  "provider": "voice_ai"
+}
+```
+
+- Requiere:
+  - `account_id` ya definido
+  - el backend solo acepta referencia y metadatos del audio; la inferencia
+    estructurada la produce el worker interno
+- Variables que llena automaticamente si responde `201` o `200`:
+  - `inference_request_id = data.inference_request.id`
+
+### List Voice Inference Requests
+
+- Accion de usuario:
+  - ver estado de solicitudes de voz
+- Para que sirve:
+  - consultar solicitudes `queued`, fallidas o aplicadas
+- Metodo: `GET`
+- URL: `{{base_url}}/api/finance/transactions/inference-requests/`
+- Bearer: `Si`
+- Headers:
+  - `Authorization: Bearer {{access_token}}`
+- Body: `sin body`
+
+### Retry Voice Inference Request
+
+- Accion de usuario:
+  - reintentar una inferencia fallida
+- Para que sirve:
+  - reencolar solicitudes `transcription_failed`, `extraction_failed` o `dead_letter`
+- Metodo: `POST`
+- URL: `{{base_url}}/api/finance/transactions/inference-requests/{{inference_request_id}}/retry/`
+- Bearer: `Si`
+- Headers:
+  - `Authorization: Bearer {{access_token}}`
+- Body: `sin body`
+
+### Reject Inferred Transaction
+
+- Accion de usuario:
+  - rechazar un borrador inferido
+- Para que sirve:
+  - cancelar una transaccion `pending` y `confirmed=false` sin usar PATCH ambiguo
+- Metodo: `POST`
+- URL: `{{base_url}}/api/finance/transactions/transactions/{{transaction_id}}/rechazar_inferida/`
+- Bearer: `Si`
+- Headers:
+  - `Authorization: Bearer {{access_token}}`
+  - `Content-Type: application/json`
+- Body:
+
+```json
+{
+  "reason": "No corresponde a un gasto real"
+}
+```
+
 ## 05 - Payments
 
 ### List Payment Intents
