@@ -12,10 +12,20 @@ Analisis detallado:
   publico recomendado para imports internos
 """
 
+from .auth_challenge import (
+    AuthChallengeChannel,
+    AuthChallengePurpose,
+    AuthChallengeStatus,
+    UserAuthChallenge,
+)
 from .user import PlanType, User, UserStatus
 
 __all__ = [
+    "AuthChallengeChannel",
+    "AuthChallengePurpose",
+    "AuthChallengeStatus",
     "PlanType",
     "User",
+    "UserAuthChallenge",
     "UserStatus",
 ]

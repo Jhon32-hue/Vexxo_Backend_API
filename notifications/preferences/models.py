@@ -1,3 +1,32 @@
+"""
+Preferencias de comunicacion y canales del usuario.
+"""
+
+from __future__ import annotations
+
+from django.conf import settings
 from django.db import models
 
-# Create your models here.
+
+class NotificationPreference(models.Model):
+    owner = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="notification_preferences",
+    )
+    in_app_enabled = models.BooleanField(default=True)
+    push_enabled = models.BooleanField(default=True)
+    email_notifications_enabled = models.BooleanField(default=True)
+    email_marketing_enabled = models.BooleanField(default=False)
+    newsletter_subscribed = models.BooleanField(default=False)
+    welcome_email_sent_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["owner_id"]
+        verbose_name = "Preferencia de notificacion"
+        verbose_name_plural = "Preferencias de notificacion"
+
+    def __str__(self) -> str:
+        return f"preferences:{self.owner_id}"

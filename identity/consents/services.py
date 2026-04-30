@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-import json
 from datetime import timedelta
-from urllib.error import URLError
-from urllib.request import Request, urlopen
 
-from django.conf import settings
 from django.db.models import Count
 from django.utils import timezone
 
@@ -111,40 +107,3 @@ def consent_summary_for_user(user) -> dict:
             for row in base_qs.values("consent_type").annotate(total=Count("id"))
         },
     }
-
-
-def dispatch_consent_revocation_teardown(*, user_id: str | int, provider: str = "", consent_type: str = "", event: dict | None = None) -> dict | None:
-    handler_url = str(getattr(settings, "IDENTITY_CONSENT_TEARDOWN_HANDLER_URL", "") or "").strip()
-    if handler_url:
-        body = json.dumps(
-            {
-                "event": event or {},
-                "user_id": str(user_id),
-                "provider": provider or "",
-                "consent_type": consent_type or "",
-            },
-            default=str,
-        ).encode("utf-8")
-        headers = {"Content-Type": "application/json"}
-        internal_token = str(getattr(settings, "IDENTITY_CONSENTS_INTERNAL_TOKEN", "") or "").strip()
-        if internal_token:
-            headers["X-Vexxo-Internal-Token"] = internal_token
-        req = Request(url=handler_url, data=body, headers=headers, method="POST")
-        try:
-            with urlopen(req, timeout=10) as response:
-                return json.loads(response.read().decode("utf-8") or "{}")
-        except URLError as exc:
-            if not bool(getattr(settings, "IDENTITY_CONSENT_LOCAL_FALLBACK_ENABLED", True)):
-                raise
-        except Exception:
-            if not bool(getattr(settings, "IDENTITY_CONSENT_LOCAL_FALLBACK_ENABLED", True)):
-                raise
-
-    from integrations_stub.banks.services import process_stub_consent_revocation
-
-    return process_stub_consent_revocation(
-        user_id=user_id,
-        provider=provider,
-        consent_type=consent_type,
-        event=event,
-    )

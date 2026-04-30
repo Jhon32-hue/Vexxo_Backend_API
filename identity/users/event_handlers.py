@@ -22,6 +22,7 @@ from django.contrib.auth import get_user_model
 
 from common.domain_events import EventContext, EventNames, EventPriority, VexxoAppDomainEvent, subscribe
 from identity.users.services.bootstrap_service import bootstrap_registered_user, ensure_welcome_alerts
+from identity.users.services.communication_service import send_welcome_email_if_needed
 from identity.users.services.product_usage_projection_service import (
     apply_account_usage_event_delta,
     apply_ai_usage_event_delta,
@@ -83,6 +84,7 @@ def handle_user_registered(event: VexxoAppDomainEvent) -> None:
     if user is None:
         return
     bootstrap_registered_user(user)
+    send_welcome_email_if_needed(user)
     _refresh_usage_projection(
         user_id,
         event=event,

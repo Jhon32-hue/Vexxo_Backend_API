@@ -26,6 +26,8 @@ Subdocumento derivado:
 - [llm/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/integrations_stub/llm/README.md)
   runtime temporal para inferencia de voz transaccional antes de extraer
   `llm_gateway`
+- [messaging/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/integrations_stub/messaging/README.md)
+  adapter temporal para SMS/WhatsApp embebido en recovery y step-up
 - [Catalogo de fuentes e integraciones](/c:/Users/Alamb/Documents/Vexxo_Backend_API/INTEGRATION_SOURCE_CATALOG.md)
   clasificacion transversal de proveedores, source types y bounded contexts
 
@@ -112,6 +114,8 @@ Lectura:
 - `llm`
   frontera temporal para tareas de IA; hoy procesa `TransactionInferenceRequest`
   de voz y delega al intake canonico de `finance.transactions`
+- `messaging`
+  frontera temporal para codigos cortos de auth y futuros magic links
 - `ocr`
   frontera temporal para OCR/documentos
 - `payments`
@@ -127,7 +131,7 @@ Lectura:
 
 ## Estado Actual
 
-Hoy actua como receptor temporal para bancos, IA, OCR, ML y pagos.
+Hoy actua como receptor temporal para bancos, IA, mensajeria, OCR, ML y pagos.
 
 La regla sigue siendo:
 

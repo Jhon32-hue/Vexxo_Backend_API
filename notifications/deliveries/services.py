@@ -21,6 +21,7 @@ def create_notification_delivery(
     payload: dict | None = None,
     channel: str = NotificationChannel.IN_APP,
     dedupe_key: str = "",
+    mark_delivered_immediately: bool = True,
 ) -> NotificationDelivery:
     payload = payload or {}
     normalized_dedupe = (dedupe_key or "").strip()
@@ -38,7 +39,7 @@ def create_notification_delivery(
                 "payload": payload,
             },
         )
-        if obj.status == NotificationStatus.PENDING:
+        if mark_delivered_immediately and obj.status == NotificationStatus.PENDING:
             obj.mark_delivered()
         return obj
 
@@ -52,5 +53,6 @@ def create_notification_delivery(
         payload=payload,
         dedupe_key=None,
     )
-    obj.mark_delivered()
+    if mark_delivered_immediately:
+        obj.mark_delivered()
     return obj

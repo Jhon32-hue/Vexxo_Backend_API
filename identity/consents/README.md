@@ -78,8 +78,8 @@ classDiagram
 2. `revoke_consent()` actualiza el estado
 3. se emite `users.consent.revoked.v1`
 4. `event_handlers` dispara teardown operativo
-5. hoy ese teardown puede ir a `integrations_stub.banks` o a un handler URL
-   interno
+5. `tasks.async_backends` decide si el teardown va por `Cloud Tasks`,
+   `sync_inline_for_tests` o `disabled`
 6. si corresponde, se deshabilita auto-sync o acceso de proveedor
 
 ## Relacion Con Otros Modulos
@@ -89,7 +89,8 @@ classDiagram
 - `finance.accounts`
   corta o actualiza integraciones cuando cambia el consentimiento
 - `integrations_stub.banks`
-  hoy ejecuta el teardown operativo temporal
+  hoy ejecuta el teardown operativo temporal cuando el backend efectivo resuelve
+  `sync_inline_for_tests`
 
 ## Encaje Con GCP
 
@@ -118,5 +119,12 @@ real sobre integraciones y permisos.
 
 ## Estado Actual
 
-Hoy ya persiste grants/revokes, emite eventos y puede disparar teardown hacia
-un handler URL o al `integrations_stub`.
+Hoy ya persiste grants/revokes, emite eventos y despacha el teardown por la
+frontera comun `tasks.async_backends` con `job_type=identity.consents`.
+
+En local/dev:
+
+- el camino oficial es `ASYNC_EXECUTION_MODE_IDENTITY_CONSENTS=sync_inline_for_tests`
+- hoy no existe `manage.py run_worker identity.consents`
+- eso es deliberado: el flujo ya usa la frontera comun, pero no requiere aun un
+  worker durable separado

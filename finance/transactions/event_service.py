@@ -4,17 +4,11 @@ import hashlib
 import json
 import logging
 
-from django.conf import settings
-from django.db import transaction
-
 from common.domain_events import EventContext, EventPriority, publish_domain_event
 from finance.transactions.Models.outbox import TransactionDomainEventOutbox
+from tasks.outbox_autopublish import schedule_local_outbox_autopublish
 
 logger = logging.getLogger(__name__)
-
-
-def _local_autopublish_enabled() -> bool:
-    return bool(getattr(settings, "DOMAIN_EVENTS_LOCAL_AUTOPUBLISH_ENABLED", False))
 
 
 def stable_transaction_event_key(event_type: str, aggregate_type: str, aggregate_id: str | int, payload: dict) -> str:
@@ -132,14 +126,9 @@ def publish_transaction_event_after_commit(
         causation_id=causation_id,
         metadata=event_metadata,
     )
-    if _local_autopublish_enabled() and not getattr(event, "_local_publish_scheduled", False):
-        event._local_publish_scheduled = True
-
-        def _publish_local_event() -> None:
-            fresh = TransactionDomainEventOutbox.objects.filter(pk=event.pk).first()
-            if fresh is None or fresh.published_at:
-                return
-            publish_transaction_outbox_event(fresh)
-
-        transaction.on_commit(_publish_local_event)
+    schedule_local_outbox_autopublish(
+        event,
+        reload_event=lambda event_id: TransactionDomainEventOutbox.objects.filter(pk=event_id).first(),
+        publish_event=publish_transaction_outbox_event,
+    )
     return event

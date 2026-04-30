@@ -3,21 +3,15 @@ from __future__ import annotations
 import logging
 from time import monotonic
 
-from django.conf import settings
-from django.db import transaction
 from django.utils import timezone
 
 from common.domain_events import EventContext, EventPriority, publish_domain_event
-
 from finance.accounts.models.outbox import DomainEventOutbox
+from tasks.outbox_autopublish import schedule_local_outbox_autopublish
 
 logger = logging.getLogger(__name__)
 
 DELIVERY_STATE_KEY = "_vexxo_delivery"
-
-
-def _local_autopublish_enabled() -> bool:
-    return bool(getattr(settings, "DOMAIN_EVENTS_LOCAL_AUTOPUBLISH_ENABLED", False))
 
 
 def _outbox_retry_config() -> dict:
@@ -187,18 +181,9 @@ def publish_after_commit(event: DomainEventOutbox) -> None:
     El request solo deja el evento en outbox; la publicacion real la hace un
     worker dedicado fuera del path web.
     """
-    if not event or event.published_at or not _local_autopublish_enabled():
-        return None
-    if getattr(event, "_local_publish_scheduled", False):
-        return None
-
-    event._local_publish_scheduled = True
-
-    def _publish_local_event() -> None:
-        fresh = DomainEventOutbox.objects.filter(pk=event.pk).first()
-        if fresh is None or fresh.published_at:
-            return
-        publish_outbox_event(fresh, publisher="local-after-commit")
-
-    transaction.on_commit(_publish_local_event)
+    schedule_local_outbox_autopublish(
+        event,
+        reload_event=lambda event_id: DomainEventOutbox.objects.filter(pk=event_id).first(),
+        publish_event=lambda fresh: publish_outbox_event(fresh, publisher="local-after-commit"),
+    )
     return None

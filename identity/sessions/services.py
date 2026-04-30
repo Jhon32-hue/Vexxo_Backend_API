@@ -125,6 +125,12 @@ def get_active_session_by_refresh_jti(*, refresh_jti: str) -> UserSession | None
     return UserSession.objects.filter(refresh_jti=refresh_jti, status=SessionStatus.ACTIVE).first()
 
 
+def get_active_session_by_access_jti(*, access_jti: str) -> UserSession | None:
+    if not access_jti:
+        return None
+    return UserSession.objects.filter(access_jti=access_jti, status=SessionStatus.ACTIVE).first()
+
+
 def detect_refresh_reuse(*, refresh_jti: str) -> UserSession | None:
     if not refresh_jti:
         return None
@@ -181,6 +187,31 @@ def revoke_provider_sessions_for_user(*, user, provider: str, reason: str = "pro
     for session in sessions:
         revoke_user_session(session, reason=reason)
     return len(sessions)
+
+
+def revoke_risky_sessions_for_user(*, user, exclude_session_id=None, reason: str = "risk_cleanup") -> int:
+    sessions = list(
+        UserSession.objects.filter(
+            user=user,
+            status=SessionStatus.ACTIVE,
+            requires_step_up=True,
+        ).exclude(pk=exclude_session_id)
+    )
+    for session in sessions:
+        revoke_user_session(session, reason=reason)
+    return len(sessions)
+
+
+def complete_session_step_up(*, session: UserSession, challenge_id=None) -> UserSession:
+    metadata = dict(session.metadata or {})
+    metadata["step_up_completed"] = True
+    if challenge_id is not None:
+        metadata["step_up_challenge_id"] = str(challenge_id)
+    metadata["step_up_completed_at"] = timezone.now().isoformat()
+    session.requires_step_up = False
+    session.metadata = metadata
+    session.save(update_fields=["requires_step_up", "metadata", "updated_at"])
+    return session
 
 
 def _enforce_active_session_limit(user) -> None:

@@ -1,154 +1,165 @@
 from __future__ import annotations
 
-import json
 import logging
-import threading
-from datetime import datetime, timedelta, timezone as dt_timezone
 
 from django.conf import settings
-from django.db import close_old_connections
+
+from tasks.async_backends import (
+    AsyncExecutionMode,
+    CloudTaskDispatchConfig,
+    cloud_tasks_ready,
+    dispatch_job,
+    get_async_execution_fallback_mode,
+    get_async_execution_mode,
+)
 
 logger = logging.getLogger(__name__)
 
+JOB_TYPE = "transactions.voice"
+
 
 def transaction_inference_cloud_tasks_ready() -> bool:
-    return bool(
-        getattr(settings, "TRANSACTION_INFERENCE_CLOUD_TASKS_ENABLED", False)
-        and getattr(settings, "GCP_PROJECT_ID", "")
-        and getattr(settings, "TRANSACTION_INFERENCE_CLOUD_TASKS_QUEUE", "")
-        and getattr(settings, "TRANSACTION_INFERENCE_HANDLER_URL", "")
+    return cloud_tasks_ready(_cloud_task_config(inference_request_id="", request_id="", source=""))
+
+
+def transaction_inference_execution_mode() -> str:
+    return get_async_execution_mode(
+        JOB_TYPE,
+        cloud_tasks_enabled=transaction_inference_cloud_tasks_ready(),
     )
 
 
-def transaction_inference_local_fallback_allowed() -> bool:
-    env_value = str(getattr(settings, "ENV", "local")).strip().lower()
-    if env_value in {"prod", "production", "cloud"} and not bool(getattr(settings, "DEBUG", False)):
-        return False
-    return bool(getattr(settings, "TRANSACTION_INFERENCE_LOCAL_FALLBACK_ENABLED", True))
-
-
-def _scheduled_time() -> datetime:
-    return datetime.now(dt_timezone.utc) + timedelta(
-        seconds=max(0, int(getattr(settings, "TRANSACTION_INFERENCE_TASK_BUFFER_SECONDS", 5)))
+def transaction_inference_fallback_mode() -> str:
+    return get_async_execution_fallback_mode(
+        JOB_TYPE,
     )
 
 
-def _run_local_fallback(*, inference_request_id, request_id: str = "", source: str = "") -> None:
-    try:
-        close_old_connections()
-        from integrations_stub.llm.services import process_stub_transaction_inference_request
+def _update_dispatch_metrics(*, inference_request_id, backend: str = "", result: str = "", error: str = "") -> None:
+    from finance.transactions.Models import TransactionInferenceRequest
 
-        process_stub_transaction_inference_request(
-            inference_request_id=inference_request_id,
-            request_id=request_id,
-            source=source,
-        )
-    except Exception:
-        logger.exception(
-            "[transactions.inference] Fallback local async fallo para inference_request_id=%s",
-            inference_request_id,
-        )
-    finally:
-        close_old_connections()
+    inference_request = TransactionInferenceRequest.objects.filter(pk=inference_request_id).first()
+    if inference_request is None:
+        return
+    inference_request.note_dispatch_attempt(backend=backend, result=result, error=error)
 
 
-def _dispatch_local_fallback_async(*, inference_request_id, request_id: str = "", source: str = "") -> dict:
-    worker = threading.Thread(
-        target=_run_local_fallback,
-        kwargs={
-            "inference_request_id": inference_request_id,
-            "request_id": request_id,
-            "source": source,
-        },
-        name=f"tx-inference-local-{inference_request_id}",
-        daemon=True,
+def _mark_dispatch_failed(*, inference_request_id, backend: str = "", error: str = "") -> None:
+    from finance.transactions.Models import TransactionInferenceRequest
+
+    inference_request = TransactionInferenceRequest.objects.filter(pk=inference_request_id).first()
+    if inference_request is None:
+        return
+    inference_request.note_dispatch_attempt(backend=backend, result="dispatch_failed", error=error)
+    inference_request.mark_dispatch_failed(error=error or "No fue posible despachar la solicitud de voz.", backend=backend)
+
+
+def _schedule_local_worker_pickup(*, inference_request_id, request_id: str = "", source: str = "") -> dict:
+    del request_id, source
+    _update_dispatch_metrics(
+        inference_request_id=inference_request_id,
+        backend="local_worker",
+        result="local_worker_pending",
     )
-    worker.start()
     return {
-        "result": "local_fallback_enqueued",
-        "mode": "background_thread",
+        "result": "local_worker_pending",
+        "dispatch_backend": "local_worker",
         "inference_request_id": str(inference_request_id),
     }
 
 
-def enqueue_transaction_inference_task(*, inference_request_id, request_id: str = "", source: str = "") -> dict:
-    if not inference_request_id or not transaction_inference_cloud_tasks_ready():
-        return {"result": "cloud_tasks_unavailable"}
+def _cloud_task_config(*, inference_request_id, request_id: str = "", source: str = "") -> CloudTaskDispatchConfig:
+    return CloudTaskDispatchConfig(
+        job_type=JOB_TYPE,
+        enabled=bool(getattr(settings, "TRANSACTION_INFERENCE_CLOUD_TASKS_ENABLED", False)),
+        queue=str(getattr(settings, "TRANSACTION_INFERENCE_CLOUD_TASKS_QUEUE", "") or ""),
+        location=str(getattr(settings, "TRANSACTION_INFERENCE_CLOUD_TASKS_LOCATION", "") or ""),
+        handler_url=str(getattr(settings, "TRANSACTION_INFERENCE_HANDLER_URL", "") or ""),
+        payload={
+            "inference_request_id": str(inference_request_id or ""),
+            "request_id": str(request_id or ""),
+            "source": str(source or "finance.transactions.transaction_inference_dispatch_service"),
+        },
+        task_name=f"tx-inference-{inference_request_id}" if inference_request_id else "",
+        internal_token=str(getattr(settings, "TRANSACTION_INFERENCE_INTERNAL_TOKEN", "") or ""),
+        service_account_email=str(getattr(settings, "TRANSACTION_INFERENCE_TASK_SERVICE_ACCOUNT_EMAIL", "") or ""),
+        audience=str(getattr(settings, "TRANSACTION_INFERENCE_TASK_AUDIENCE", "") or ""),
+        buffer_seconds=max(0, int(getattr(settings, "TRANSACTION_INFERENCE_TASK_BUFFER_SECONDS", 5) or 5)),
+    )
 
-    try:
-        from google.api_core.exceptions import AlreadyExists
-        from google.cloud import tasks_v2
-        from google.protobuf import timestamp_pb2
-    except Exception:
-        logger.warning("[transactions.inference] Cloud Tasks configurado, pero falta `google-cloud-tasks`.")
-        return {"result": "cloud_tasks_client_unavailable"}
 
-    try:
-        client = tasks_v2.CloudTasksClient()
-        parent = client.queue_path(
-            settings.GCP_PROJECT_ID,
-            settings.TRANSACTION_INFERENCE_CLOUD_TASKS_LOCATION,
-            settings.TRANSACTION_INFERENCE_CLOUD_TASKS_QUEUE,
-        )
-        body = json.dumps(
-            {
-                "inference_request_id": str(inference_request_id),
-                "request_id": str(request_id or ""),
-                "source": str(source or "finance.transactions.transaction_inference_dispatch_service"),
-            },
-            default=str,
-        ).encode("utf-8")
-        handler_url = settings.TRANSACTION_INFERENCE_HANDLER_URL
-        http_request = {
-            "http_method": tasks_v2.HttpMethod.POST,
-            "url": handler_url,
-            "headers": {
-                "Content-Type": "application/json",
-                "X-Vexxo-Internal-Token": str(getattr(settings, "TRANSACTION_INFERENCE_INTERNAL_TOKEN", "") or ""),
-            },
-            "body": body,
-        }
-        if getattr(settings, "TRANSACTION_INFERENCE_TASK_SERVICE_ACCOUNT_EMAIL", ""):
-            http_request["oidc_token"] = {
-                "service_account_email": settings.TRANSACTION_INFERENCE_TASK_SERVICE_ACCOUNT_EMAIL,
-                "audience": getattr(settings, "TRANSACTION_INFERENCE_TASK_AUDIENCE", "") or handler_url,
-            }
+def _process_inline_for_tests(*, inference_request_id, request_id: str = "", source: str = "") -> dict:
+    from integrations_stub.llm.services import process_stub_transaction_inference_request
 
-        task = {"http_request": http_request}
-        ts = timestamp_pb2.Timestamp()
-        ts.FromDatetime(_scheduled_time())
-        task["schedule_time"] = ts
-        task["name"] = f"{parent}/tasks/tx-inference-{inference_request_id}"
-        response = client.create_task(request={"parent": parent, "task": task})
-        return {"result": "enqueued", "task_name": getattr(response, "name", task["name"])}
-    except AlreadyExists:
-        logger.info("[transactions.inference] Task ya existente para inference_request_id=%s", inference_request_id)
-        return {"result": "already_enqueued", "task_name": task["name"]}
-    except Exception:
-        logger.exception(
-            "[transactions.inference] Error creando Cloud Task para inference_request_id=%s",
-            inference_request_id,
-        )
-        return {"result": "cloud_tasks_error"}
+    return process_stub_transaction_inference_request(
+        inference_request_id=inference_request_id,
+        request_id=request_id,
+        source=source or "transactions.voice.inline",
+    )
 
 
 def dispatch_transaction_inference(*, inference_request_id, request_id: str = "", source: str = "") -> dict:
     if not inference_request_id:
         return {"result": "missing_inference_request_id"}
 
-    enqueue_result = enqueue_transaction_inference_task(
-        inference_request_id=inference_request_id,
-        request_id=request_id,
-        source=source,
+    dispatch_result = dispatch_job(
+        job_type=JOB_TYPE,
+        cloud_task_config=_cloud_task_config(
+            inference_request_id=inference_request_id,
+            request_id=request_id,
+            source=source,
+        ),
+        inline_handler=lambda: _process_inline_for_tests(
+            inference_request_id=inference_request_id,
+            request_id=request_id,
+            source=source,
+        ),
     )
-    if enqueue_result["result"] in {"enqueued", "already_enqueued"}:
-        return enqueue_result
+    result = str(dispatch_result.get("result") or "")
+    backend = str(dispatch_result.get("dispatch_backend") or "")
 
-    if not transaction_inference_local_fallback_allowed():
-        return {"result": "pipeline_unavailable", "dispatch_backend": enqueue_result["result"]}
+    if result in {"enqueued", "already_enqueued"}:
+        _update_dispatch_metrics(
+            inference_request_id=inference_request_id,
+            backend=AsyncExecutionMode.CLOUD_TASKS,
+            result=result,
+        )
+        return dispatch_result
 
-    return _dispatch_local_fallback_async(
+    if result == "local_worker_pending":
+        return _schedule_local_worker_pickup(
+            inference_request_id=inference_request_id,
+            request_id=request_id,
+            source=source,
+        )
+
+    if result == "inline_processed":
+        _update_dispatch_metrics(
+            inference_request_id=inference_request_id,
+            backend=AsyncExecutionMode.SYNC_INLINE_FOR_TESTS,
+            result=result,
+        )
+        return dispatch_result
+
+    if result == "inline_handler_failed":
+        _mark_dispatch_failed(
+            inference_request_id=inference_request_id,
+            backend=AsyncExecutionMode.SYNC_INLINE_FOR_TESTS,
+            error=f"inline_handler_failed:{dispatch_result.get('error', '')}",
+        )
+        return {"result": "pipeline_unavailable", "dispatch_backend": backend or AsyncExecutionMode.SYNC_INLINE_FOR_TESTS}
+
+    if result == "pipeline_unavailable":
+        _mark_dispatch_failed(
+            inference_request_id=inference_request_id,
+            backend=backend,
+            error=f"pipeline_unavailable:{dispatch_result.get('fallback_reason') or dispatch_result.get('error') or result}",
+        )
+        return {"result": "pipeline_unavailable", "dispatch_backend": backend}
+
+    _mark_dispatch_failed(
         inference_request_id=inference_request_id,
-        request_id=request_id,
-        source=source,
+        backend=backend or AsyncExecutionMode.CLOUD_TASKS,
+        error=f"{result}:{dispatch_result.get('error', '')}",
     )
+    return {"result": "pipeline_unavailable", "dispatch_backend": backend or AsyncExecutionMode.CLOUD_TASKS}

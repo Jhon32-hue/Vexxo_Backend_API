@@ -14,8 +14,8 @@ from finance.accounts.models.outbox import DomainEventOutbox
 from finance.accounts.services.event_service import publish_outbox_event
 
 
-def _worker_id() -> str:
-    return f"{socket.gethostname()}:{uuid.uuid4().hex[:8]}"
+def _worker_id(explicit: str = "") -> str:
+    return str(explicit or f"{socket.gethostname()}:{uuid.uuid4().hex[:8]}")[:64]
 
 
 class Command(BaseCommand):
@@ -38,6 +38,7 @@ class Command(BaseCommand):
         parser.add_argument("--dry-run", action="store_true")
         parser.add_argument("--loop", action="store_true", help="Corre en loop hasta que no queden eventos.")
         parser.add_argument("--sleep-seconds", type=int, default=2, help="Sleep entre iteraciones en --loop.")
+        parser.add_argument("--worker-id", type=str, default="")
 
     def handle(self, *args, **opts):
         batch_size = opts["batch_size"]
@@ -49,7 +50,7 @@ class Command(BaseCommand):
         loop = bool(opts["loop"])
         sleep_seconds = int(opts["sleep_seconds"])
 
-        worker = _worker_id()
+        worker = _worker_id(opts.get("worker_id") or "")
         self.stdout.write(self.style.SUCCESS(f"[outbox] worker={worker} dry_run={dry_run}"))
 
         published_total = 0

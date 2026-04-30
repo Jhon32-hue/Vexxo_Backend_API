@@ -4,17 +4,11 @@ import hashlib
 import json
 import logging
 
-from django.conf import settings
-from django.db import transaction
-
 from alerts.alerts.models.outbox import AlertDomainEventOutbox
 from common.domain_events import EventContext, EventPriority, publish_domain_event
+from tasks.outbox_autopublish import schedule_local_outbox_autopublish
 
 logger = logging.getLogger(__name__)
-
-
-def _local_autopublish_enabled() -> bool:
-    return bool(getattr(settings, "DOMAIN_EVENTS_LOCAL_AUTOPUBLISH_ENABLED", False))
 
 
 def _alerts_outbox_retry_config() -> dict:
@@ -121,14 +115,9 @@ def publish_alert_event_after_commit(
         causation_id=causation_id,
         metadata=event_metadata,
     )
-    if _local_autopublish_enabled() and not getattr(event, "_local_publish_scheduled", False):
-        event._local_publish_scheduled = True
-
-        def _publish_local_event() -> None:
-            fresh = AlertDomainEventOutbox.objects.filter(pk=event.pk).first()
-            if fresh is None or fresh.published_at:
-                return
-            publish_alert_outbox_event(fresh)
-
-        transaction.on_commit(_publish_local_event)
+    schedule_local_outbox_autopublish(
+        event,
+        reload_event=lambda event_id: AlertDomainEventOutbox.objects.filter(pk=event_id).first(),
+        publish_event=publish_alert_outbox_event,
+    )
     return event

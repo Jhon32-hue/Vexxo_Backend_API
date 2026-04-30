@@ -44,16 +44,21 @@ Payload minimo:
 
 ## Fallback local
 
-Si Cloud Tasks no esta configurado y
-`TRANSACTION_INFERENCE_LOCAL_FALLBACK_ENABLED=true`, el dispatcher de
-`finance.transactions` encola este stub en un thread de background del mismo
-proceso.
+Si el modo efectivo de `tasks.async_backends` para `transactions.voice` resuelve
+`local_worker`, el dispatcher de `finance.transactions` deja la solicitud
+marcada para que la procese un worker local durable separado.
 
-En produccion el fallback local se deshabilita automaticamente salvo que el
-entorno lo permita explicitamente.
+La configuracion recomendada para ello es:
+
+- `ASYNC_EXECUTION_MODE_TRANSACTIONS_VOICE=local_worker`
 
 Si Cloud Tasks devuelve `AlreadyExists`, el dispatcher trata la solicitud como
 ya encolada y no ejecuta fallback local.
+
+Worker local recomendado:
+
+- `manage.py transactions_run_inference_worker`
+- `manage.py transactions_recover_stale_inferences`
 
 ## Fallos
 
@@ -62,6 +67,8 @@ ya encolada y no ejecuta fallback local.
 - `dead_letter`: se agotaron retries configurados.
 - `skipped`: la solicitud ya no estaba en estado procesable y se ignoro para
   evitar reproceso tardio.
+- `dispatch_failed`: fallo operativo antes de iniciar inferencia real.
+- `processing_stale`: una corrida local quedo atascada y fue recuperada.
 
 En cualquiera de esos estados no se crea ledger. El frontend puede mostrar el
 estado y ofrecer retry desde el endpoint publico de `inference-requests`.

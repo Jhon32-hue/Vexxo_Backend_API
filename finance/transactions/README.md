@@ -428,7 +428,7 @@ sequenceDiagram
     participant APP as mobile app
     participant API as TransactionInferenceRequestViewSet
     participant REQ as TransactionInferenceRequest
-    participant TASK as Cloud Tasks / local fallback
+    participant TASK as Cloud Tasks / local worker durable
     participant LLM as integrations_stub.llm / llm_gateway
     participant INTAKE as transaction_intake_service
     participant TX as Transaction
@@ -531,7 +531,8 @@ Limites actuales:
 1. mobile captura/sube audio y crea `TransactionInferenceRequest` con `POST /api/finance/transactions/inference-requests/`
 2. el `POST` publico solo acepta referencia y metadatos del audio; no acepta `raw_payload` ni filas inferidas desde cliente
 3. `transactions` persiste la solicitud con `request_id`, `idempotency_key`, estado y referencia del audio
-4. despues del commit se despacha trabajo de forma no bloqueante a Cloud Tasks o al fallback local controlado
+4. despues del commit `tasks.async_backends` decide el transporte para
+   `transactions.voice`
 5. si Cloud Tasks devuelve `AlreadyExists`, la solicitud se considera ya encolada y no cae a fallback ni reproceso
 6. `integrations_stub.llm` actua como runtime temporal del futuro `llm_gateway`
 7. el worker transcribe y extrae uno o varios movimientos estructurados
@@ -555,11 +556,15 @@ Regla:
 - la confirmacion del usuario es la frontera que convierte el borrador en movimiento contable
 - transcripcion fallida, extraccion fallida y `dead_letter` no crean ledger
 - el worker ignora solicitudes en estado terminal o fuera de cola para evitar reprocesos tardios
+- en local el procesamiento durable corre fuera del web app via management
+  command que consume la tabla desde BD
 
 Estados de `TransactionInferenceRequest`:
 
 - `queued`: solicitud persistida y pendiente de worker
 - `processing`: worker activo o proveedor externo procesando
+- `dispatch_failed`: el despacho operativo fallo antes de empezar inferencia real
+- `processing_stale`: una corrida local quedo atascada y fue marcada para recuperacion
 - `transcription_failed`: fallo antes de tener texto util
 - `extraction_failed`: hubo texto o payload, pero no filas canonicas validas
 - `applied`: intake aplicado y batch vinculado
@@ -640,7 +645,12 @@ Servicios clave:
 - `transaction_inference_dispatch_service.py`
   - despacha Cloud Tasks con nombre idempotente
   - trata `AlreadyExists` como exito idempotente
-  - usa fallback local asincrono solo fuera de produccion o si esta habilitado
+  - en local registra `local_worker_pending` para que un worker durable tome la solicitud desde BD
+- `transaction_inference_worker_service.py`
+  - ejecuta el worker local durable
+  - reclama solicitudes por lock persistente
+  - re-dispatch de `queued` viejas
+  - recupera `processing` stale y puede dead-letter operativo
 - `transaction_reconciliation_service.py`
   - resuelve `TransactionReconciliationIssue`
   - soporta `apply_provider_update`, `create_adjustment`, `create_reversal`
@@ -649,8 +659,20 @@ Servicios clave:
   - mueve el create/update/delete manual de `Transaction`
   - publica eventos de CRUD de forma explicita
   - deja signals como fallback para paths aun no migrados
+
+Management commands:
+
+- `manage.py transactions_run_inference_worker`
+  - worker local durable para desarrollo o entornos sin Cloud Tasks
+- `manage.py transactions_recover_stale_inferences`
+  - sweeper operativo para `queued` viejas y `processing` stale
 - `payment_materialization_service.py`
   - reflejo contable desde `payments`
+
+Wrappers unificados equivalentes:
+
+- `manage.py publish_outbox transactions`
+- `manage.py run_worker transactions.voice`
 
 ## Contratos canonicos por rail
 

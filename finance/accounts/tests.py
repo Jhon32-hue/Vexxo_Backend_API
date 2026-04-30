@@ -753,7 +753,7 @@ class AccountIntelligenceDispatchHardeningTests(TestCase):
             plan="plus",
         )
 
-    @override_settings(ACCOUNTS_INTELLIGENCE_LOCAL_FALLBACK_ENABLED=True)
+    @override_settings(ASYNC_EXECUTION_MODE_ACCOUNTS_INTELLIGENCE="sync_inline_for_tests")
     def test_dispatch_refresh_coalesces_repeated_requests(self):
         with patch("finance.accounts.services.intelligence_service.refresh_account_intelligence_for_user") as refresh_mock:
             first = dispatch_account_intelligence_refresh(owner_id=self.user.pk, source="test.coalesce")
@@ -761,7 +761,7 @@ class AccountIntelligenceDispatchHardeningTests(TestCase):
 
         state = AccountIntelligenceDispatchState.objects.get(owner=self.user)
 
-        self.assertEqual(first["result"], "local_fallback")
+        self.assertEqual(first["result"], "inline_processed")
         self.assertEqual(second["result"], "coalesced")
         self.assertEqual(refresh_mock.call_count, 1)
         self.assertFalse(state.pending_request)

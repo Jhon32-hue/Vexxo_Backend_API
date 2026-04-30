@@ -11,6 +11,8 @@ Su responsabilidad actual es:
 - tocarlas/actualizarlas
 - revocarlas individualmente
 - revocar familias o todas las activas
+- soportar `requires_step_up` para dispositivos no confiables
+- revocar sesiones riesgosas de forma selectiva
 - exponer resumen de salud de sesiones
 
 ## Rol En El Producto
@@ -64,6 +66,16 @@ classDiagram
    - revocar otras
    - revocar una familia
    - consultar resumen
+
+## Step-up y riesgo
+
+`identity.sessions` no emite por si mismo el codigo de step-up, pero si define
+la semantica de la sesion:
+
+- `requires_step_up=True` si el dispositivo es `unknown`, `suspicious` o la politica lo exige
+- `identity.users` emite el challenge y valida el codigo
+- al completar step-up, la sesion queda saneada y puede revocar otras sesiones
+  activas todavia marcadas como riesgosas
 
 ## Relacion Con Otros Modulos
 

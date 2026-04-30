@@ -24,7 +24,7 @@ Subdocumentos derivados:
 - [listeners/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/notifications/listeners/README.md)
   materializacion de inbox desde eventos del dominio
 - [preferences/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/notifications/preferences/README.md)
-  configuracion futura por canal
+  configuracion activa por canal y marketing/newsletter
 - [templates/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/notifications/templates/README.md)
   renderizado y mensajes reutilizables
 
@@ -40,7 +40,7 @@ Regla editorial:
 - `listeners`
   escucha eventos de dominio y crea entregas
 - `preferences`
-  punto natural para politicas de usuario por canal
+  preferencias activas del usuario para inbox, push, correo y newsletter
 - `templates`
   punto natural para mensajes reutilizables y renderizado
 
@@ -85,8 +85,10 @@ classDiagram
 1. un bounded context emite un evento fuerte
 2. `notifications.listeners` decide si ese evento amerita inbox
 3. se crea `NotificationDelivery`
-4. mobile/web consume el inbox por API
-5. el usuario marca como leido o revisa el detalle
+4. si el canal es `email`, un servicio transaccional intenta enviar correo y
+   marca `delivered` o `failed`
+5. mobile/web consume inbox o estado por API
+6. el usuario marca como leido o revisa el detalle
 
 ## Casos De Uso
 
@@ -127,9 +129,14 @@ El inbox no debe depender de sockets persistentes; debe ser durable y consultabl
 
 Hoy el enfoque principal es inbox in-app persistente.
 
-La arquitectura ya deja abierto el camino para:
+Ya existe ademas:
 
-- email
-- push
+- trazabilidad de correos lifecycle y reset de password via `NotificationDelivery(channel=email)`
+- trazabilidad de recovery/step-up mobile via `NotificationDelivery(channel=system, payload.transport=sms|whatsapp)`
+- preferencias de usuario por canal y newsletter
+
+La arquitectura sigue dejando abierto el camino para:
+
+- push provider real
 - templates mas ricos
-- preferencias por canal
+- reglas mas finas por evento

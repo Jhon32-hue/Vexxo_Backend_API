@@ -49,6 +49,13 @@ Base: `/api/identity/users/`
 |---|---|---|---|
 | `/api/identity/users/auth/register/` | `POST` | publico | registro de usuario |
 | `/api/identity/users/auth/login/` | `POST` | publico | login y emision de JWT |
+| `/api/identity/users/auth/password-recovery/request-code/` | `POST` | publico | solicitar codigo temporal por telefono |
+| `/api/identity/users/auth/password-recovery/confirm-code/` | `POST` | publico | confirmar codigo temporal y actualizar contrasena |
+| `/api/identity/users/auth/step-up/request-code/` | `POST` | `Bearer` | solicitar o reenviar codigo de step-up |
+| `/api/identity/users/auth/step-up/confirm-code/` | `POST` | `Bearer` | completar step-up de sesion riesgosa |
+| `/api/identity/users/auth/password-reset/request/` | `POST` | publico | solicitar recuperacion por correo |
+| `/api/identity/users/auth/password-reset/confirm/` | `POST` | publico | confirmar nueva contrasena con `uid` + `token` |
+| `/api/identity/users/auth/set-password/` | `POST` | `Bearer` | configurar o reemplazar contrasena autenticado |
 | `/api/identity/users/auth/refresh/` | `POST` | publico con refresh token | renovar access token |
 | `/api/identity/users/auth/logout/` | `POST` | `Bearer` | logout y revocacion |
 | `/api/identity/users/auth/social/providers/` | `GET` | publico | listar proveedores sociales disponibles |
@@ -559,6 +566,15 @@ Base: `/api/notifications/deliveries/entregas-notificacion/`
 | `/api/notifications/deliveries/entregas-notificacion/{id}/mark_read/` | `POST` | `Bearer` | marcar leida |
 | `/api/notifications/deliveries/entregas-notificacion/mark_all_read/` | `POST` | `Bearer` | marcar varias como leidas |
 | `/api/notifications/deliveries/entregas-notificacion/stats/` | `GET` | `Bearer` | estadisticas del inbox |
+
+### notifications.preferences
+
+Base: `/api/notifications/preferences/`
+
+| Ruta | Metodos | Auth | Uso |
+|---|---|---|---|
+| `/api/notifications/preferences/me/` | `GET` | `Bearer` | ver preferencias de inbox, push, correo y newsletter |
+| `/api/notifications/preferences/me/` | `PUT`, `PATCH` | `Bearer` | actualizar preferencias de comunicacion |
 
 ### realtime.consumers
 

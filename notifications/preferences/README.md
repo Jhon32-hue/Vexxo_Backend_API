@@ -2,25 +2,27 @@
 
 ## Que hace
 
-`notifications.preferences` existe como lugar natural para preferencias de
-entrega del usuario:
+`notifications.preferences` concentra las preferencias durables de
+comunicacion del usuario:
 
-- canales habilitados
-- opt-in u opt-out
-- reglas de silencio
-- granularidad por tipo de notificacion
+- inbox in-app habilitado o no
+- push habilitado o no
+- correo transaccional general
+- opt-in de marketing
+- newsletter
+- marca de envio de bienvenida
 
 ## Estado Del Codigo
 
-Hoy el modulo esta en scaffold:
+Hoy el modulo ya esta materializado:
 
-- `models.py` vacio
-- `views.py` vacio
-- sin endpoints o servicios publicos detectados
+- `NotificationPreference` como `OneToOne` por usuario
+- `GET/PUT/PATCH /api/notifications/preferences/me/`
+- bootstrap desde `User.marketing_opt_in`
+- sincronizacion bidireccional con `identity.users`
 
 ## Rol En El Producto
 
-Aunque el modulo aun no esta materializado, su responsabilidad es importante.
 Vexxo necesita distinguir entre:
 
 - notificaciones que el sistema puede generar
@@ -29,30 +31,73 @@ Vexxo necesita distinguir entre:
   - in-app
   - push
   - email
-  - system
+
+## Vista visual
+
+```mermaid
+classDiagram
+    class NotificationPreference {
+        +in_app_enabled
+        +push_enabled
+        +email_notifications_enabled
+        +email_marketing_enabled
+        +newsletter_subscribed
+        +welcome_email_sent_at
+    }
+
+    class User {
+        +marketing_opt_in
+        +email
+    }
+
+    User "1" --> "1" NotificationPreference : owns
+```
+
+## Flujo Operativo
+
+1. `identity.users` registra o autentica al usuario.
+2. `notifications.preferences.services.get_or_create_notification_preferences()`
+   garantiza la fila de preferencias.
+3. si el usuario cambia newsletter u opt-in, `/api/notifications/preferences/me/`
+   actualiza la preferencia y sincroniza `User.marketing_opt_in`.
+4. `identity.users.services.communication_service` consulta estas preferencias
+   antes de enviar correos lifecycle.
+5. `NotificationDelivery(channel=email)` deja trazabilidad del correo enviado o fallido.
 
 ## Relacion Con Otros Modulos
 
 - `notifications.deliveries`
-  persiste la entrega o inbox durable.
+  persiste inbox y trazabilidad de correos.
 - `notifications.listeners`
   transforma eventos de dominio en mensajes.
 - `realtime`
   puede complementar la experiencia interactiva.
 - `identity.users`
-  aporta ownership, plan y contexto de producto.
+  aporta ownership, onboarding, auth y `marketing_opt_in`.
 
 ## Encaje Con GCP
 
-Cuando este modulo madure, encajara con:
+En cloud este modulo encaja asi:
 
 - Cloud Run para API de preferencias
 - Cloud SQL para persistencia
-- Pub/Sub o Cloud Tasks para aplicar cambios de forma desacoplada
-- servicios de push/email externos desde workers o adapters
+- servicios de email/push externos desde adapters
+
+No necesita Cloud Tasks por ahora porque el write path es liviano y la logica
+de preferencias es OLTP directa.
 
 ## Estado Actual
 
-No conviene documentarlo como feature cerrada hoy. Es un contexto reservado y
-coherente con la arquitectura, pero la logica operativa visible sigue viviendo
-en `notifications.listeners` y `notifications.deliveries`.
+El alcance actual cubre:
+
+- preferencias consultables y editables por el usuario
+- newsletter y marketing opt-in
+- control de correo lifecycle
+- marca de envio de bienvenida
+
+No cubre aun:
+
+- quiet hours
+- reglas finas por tipo de evento
+- campañas o journeys de marketing
+- push provider real

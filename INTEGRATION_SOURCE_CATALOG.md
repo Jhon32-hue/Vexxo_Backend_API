@@ -358,9 +358,12 @@ verdad de estado es `TransactionInferenceRequest` dentro de `transactions`.
   inferidas ni `raw_payload` arbitrario
 - task naming idempotente en Cloud Tasks
 - `AlreadyExists` en Cloud Tasks cuenta como solicitud ya encolada
-- fallback local no bloqueante y fuera del request path
+- en local debe existir worker durable separado que consuma solicitudes desde BD
+- sweeper para `queued` viejas y `processing` stale
 - `retry_count`, `next_attempt_at`, `last_error` y `dead_letter`
 - retry explicito reinicia contadores/fechas operativas antes de reencolar
+- `dispatch_backend`, `last_dispatch_attempt_at`, `last_dispatch_error`,
+  `dispatch_attempt_count` y metricas de stale recovery
 - no escribir `Transaction` directo desde el worker
 - ignorar estados terminales para evitar reprocesos tardios
 - confirmacion explicita del usuario antes de contabilizar

@@ -311,6 +311,10 @@ Vistas adicionales:
 ### Management Commands
 - [accounts_publish_outbox.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/management/commands/accounts_publish_outbox.py)
   Publica eventos pendientes del outbox.
+- [accounts_run_sync_worker.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/management/commands/accounts_run_sync_worker.py)
+  Worker local durable para sync externo cuando no se usa Cloud Tasks.
+- [accounts_run_intelligence_worker.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/management/commands/accounts_run_intelligence_worker.py)
+  Worker local durable para refresh de inteligencia derivada.
 - [accounts_reconcile_balances.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/management/commands/accounts_reconcile_balances.py)
   Reconciliacion masiva y opcional auto-repair.
 - [accounts_cleanup_balance_snapshots.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/management/commands/accounts_cleanup_balance_snapshots.py)
@@ -319,6 +323,52 @@ Vistas adicionales:
   Migracion operativa de `AccountAccess` hacia memberships.
 
 ## Flujos Principales
+
+## Topologia Local Vs Cloud
+
+```mermaid
+flowchart LR
+    subgraph Local
+        API1[runserver]
+        DB1[(Postgres local)]
+        OUT1[accounts_publish_outbox --loop]
+        SYNC1[accounts_run_sync_worker --loop]
+        INT1[accounts_run_intelligence_worker --loop]
+        API1 --> DB1
+        API1 --> OUT1
+        API1 --> SYNC1
+        API1 --> INT1
+        OUT1 --> DB1
+        SYNC1 --> DB1
+        INT1 --> DB1
+    end
+
+    subgraph Cloud
+        API2[Cloud Run API]
+        DB2[(Cloud SQL)]
+        TASKS[Cloud Tasks]
+        BUS[Pub/Sub]
+        WRK[Cloud Run workers]
+        API2 --> DB2
+        API2 --> TASKS
+        API2 --> BUS
+        TASKS --> WRK
+        BUS --> WRK
+        WRK --> DB2
+    end
+```
+
+Lectura:
+
+- en local ya no se recomienda recalculo inline ni sync inline
+- `accounts` persiste la intencion y un worker durable separado consume desde BD
+- en cloud la ejecucion esperada sigue siendo Cloud Tasks y workers externos
+- la fuente de verdad de sync sigue en `Account.sync_runtime`
+- la fuente de verdad de inteligencia async sigue en `AccountIntelligenceDispatchState`
+- la politica de entrega converge hacia `tasks.async_backends` en vez de quedar
+  repartida en `if ENV` del contexto
+- `accounts.sync` y `accounts.intelligence` ya usan la misma frontera comun de
+  dispatch; solo cambia el runtime efectivo
 
 ### Creacion De Cuenta
 1. `AccountViewSet` valida input con `AccountWriteSerializer`.
@@ -352,21 +402,69 @@ Vistas adicionales:
 4. Si `auto_repair` esta activo, el cache se corrige y queda evidencia operativa.
 
 ### Sync Externo
+```mermaid
+sequenceDiagram
+    participant API as accounts API
+    participant ACC as Account
+    participant OUT as accounts outbox
+    participant DISP as sync_dispatch_service
+    participant EXEC as Cloud Tasks o accounts_run_sync_worker
+    participant STUB as integrations_stub.banks
+
+    API->>ACC: schedule_account_sync()
+    ACC->>OUT: enqueue accounts.sync.scheduled.v1
+    OUT->>DISP: handle_account_sync_scheduled()
+    DISP->>EXEC: enqueue o local_worker_pending
+    EXEC->>STUB: process_stub_account_sync()
+    STUB->>ACC: running / success / error / stale
+```
+
 1. Una cuenta se vincula a un proveedor via `link_external_source`.
 2. Antes de vincular, el modulo valida `max_connected_accounts` para no romper la promesa de `free = manual util, connected limitado`.
 3. `schedule_sync` agenda la corrida, asigna o preserva `sync_run_id` y publica `accounts.sync.scheduled.v1`.
 4. `event_handlers.py` convierte ese evento en trabajo async desde el worker del outbox.
-5. Workers o integraciones marcan `running`, `success`, `error` o `stale` a traves del servicio canonico de sync.
-6. El servicio valida transiciones monotonicamente por corrida para evitar reordenamientos o terminales de runs viejos.
-7. El contexto aplica dedupe por comando y deja traza operativa en `provider_metadata`, `sync_runtime` y outbox.
+5. `tasks.async_backends` decide el backend efectivo para `accounts.sync`.
+6. Si Cloud Tasks no esta disponible pero el entorno local lo permite, el
+   dispatcher deja la corrida pendiente para `accounts_run_sync_worker` en vez
+   de ejecutarla inline.
+7. Workers o integraciones marcan `running`, `success`, `error` o `stale` a traves del servicio canonico de sync.
+8. El worker local durable reclama cuentas `scheduled` desde `sync_runtime`,
+   deja locks y metricas operativas en el mismo JSON, y recupera corridas
+   `running` stale antes de reprogramarlas.
+9. El contexto aplica dedupe por comando y deja traza operativa en `provider_metadata`, `sync_runtime` y outbox.
+10. El servicio valida transiciones monotonicamente por corrida para evitar reordenamientos o terminales de runs viejos.
 
 ### Inteligencia Derivada
+```mermaid
+sequenceDiagram
+    participant EVT as accounts.*
+    participant DISP as intelligence_dispatch_service
+    participant STATE as AccountIntelligenceDispatchState
+    participant EXEC as Cloud Tasks o accounts_run_intelligence_worker
+    participant MAT as intelligence_service
+
+    EVT->>DISP: request_account_intelligence_refresh()
+    DISP->>STATE: coalesce + persist pending_request
+    DISP->>EXEC: enqueue o local_worker_pending
+    EXEC->>STATE: started / lock
+    EXEC->>MAT: refresh_account_intelligence_for_user()
+    MAT->>STATE: completed o failed
+```
+
 1. Cualquier evento `accounts.*` puede detonar refresh de inteligencia.
 2. `intelligence_dispatch_service.py` registra la solicitud y coalescea bursts por owner para no recalcular o encolar repetidamente dentro de la misma ventana operativa.
-3. Si hay infraestructura async disponible, el refresh se encola; si no la hay y la politica lo permite, `intelligence_service.py` recalcula localmente.
-4. `AccountIntelligenceDispatchState` deja trazabilidad de `requested`, `enqueued`, `started`, `materialized`, `failed` o `pipeline_unavailable`.
-5. Un worker externo puede cerrar la corrida via callback interno `worker_report` sin depender del refresh inline actual.
-6. `intelligence_views.py` expone snapshots, signals, overview, health y el callback interno de worker.
+3. `tasks.async_backends` decide el transporte efectivo para
+   `accounts.intelligence`.
+4. Si el backend efectivo es local, la solicitud queda pendiente para
+   `accounts_run_intelligence_worker`.
+5. `AccountIntelligenceDispatchState` deja trazabilidad de request,
+   backend de despacho, locking local, stale recovery y pipeline health.
+6. Un worker externo o local puede cerrar la corrida via callback interno
+   `worker_report` o via worker durable, sin recalculo inline del request.
+7. `intelligence_views.py` expone snapshots, signals, overview, health y el callback interno de worker.
+8. `overview` y `identity.users.dashboard` pueden disparar refresh si faltan
+   snapshots; solo recargan en el mismo request cuando el modo efectivo es
+   `sync_inline_for_tests`.
 
 ## Relacion Con Otros Bounded Contexts
 

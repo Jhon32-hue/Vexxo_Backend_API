@@ -86,6 +86,8 @@ def retry_transaction_inference_request(*, inference_request: TransactionInferen
         raise serializers.ValidationError({"account": "No tienes permisos para reintentar esta solicitud."})
     inference_request = _locked_inference_request(inference_request)
     if inference_request.status not in {
+        TransactionInferenceRequest.Status.DISPATCH_FAILED,
+        TransactionInferenceRequest.Status.PROCESSING_STALE,
         TransactionInferenceRequest.Status.TRANSCRIPTION_FAILED,
         TransactionInferenceRequest.Status.EXTRACTION_FAILED,
         TransactionInferenceRequest.Status.DEAD_LETTER,

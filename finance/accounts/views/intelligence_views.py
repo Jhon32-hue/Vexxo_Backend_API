@@ -45,13 +45,11 @@ from finance.accounts.serializers.intelligence_serializers import (
     AccountTypeDistributionSerializer,
 )
 from finance.accounts.services.intelligence_dispatch_service import (
-    account_intelligence_local_fallback_allowed,
-    enqueue_account_intelligence_refresh_task,
+    dispatch_account_intelligence_refresh,
     get_account_intelligence_projection_status,
     report_account_intelligence_worker_status,
 )
 from finance.accounts.services.intelligence_health_service import get_account_intelligence_operational_health
-from finance.accounts.services.intelligence_service import refresh_account_intelligence_for_user
 
 logger = logging.getLogger(__name__)
 
@@ -85,110 +83,79 @@ class AccountPortfolioSnapshotViewSet(_ReadOnlyIntelligenceViewSet):
         serializer = AccountIntelligenceRefreshSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        task_response = enqueue_account_intelligence_refresh_task(
+        dispatch_response = dispatch_account_intelligence_refresh(
             owner_id=request.user.pk,
             source="accounts.intelligence_views.refresh",
             task_name_suffix=f"manual-refresh-{request.user.pk}",
         )
-        if not account_intelligence_local_fallback_allowed():
-            if task_response is None:
-                logger.warning(
-                    "[accounts.intelligence] Refresh requested without async dispatch owner_id=%s",
-                    request.user.pk,
-                )
-            return Response(
-                {
-                    "detail": "Refresh de inteligencia agendado.",
-                    "queued": bool(task_response is not None),
-                    "projection_status": get_account_intelligence_projection_status(owner=request.user),
-                    "projection_health": get_account_intelligence_operational_health(
-                        owner=request.user,
-                        sync_alerts=True,
-                    ),
-                },
-                status=status.HTTP_202_ACCEPTED,
+        if dispatch_response.get("result") == "pipeline_unavailable":
+            logger.warning(
+                "[accounts.intelligence] Refresh requested without async dispatch owner_id=%s",
+                request.user.pk,
             )
-
-        result = refresh_account_intelligence_for_user(request.user)
-        payload = {
-            "portfolio_snapshot": AccountPortfolioSnapshotSerializer(
-                result["portfolio_snapshot"],
-                context=self.get_serializer_context(),
-            ).data,
-            "risk_snapshot": AccountRiskSnapshotSerializer(
-                result["risk_snapshot"],
-                context=self.get_serializer_context(),
-            ).data,
-            "product_signals": AccountProductSignalSerializer(
-                result["product_signals"],
-                many=True,
-                context=self.get_serializer_context(),
-            ).data,
-            "owner_metrics": AccountOwnerMetricsSerializer(
-                result["owner_metrics"],
-                context=self.get_serializer_context(),
-            ).data,
-            "currency_exposures": AccountCurrencyExposureSerializer(
-                result["currency_exposures"],
-                many=True,
-                context=self.get_serializer_context(),
-            ).data,
-            "type_distributions": AccountTypeDistributionSerializer(
-                result["type_distributions"],
-                many=True,
-                context=self.get_serializer_context(),
-            ).data,
-            "projection_health": get_account_intelligence_operational_health(
-                owner=request.user,
-                sync_alerts=True,
-            ),
-        }
-        return Response(payload, status=status.HTTP_200_OK)
+        return Response(
+            {
+                "detail": "Refresh de inteligencia agendado.",
+                "queued": bool(dispatch_response.get("result") != "pipeline_unavailable"),
+                "dispatch": dispatch_response,
+                "projection_status": get_account_intelligence_projection_status(owner=request.user),
+                "projection_health": get_account_intelligence_operational_health(
+                    owner=request.user,
+                    sync_alerts=True,
+                ),
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
 
     @action(detail=False, methods=["get"])
     def overview(self, request):
+        portfolio_snapshot = self.get_queryset().order_by("-generated_at").first()
+        risk_snapshot = AccountRiskSnapshot.objects.filter(owner=request.user).order_by("-generated_at").first()
+        owner_metrics = AccountOwnerMetrics.objects.filter(owner=request.user).order_by("-generated_at").first()
+        dispatch_response = None
+
+        if portfolio_snapshot is None or risk_snapshot is None or owner_metrics is None:
+            dispatch_response = dispatch_account_intelligence_refresh(
+                owner_id=request.user.pk,
+                source="accounts.intelligence_views.overview",
+                task_name_suffix=f"overview-{request.user.pk}",
+            )
+            if dispatch_response.get("result") == "inline_processed":
+                portfolio_snapshot = self.get_queryset().order_by("-generated_at").first()
+                risk_snapshot = AccountRiskSnapshot.objects.filter(owner=request.user).order_by("-generated_at").first()
+                owner_metrics = AccountOwnerMetrics.objects.filter(owner=request.user).order_by("-generated_at").first()
+
         projection_status = get_account_intelligence_projection_status(owner=request.user)
         projection_health = get_account_intelligence_operational_health(
             owner=request.user,
             sync_alerts=True,
         )
-        if not account_intelligence_local_fallback_allowed():
-            if projection_status["pending"] and not projection_status["cloud_tasks_ready"]:
-                logger.warning(
-                    "[accounts.intelligence] Overview pending without materialized projections owner_id=%s",
-                    request.user.pk,
-                )
-            portfolio = self.get_queryset().order_by("-snapshot_at").first()
-            risk = AccountRiskSnapshot.objects.filter(owner=request.user).order_by("-generated_at").first()
-            signals = list(AccountProductSignal.objects.filter(owner=request.user, is_active=True).order_by("signal_code"))
-            owner_metrics = AccountOwnerMetrics.objects.filter(owner=request.user).order_by("-generated_at").first()
-            exposures = list(AccountCurrencyExposure.objects.filter(owner=request.user).order_by("currency"))
-            distributions = list(AccountTypeDistribution.objects.filter(owner=request.user).order_by("account_type"))
-            return Response(
-                {
-                    "portfolio_snapshot": AccountPortfolioSnapshotSerializer(portfolio).data if portfolio else None,
-                    "risk_snapshot": AccountRiskSnapshotSerializer(risk).data if risk else None,
-                    "product_signals": AccountProductSignalSerializer(signals, many=True).data,
-                    "owner_metrics": AccountOwnerMetricsSerializer(owner_metrics).data if owner_metrics else None,
-                    "currency_exposures": AccountCurrencyExposureSerializer(exposures, many=True).data,
-                    "type_distributions": AccountTypeDistributionSerializer(distributions, many=True).data,
-                    "projection_pending": projection_status["pending"],
-                    "projection_status": projection_status,
-                    "projection_health": projection_health,
-                },
-                status=status.HTTP_200_OK,
+        if projection_status["pending"] and projection_status.get("async_execution_mode") == "disabled":
+            logger.warning(
+                "[accounts.intelligence] Overview pending without materialized projections owner_id=%s",
+                request.user.pk,
             )
-        result = refresh_account_intelligence_for_user(request.user)
         payload = {
-            "portfolio_snapshot": AccountPortfolioSnapshotSerializer(result["portfolio_snapshot"]).data,
-            "risk_snapshot": AccountRiskSnapshotSerializer(result["risk_snapshot"]).data,
-            "product_signals": AccountProductSignalSerializer(result["product_signals"], many=True).data,
-            "owner_metrics": AccountOwnerMetricsSerializer(result["owner_metrics"]).data,
-            "currency_exposures": AccountCurrencyExposureSerializer(result["currency_exposures"], many=True).data,
-            "type_distributions": AccountTypeDistributionSerializer(result["type_distributions"], many=True).data,
-            "projection_status": get_account_intelligence_projection_status(owner=request.user),
+            "portfolio_snapshot": AccountPortfolioSnapshotSerializer(portfolio_snapshot).data if portfolio_snapshot else None,
+            "risk_snapshot": AccountRiskSnapshotSerializer(risk_snapshot).data if risk_snapshot else None,
+            "product_signals": AccountProductSignalSerializer(
+                list(AccountProductSignal.objects.filter(owner=request.user, is_active=True).order_by("signal_code")),
+                many=True,
+            ).data,
+            "owner_metrics": AccountOwnerMetricsSerializer(owner_metrics).data if owner_metrics else None,
+            "currency_exposures": AccountCurrencyExposureSerializer(
+                list(AccountCurrencyExposure.objects.filter(owner=request.user).order_by("currency")),
+                many=True,
+            ).data,
+            "type_distributions": AccountTypeDistributionSerializer(
+                list(AccountTypeDistribution.objects.filter(owner=request.user).order_by("account_type")),
+                many=True,
+            ).data,
+            "projection_status": projection_status,
             "projection_health": projection_health,
         }
+        if dispatch_response is not None:
+            payload["refresh_dispatch"] = dispatch_response
         return Response(payload, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["get"])

@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Q
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -16,12 +16,18 @@ class TransactionInferenceRequest(models.Model):
     class Status(models.TextChoices):
         QUEUED = "queued", _("en cola")
         PROCESSING = "processing", _("procesando")
+        DISPATCH_FAILED = "dispatch_failed", _("despacho fallido")
+        PROCESSING_STALE = "processing_stale", _("procesamiento stale")
         TRANSCRIPTION_FAILED = "transcription_failed", _("transcripcion fallida")
         EXTRACTION_FAILED = "extraction_failed", _("extraccion fallida")
         APPLIED = "applied", _("aplicada")
         PARTIAL = "partial", _("parcial")
         DEAD_LETTER = "dead_letter", _("agotada")
         CANCELED = "canceled", _("cancelada")
+
+    class DispatchBackend(models.TextChoices):
+        CLOUD_TASKS = "cloud_tasks", _("cloud tasks")
+        LOCAL_WORKER = "local_worker", _("worker local")
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="transaction_inference_requests")
@@ -65,6 +71,16 @@ class TransactionInferenceRequest(models.Model):
     retry_count = models.PositiveIntegerField(default=0)
     next_attempt_at = models.DateTimeField(null=True, blank=True)
     last_error = models.TextField(blank=True, default="")
+    dispatch_backend = models.CharField(max_length=32, choices=DispatchBackend.choices, blank=True, default="", db_index=True)
+    last_dispatch_result = models.CharField(max_length=64, blank=True, default="")
+    dispatch_attempt_count = models.PositiveIntegerField(default=0)
+    last_dispatch_attempt_at = models.DateTimeField(null=True, blank=True)
+    last_dispatch_error = models.TextField(blank=True, default="")
+    local_worker_locked_at = models.DateTimeField(null=True, blank=True)
+    local_worker_locked_by = models.CharField(max_length=64, blank=True, default="")
+    stale_recovery_count = models.PositiveIntegerField(default=0)
+    last_recovered_at = models.DateTimeField(null=True, blank=True)
+    last_operational_issue = models.CharField(max_length=64, blank=True, default="")
     requested_at = models.DateTimeField(auto_now_add=True)
     processing_started_at = models.DateTimeField(null=True, blank=True)
     applied_at = models.DateTimeField(null=True, blank=True)
@@ -80,6 +96,9 @@ class TransactionInferenceRequest(models.Model):
             models.Index(fields=["request_id"]),
             models.Index(fields=["provider", "provider_request_id"]),
             models.Index(fields=["account", "requested_at"]),
+            models.Index(fields=["dispatch_backend", "status"], name="transaction_dispatc_8f0adf_idx"),
+            models.Index(fields=["status", "processing_started_at"], name="transaction_status_96f122_idx"),
+            models.Index(fields=["local_worker_locked_at"], name="transaction_local_w_2d3ae7_idx"),
         ]
         constraints = [
             models.CheckConstraint(
@@ -93,17 +112,149 @@ class TransactionInferenceRequest(models.Model):
 
     @property
     def processable_statuses(self) -> set[str]:
-        return {self.Status.QUEUED}
+        return {self.Status.QUEUED, self.Status.DISPATCH_FAILED, self.Status.PROCESSING_STALE}
 
     @property
     def failure_mutable_statuses(self) -> set[str]:
-        return {self.Status.QUEUED, self.Status.PROCESSING}
+        return {
+            self.Status.QUEUED,
+            self.Status.PROCESSING,
+            self.Status.DISPATCH_FAILED,
+            self.Status.PROCESSING_STALE,
+        }
 
     def can_start_processing(self) -> bool:
         return self.status in self.processable_statuses
 
     def can_mark_failed(self) -> bool:
         return self.status in self.failure_mutable_statuses
+
+    def release_local_worker_lock(self, *, commit: bool = True) -> None:
+        self.local_worker_locked_at = None
+        self.local_worker_locked_by = ""
+        if commit:
+            self.save(update_fields=["local_worker_locked_at", "local_worker_locked_by", "updated_at"])
+
+    def note_dispatch_attempt(self, *, backend: str = "", result: str = "", error: str = "", commit: bool = True) -> None:
+        self.dispatch_attempt_count = int(self.dispatch_attempt_count or 0) + 1
+        self.last_dispatch_attempt_at = timezone.now()
+        self.last_dispatch_result = (result or "")[:64]
+        self.last_dispatch_error = (error or "")[:2000]
+        if backend:
+            self.dispatch_backend = backend
+        if not error:
+            self.last_dispatch_error = ""
+        if commit:
+            self.save(
+                update_fields=[
+                    "dispatch_backend",
+                    "last_dispatch_result",
+                    "dispatch_attempt_count",
+                    "last_dispatch_attempt_at",
+                    "last_dispatch_error",
+                    "updated_at",
+                ]
+            )
+
+    def mark_dispatch_failed(self, *, error: str, backend: str = "", commit: bool = True) -> None:
+        self.status = self.Status.DISPATCH_FAILED
+        self.failed_at = timezone.now()
+        self.last_error = (error or "")[:2000]
+        self.last_operational_issue = "dispatch_failed"
+        self.next_attempt_at = None
+        self.local_worker_locked_at = None
+        self.local_worker_locked_by = ""
+        if backend:
+            self.dispatch_backend = backend
+        if commit:
+            self.save(
+                update_fields=[
+                    "status",
+                    "failed_at",
+                    "last_error",
+                    "last_operational_issue",
+                    "next_attempt_at",
+                    "dispatch_backend",
+                    "local_worker_locked_at",
+                    "local_worker_locked_by",
+                    "updated_at",
+                ]
+            )
+
+    def mark_processing_stale(self, *, reason: str, commit: bool = True) -> None:
+        self.status = self.Status.PROCESSING_STALE
+        self.last_error = (reason or "")[:2000]
+        self.last_operational_issue = "processing_stale"
+        self.failed_at = timezone.now()
+        self.next_attempt_at = None
+        self.local_worker_locked_at = None
+        self.local_worker_locked_by = ""
+        self.stale_recovery_count = int(self.stale_recovery_count or 0) + 1
+        self.last_recovered_at = timezone.now()
+        if commit:
+            self.save(
+                update_fields=[
+                    "status",
+                    "last_error",
+                    "last_operational_issue",
+                    "failed_at",
+                    "next_attempt_at",
+                    "local_worker_locked_at",
+                    "local_worker_locked_by",
+                    "stale_recovery_count",
+                    "last_recovered_at",
+                    "updated_at",
+                ]
+            )
+
+    def mark_dead_letter(self, *, reason: str, commit: bool = True) -> None:
+        self.status = self.Status.DEAD_LETTER
+        self.failed_at = timezone.now()
+        self.last_error = (reason or "")[:2000]
+        self.last_operational_issue = "dead_letter"
+        self.next_attempt_at = None
+        self.local_worker_locked_at = None
+        self.local_worker_locked_by = ""
+        if commit:
+            self.save(
+                update_fields=[
+                    "status",
+                    "failed_at",
+                    "last_error",
+                    "last_operational_issue",
+                    "next_attempt_at",
+                    "local_worker_locked_at",
+                    "local_worker_locked_by",
+                    "updated_at",
+                ]
+            )
+
+    def claim_for_local_worker(self, *, worker_id: str, stale_after_seconds: int = 900) -> bool:
+        now = timezone.now()
+        stale_threshold = now - timezone.timedelta(seconds=max(30, int(stale_after_seconds or 900)))
+        with transaction.atomic():
+            updated = (
+                self.__class__.objects.filter(
+                    pk=self.pk,
+                    status__in=list(self.processable_statuses),
+                )
+                .filter(models.Q(next_attempt_at__isnull=True) | models.Q(next_attempt_at__lte=now))
+                .filter(
+                    models.Q(local_worker_locked_at__isnull=True)
+                    | models.Q(local_worker_locked_at__lte=stale_threshold)
+                )
+                .update(
+                    local_worker_locked_at=now,
+                    local_worker_locked_by=(worker_id or "")[:64],
+                    dispatch_backend=self.DispatchBackend.LOCAL_WORKER,
+                )
+            )
+        if updated:
+            self.local_worker_locked_at = now
+            self.local_worker_locked_by = (worker_id or "")[:64]
+            self.dispatch_backend = self.DispatchBackend.LOCAL_WORKER
+            return True
+        return False
 
     def reset_for_retry(self, *, commit: bool = True) -> None:
         self.status = self.Status.QUEUED
@@ -112,6 +263,9 @@ class TransactionInferenceRequest(models.Model):
         self.last_error = ""
         self.failed_at = None
         self.processing_started_at = None
+        self.last_operational_issue = ""
+        self.local_worker_locked_at = None
+        self.local_worker_locked_by = ""
         if commit:
             self.save(
                 update_fields=[
@@ -121,6 +275,9 @@ class TransactionInferenceRequest(models.Model):
                     "last_error",
                     "failed_at",
                     "processing_started_at",
+                    "last_operational_issue",
+                    "local_worker_locked_at",
+                    "local_worker_locked_by",
                     "updated_at",
                 ]
             )
@@ -131,6 +288,7 @@ class TransactionInferenceRequest(models.Model):
         self.last_error = ""
         self.failed_at = None
         self.next_attempt_at = None
+        self.last_operational_issue = ""
         if provider_job_id:
             self.provider_job_id = provider_job_id
         if provider_correlation_id:
@@ -143,6 +301,7 @@ class TransactionInferenceRequest(models.Model):
                     "last_error",
                     "failed_at",
                     "next_attempt_at",
+                    "last_operational_issue",
                     "provider_job_id",
                     "provider_correlation_id",
                     "updated_at",
@@ -157,6 +316,9 @@ class TransactionInferenceRequest(models.Model):
         self.failed_at = None
         self.last_error = ""
         self.next_attempt_at = None
+        self.last_operational_issue = ""
+        self.local_worker_locked_at = None
+        self.local_worker_locked_by = ""
         if commit:
             self.save(
                 update_fields=[
@@ -167,6 +329,9 @@ class TransactionInferenceRequest(models.Model):
                     "failed_at",
                     "last_error",
                     "next_attempt_at",
+                    "last_operational_issue",
+                    "local_worker_locked_at",
+                    "local_worker_locked_by",
                     "updated_at",
                 ]
             )
@@ -180,10 +345,14 @@ class TransactionInferenceRequest(models.Model):
         if self.retry_count >= max(1, int(max_retries or 5)):
             self.status = self.Status.DEAD_LETTER
             self.next_attempt_at = None
+            self.last_operational_issue = "dead_letter"
         else:
             self.status = status
             delay_seconds = min(1800, 2 ** min(self.retry_count, 10))
             self.next_attempt_at = timezone.now() + timezone.timedelta(seconds=delay_seconds)
+            self.last_operational_issue = ""
+        self.local_worker_locked_at = None
+        self.local_worker_locked_by = ""
         if commit:
             self.save(
                 update_fields=[
@@ -192,6 +361,9 @@ class TransactionInferenceRequest(models.Model):
                     "last_error",
                     "failed_at",
                     "next_attempt_at",
+                    "last_operational_issue",
+                    "local_worker_locked_at",
+                    "local_worker_locked_by",
                     "updated_at",
                 ]
             )
@@ -200,5 +372,18 @@ class TransactionInferenceRequest(models.Model):
         self.status = self.Status.CANCELED
         self.last_error = reason or ""
         self.next_attempt_at = None
+        self.last_operational_issue = ""
+        self.local_worker_locked_at = None
+        self.local_worker_locked_by = ""
         if commit:
-            self.save(update_fields=["status", "last_error", "next_attempt_at", "updated_at"])
+            self.save(
+                update_fields=[
+                    "status",
+                    "last_error",
+                    "next_attempt_at",
+                    "last_operational_issue",
+                    "local_worker_locked_at",
+                    "local_worker_locked_by",
+                    "updated_at",
+                ]
+            )

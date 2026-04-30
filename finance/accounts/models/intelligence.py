@@ -261,6 +261,10 @@ class AccountTypeDistribution(models.Model):
 
 
 class AccountIntelligenceDispatchState(models.Model):
+    class DispatchBackend(models.TextChoices):
+        CLOUD_TASKS = "cloud_tasks", "Cloud Tasks"
+        LOCAL_WORKER = "local_worker", "Local worker"
+
     owner = models.OneToOneField(
         User,
         on_delete=models.CASCADE,
@@ -279,12 +283,26 @@ class AccountIntelligenceDispatchState(models.Model):
     last_task_name = models.CharField(max_length=255, blank=True, default="")
     last_result = models.CharField(max_length=64, blank=True, default="")
     last_error_message = models.TextField(blank=True, default="")
+    dispatch_backend = models.CharField(max_length=32, choices=DispatchBackend.choices, blank=True, default="")
+    dispatch_attempt_count = models.PositiveIntegerField(default=0)
+    last_dispatch_attempt_at = models.DateTimeField(null=True, blank=True)
+    last_dispatch_error = models.TextField(blank=True, default="")
+    local_worker_locked_at = models.DateTimeField(null=True, blank=True)
+    local_worker_locked_by = models.CharField(max_length=64, blank=True, default="")
+    stale_recovery_count = models.PositiveIntegerField(default=0)
+    last_recovered_at = models.DateTimeField(null=True, blank=True)
+    last_operational_issue = models.CharField(max_length=64, blank=True, default="")
+    next_attempt_at = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         verbose_name = "Account intelligence dispatch state"
         verbose_name_plural = "Account intelligence dispatch states"
-        indexes = [models.Index(fields=["pending_request", "last_requested_at"])]
+        indexes = [
+            models.Index(fields=["pending_request", "last_requested_at"]),
+            models.Index(fields=["dispatch_backend", "pending_request"], name="accintel_dispatch_backend_idx"),
+            models.Index(fields=["local_worker_locked_at"], name="accintel_local_worker_lock_idx"),
+        ]
 
     def __str__(self) -> str:
         return f"IntelligenceDispatchState(owner={self.owner_id}, pending={self.pending_request})"

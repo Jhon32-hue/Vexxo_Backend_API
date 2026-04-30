@@ -26,12 +26,10 @@ from alerts.alerts.models.alerts import Alert
 from finance.accounts.models import Account, AccountOwnerMetrics, AccountPortfolioSnapshot, AccountRiskSnapshot
 from finance.accounts.models.account import AccountStatus
 from finance.accounts.services.intelligence_dispatch_service import (
-    account_intelligence_local_fallback_allowed,
-    enqueue_account_intelligence_refresh_task,
+    dispatch_account_intelligence_refresh,
     get_account_intelligence_projection_status,
 )
 from finance.accounts.services.intelligence_health_service import get_account_intelligence_operational_health
-from finance.accounts.services.intelligence_service import refresh_account_intelligence_for_user
 from finance.debts.models import Debt, DebtInstallment
 from finance.transactions.Models.transacciones import Transaction
 from identity.users.services.product_access_service import capabilities_for_user, effective_plan_for_user, get_user_usage_snapshot
@@ -52,26 +50,22 @@ class UserDashboardView(views.APIView):
         if owner_metrics and portfolio and risk:
             return owner_metrics, portfolio, risk
 
-        response = enqueue_account_intelligence_refresh_task(
+        response = dispatch_account_intelligence_refresh(
             owner_id=user.pk,
             source="identity.users.dashboard.ensure_snapshots",
             task_name_suffix=f"dashboard-{user.pk}",
         )
-        if not account_intelligence_local_fallback_allowed():
-            if response is None and (owner_metrics is None or portfolio is None or risk is None):
-                logger.warning(
-                    "[identity.dashboard] Projection pending without async dispatch user_id=%s",
-                    user.pk,
-                )
+        if response.get("result") == "inline_processed":
+            owner_metrics = AccountOwnerMetrics.objects.filter(owner=user).first()
+            portfolio = AccountPortfolioSnapshot.objects.filter(owner=user).first()
+            risk = AccountRiskSnapshot.objects.filter(owner=user).first()
             return owner_metrics, portfolio, risk
-        result = refresh_account_intelligence_for_user(user)
-        if result is None:
-            return None, None, None
-        return (
-            result["owner_metrics"],
-            result["portfolio_snapshot"],
-            result["risk_snapshot"],
-        )
+        if response.get("result") == "pipeline_unavailable" and (owner_metrics is None or portfolio is None or risk is None):
+            logger.warning(
+                "[identity.dashboard] Projection pending without async dispatch user_id=%s",
+                user.pk,
+            )
+        return owner_metrics, portfolio, risk
 
     def get(self, request):
         user = request.user

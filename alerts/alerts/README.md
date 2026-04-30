@@ -52,13 +52,46 @@ classDiagram
     AlertDomainEventOutbox --> Alert : publishes_events_for
 ```
 
+```mermaid
+flowchart LR
+    subgraph Local
+        API1[runserver]
+        DB1[(Postgres local)]
+        OUT1[alerts_publish_outbox --loop]
+        AI1[alerts_run_ai_worker --loop]
+        API1 --> DB1
+        API1 --> OUT1
+        API1 --> AI1
+        OUT1 --> DB1
+        AI1 --> DB1
+    end
+
+    subgraph Cloud
+        API2[Cloud Run API]
+        DB2[(Cloud SQL)]
+        TASKS[Cloud Tasks]
+        WRK[Cloud Run AI worker]
+        API2 --> DB2
+        API2 --> TASKS
+        TASKS --> WRK
+        WRK --> DB2
+    end
+```
+
+Lectura:
+
+- `Alert` sigue siendo el agregado visible
+- `AlertAiDispatchState` es la fuente de verdad operativa del enrichment async
+- local y cloud cambian de transporte, no de semantica del lifecycle
+
 ## Flujo actual
 
 ### Creacion
 
 1. `alerts.alerts.services.create_alert()` persiste la alerta.
 2. Encola `alerts.created.v1` en outbox.
-3. En local puede autopublicarse after-commit; en cloud lo publica un worker.
+3. En local puede autopublicarse after-commit solo si se habilita
+   explicitamente; el camino recomendado es worker de outbox separado.
 4. Un listener despacha el enriquecimiento IA mediante
    `alerts.alerts.dispatch_service`.
 
@@ -67,9 +100,41 @@ classDiagram
 `dispatch_service` intenta:
 
 - Cloud Tasks hacia `/api/internal/alerts/ai-worker/` si la infraestructura esta lista
-- fallback local controlado solo en entornos permitidos
+- worker local durable solo en entornos permitidos
 
-El endpoint interno ejecuta `alerts.alerts.ai_services.enrich_alert_with_ai()`.
+```mermaid
+sequenceDiagram
+    participant EV as alerts.created.v1
+    participant DISP as dispatch_service
+    participant STATE as AlertAiDispatchState
+    participant EXEC as Cloud Tasks o alerts_run_ai_worker
+    participant AI as ai_worker_service
+    participant LLM as ai_services
+
+    EV->>DISP: dispatch_alert_ai_enrichment()
+    DISP->>STATE: request queued + dispatch metrics
+    DISP->>EXEC: enqueue o local_worker_pending
+    EXEC->>AI: process_alert_ai_request()
+    AI->>STATE: processing / lock
+    AI->>LLM: enrich_alert_with_ai()
+    LLM->>STATE: applied o failed
+```
+
+La solicitud queda persistida en `AlertAiDispatchState` y el endpoint interno o
+el worker local ejecutan `alerts.alerts.ai_worker_service.process_alert_ai_request()`.
+
+La politica de entrega ya no deberia quedar modelada dentro del contexto. La
+frontera comun es `tasks.async_backends` con `job_type=alerts.ai`.
+
+Estados operativos relevantes:
+
+- `queued`
+- `processing`
+- `dispatch_failed`
+- `processing_stale`
+- `applied`
+- `failed`
+- `dead_letter`
 
 La ruta legacy:
 
@@ -124,8 +189,8 @@ El principio es:
 
 - una alerta puede existir sin IA; la IA es enriquecimiento, no precondicion
 - el listener no debe bloquear el request original del dominio fuente
-- si la infraestructura async no esta lista, solo se permite fallback local
-  controlado
+- si la infraestructura async cloud no esta lista, solo se permite worker local
+  durable en entornos permitidos
 - el futuro `llm_gateway` debe respetar la misma frontera publica del modulo
 - `alerts` no debe volver a publicar eventos criticos directo desde el request
   path; usa outbox como los demas bounded contexts fuertes
@@ -139,10 +204,23 @@ Eso permite:
 - retry
 - dead-letter
 - worker dedicado
-- autopublish local sin romper la topologia cloud
+- worker local durable para IA sin caer en fallback inline del request
 
 Todavia no implica que todo `alerts.*` tenga ya la misma riqueza operativa de
 `accounts`.
+
+## Comandos operativos locales
+
+- `manage.py alerts_publish_outbox --loop`
+  publica el outbox de `alerts` en modo durable local.
+- `manage.py alerts_run_ai_worker --loop`
+  consume `AlertAiDispatchState` desde BD, aplica enriquecimiento y recupera
+  solicitudes stale.
+
+Wrappers unificados equivalentes:
+
+- `manage.py publish_outbox alerts`
+- `manage.py run_worker alerts.ai`
 
 ## Esqueleto/futuro
 

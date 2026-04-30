@@ -791,10 +791,10 @@ Variables nuevas en [.env](/c:/Users/Alamb/Documents/Vexxo_Backend_API/.env):
 - `IDENTITY_STEP_UP_ON_UNKNOWN_DEVICE`
 - `IDENTITY_STEP_UP_ON_SUSPICIOUS_DEVICE`
 - `IDENTITY_STEP_UP_REQUIRED_PATHS`
-- `IDENTITY_PROJECTIONS_LOCAL_FALLBACK_ENABLED`
 - `IDENTITY_CONSENT_TEARDOWN_HANDLER_URL`
 - `IDENTITY_CONSENTS_INTERNAL_TOKEN`
-- `IDENTITY_CONSENT_LOCAL_FALLBACK_ENABLED`
+- `ASYNC_EXECUTION_MODE_IDENTITY_CONSENTS`
+- `ASYNC_EXECUTION_FALLBACK_MODE_IDENTITY_CONSENTS`
 
 Que debes rellenar para activar social login real:
 - `GOOGLE_OAUTH_ENABLED=True`
@@ -973,7 +973,8 @@ Decision aplicada:
 Variables relevantes:
 - `ACCOUNTS_INTELLIGENCE_CLOUD_TASKS_ENABLED`
 - `ACCOUNTS_INTELLIGENCE_HANDLER_URL`
-- `ACCOUNTS_INTELLIGENCE_LOCAL_FALLBACK_ENABLED`
+- `ASYNC_EXECUTION_MODE_ACCOUNTS_INTELLIGENCE`
+- `ASYNC_EXECUTION_FALLBACK_MODE_ACCOUNTS_INTELLIGENCE`
 
 Comportamiento esperado:
 - `POST /api/finance/accounts/.../refresh/` puede responder `202 Accepted`
@@ -999,17 +1000,39 @@ Archivos:
 Correccion aplicada:
 - `identity.consents` ya no llama directamente al stub como dependencia primaria
 - ahora existe `dispatch_consent_revocation_teardown(...)`
-- primero intenta enviar el teardown a un endpoint interno configurable
-- solo usa fallback local si la configuracion lo permite
+- `tasks.async_backends` decide `cloud_tasks | sync_inline_for_tests | disabled`
+- el handler URL interno queda como destino del backend cloud, no como decision
+  embebida en el bounded context
+- local no usa `run_worker identity.consents`; el camino oficial de desarrollo y
+  prueba es `ASYNC_EXECUTION_MODE_IDENTITY_CONSENTS=sync_inline_for_tests`
 
 Separacion de secretos:
 - `ACCOUNTS_SYNC_INTERNAL_TOKEN` sigue protegiendo sync de cuentas
 - `IDENTITY_CONSENTS_INTERNAL_TOKEN` protege teardown de consentimientos
 
 Variables nuevas:
+- `IDENTITY_CONSENT_CLOUD_TASKS_ENABLED`
+- `IDENTITY_CONSENT_CLOUD_TASKS_QUEUE`
+- `IDENTITY_CONSENT_CLOUD_TASKS_LOCATION`
 - `IDENTITY_CONSENT_TEARDOWN_HANDLER_URL`
 - `IDENTITY_CONSENTS_INTERNAL_TOKEN`
-- `IDENTITY_CONSENT_LOCAL_FALLBACK_ENABLED`
+- `ASYNC_EXECUTION_MODE_IDENTITY_CONSENTS`
+- `ASYNC_EXECUTION_FALLBACK_MODE_IDENTITY_CONSENTS`
+
+Lectura operativa:
+- si el modo efectivo es `cloud_tasks`, el teardown sale del request y lo
+  ejecuta un handler interno o worker cloud
+- si el modo efectivo es `sync_inline_for_tests`, el teardown corre inline solo
+  como via controlada de local/dev/tests
+- hoy no existe un worker durable separado para `identity.consents` porque el
+  caso no lo exige todavia
+
+Resumen operativo vigente:
+- local simple o tests: `ASYNC_EXECUTION_MODE_IDENTITY_CONSENTS=sync_inline_for_tests`
+- cloud: `ASYNC_EXECUTION_MODE_IDENTITY_CONSENTS=cloud_tasks` con handler
+  interno protegido
+- hoy no debes esperar un comando `manage.py run_worker identity.consents`
+  porque ese job no se opera como cola durable local
 
 Ejemplo de payload interno:
 ```json

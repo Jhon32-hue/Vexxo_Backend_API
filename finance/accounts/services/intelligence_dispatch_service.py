@@ -18,23 +18,38 @@ Analisis detallado:
 
 from __future__ import annotations
 
-import json
 import logging
-from datetime import datetime, timedelta, timezone as dt_timezone
 
 from django.conf import settings
-from django.db import transaction
+from django.db import models, transaction
 from django.utils import timezone
 
+from tasks.async_backends import (
+    AsyncExecutionMode,
+    CloudTaskDispatchConfig,
+    cloud_tasks_ready,
+    dispatch_job,
+    get_async_execution_fallback_mode,
+    get_async_execution_mode,
+)
+
 logger = logging.getLogger(__name__)
+JOB_TYPE = "accounts.intelligence"
 
 
 def intelligence_cloud_tasks_ready() -> bool:
-    return bool(
-        getattr(settings, "ACCOUNTS_INTELLIGENCE_CLOUD_TASKS_ENABLED", False)
-        and getattr(settings, "GCP_PROJECT_ID", "")
-        and getattr(settings, "ACCOUNTS_INTELLIGENCE_CLOUD_TASKS_QUEUE", "")
-        and getattr(settings, "ACCOUNTS_INTELLIGENCE_HANDLER_URL", "")
+    return cloud_tasks_ready(_cloud_task_config(event=None, owner_id="", task_name_suffix=None, source=""))
+
+def account_intelligence_execution_mode() -> str:
+    return get_async_execution_mode(
+        JOB_TYPE,
+        cloud_tasks_enabled=intelligence_cloud_tasks_ready(),
+    )
+
+
+def account_intelligence_fallback_mode() -> str:
+    return get_async_execution_fallback_mode(
+        JOB_TYPE,
     )
 
 
@@ -124,6 +139,44 @@ def mark_account_intelligence_refresh_enqueued(*, owner_id: str | int | None, ta
         last_task_name=(task_name or "")[:255],
         last_result=(result or "enqueued")[:64],
         last_error_message="",
+        last_operational_issue="",
+        next_attempt_at=None,
+    )
+
+
+def _update_dispatch_metrics(*, owner_id: str | int | None, backend: str = "", result: str = "", error_message: str = "") -> None:
+    if not owner_id:
+        return
+
+    from finance.accounts.models import AccountIntelligenceDispatchState
+
+    AccountIntelligenceDispatchState.objects.filter(owner_id=owner_id).update(
+        dispatch_backend=(backend or "")[:32],
+        dispatch_attempt_count=models.F("dispatch_attempt_count") + 1,
+        last_dispatch_attempt_at=timezone.now(),
+        last_dispatch_error=str(error_message or "")[:2000],
+        last_result=(result or "")[:64],
+    )
+
+
+def _mark_local_worker_pending(*, owner_id: str | int | None) -> None:
+    from finance.accounts.models import AccountIntelligenceDispatchState
+
+    if not owner_id:
+        return
+    _update_dispatch_metrics(
+        owner_id=owner_id,
+        backend=AccountIntelligenceDispatchState.DispatchBackend.LOCAL_WORKER,
+        result="local_worker_pending",
+    )
+    AccountIntelligenceDispatchState.objects.filter(owner_id=owner_id).update(
+        pending_request=True,
+        last_enqueued_at=timezone.now(),
+        last_task_name="",
+        last_result="local_worker_pending",
+        last_error_message="",
+        last_operational_issue="",
+        next_attempt_at=None,
     )
 
 
@@ -147,6 +200,10 @@ def mark_account_intelligence_refresh_started(*, owner_id: str | int | None, tas
             state.last_task_name = str(task_name)[:255]
         state.last_result = (result or "started")[:64]
         state.last_error_message = ""
+        state.last_operational_issue = ""
+        state.next_attempt_at = None
+        state.local_worker_locked_at = None
+        state.local_worker_locked_by = ""
         state.save()
 
     return {"applied": True, "result": state.last_result}
@@ -162,6 +219,10 @@ def mark_account_intelligence_refresh_completed(*, owner_id: str | int | None, r
         last_completed_at=timezone.now(),
         last_result=(result or "completed")[:64],
         last_error_message="",
+        last_operational_issue="",
+        next_attempt_at=None,
+        local_worker_locked_at=None,
+        local_worker_locked_by="",
     )
 
 
@@ -173,6 +234,7 @@ def mark_account_intelligence_refresh_blocked(*, owner_id: str | int | None, res
     AccountIntelligenceDispatchState.objects.filter(owner_id=owner_id).update(
         pending_request=True,
         last_result=(result or "blocked")[:64],
+        last_operational_issue="pipeline_unavailable",
     )
 
 
@@ -202,6 +264,9 @@ def mark_account_intelligence_refresh_failed(
             state.last_task_name = str(task_name)[:255]
         state.last_result = (result or "failed")[:64]
         state.last_error_message = str(error_message or "")[:2000]
+        state.last_operational_issue = "worker_failed"
+        state.local_worker_locked_at = None
+        state.local_worker_locked_by = ""
         state.save()
 
     return {"applied": True, "result": state.last_result}
@@ -264,6 +329,10 @@ def mark_account_intelligence_refresh_completed_for_task(
             state.last_task_name = str(task_name)[:255]
         state.last_result = (result or "completed")[:64]
         state.last_error_message = ""
+        state.last_operational_issue = ""
+        state.next_attempt_at = None
+        state.local_worker_locked_at = None
+        state.local_worker_locked_by = ""
         state.save()
 
     return {"applied": True, "result": state.last_result}
@@ -286,27 +355,47 @@ def dispatch_account_intelligence_refresh(
     if not request["should_dispatch"]:
         return request
 
-    response = enqueue_account_intelligence_refresh_task(
-        event=event,
-        owner_id=owner_id,
-        task_name_suffix=task_name_suffix,
-        source=source,
+    dispatch_result = dispatch_job(
+        job_type=JOB_TYPE,
+        cloud_task_config=_cloud_task_config(
+            event=event,
+            owner_id=owner_id,
+            task_name_suffix=task_name_suffix,
+            source=source,
+        ),
+        inline_handler=lambda: _process_inline_for_tests(
+            owner_id=owner_id,
+            event=event,
+            source=source,
+            task_name_suffix=task_name_suffix,
+        ),
     )
-    if response is not None:
+    result = str(dispatch_result.get("result") or "")
+
+    if result in {"enqueued", "already_enqueued"}:
+        _update_dispatch_metrics(owner_id=owner_id, backend=AsyncExecutionMode.CLOUD_TASKS, result=result)
         mark_account_intelligence_refresh_enqueued(
             owner_id=owner_id,
-            task_name=getattr(response, "name", ""),
-            result="enqueued",
+            task_name=str(dispatch_result.get("task_name", "") or ""),
+            result=result,
         )
-        return {**request, "result": "enqueued", "task_name": getattr(response, "name", "")}
+        return {**request, "result": result, "task_name": str(dispatch_result.get("task_name", "") or "")}
 
-    if account_intelligence_local_fallback_allowed():
-        from finance.accounts.services.intelligence_service import refresh_account_intelligence_for_user
+    if result == "local_worker_pending":
+        _mark_local_worker_pending(owner_id=owner_id)
+        return {**request, "result": "local_worker_pending"}
 
-        refresh_account_intelligence_for_user(owner_id)
-        mark_account_intelligence_refresh_completed(owner_id=owner_id, result="local_fallback")
-        return {**request, "result": "local_fallback"}
+    if result == "inline_processed":
+        _update_dispatch_metrics(
+            owner_id=owner_id,
+            backend=AsyncExecutionMode.SYNC_INLINE_FOR_TESTS,
+            result=result,
+        )
+        return {**request, **dispatch_result}
 
+    error_message = str(dispatch_result.get("fallback_reason") or dispatch_result.get("error") or result or "pipeline_unavailable")
+    backend = str(dispatch_result.get("dispatch_backend") or "")
+    _update_dispatch_metrics(owner_id=owner_id, backend=backend, result="pipeline_unavailable", error_message=error_message)
     mark_account_intelligence_refresh_blocked(owner_id=owner_id, result="pipeline_unavailable")
     return {**request, "result": "pipeline_unavailable"}
 
@@ -340,6 +429,8 @@ def get_account_intelligence_projection_status(*, owner) -> dict:
         "pending": bool(pending),
         "cloud_tasks_ready": bool(intelligence_cloud_tasks_ready()),
         "local_fallback_allowed": bool(account_intelligence_local_fallback_allowed()),
+        "async_execution_mode": account_intelligence_execution_mode(),
+        "async_execution_fallback_mode": account_intelligence_fallback_mode(),
         "latest_generated_at": latest_generated_at.isoformat() if latest_generated_at else None,
         "age_seconds": age_seconds,
         "portfolio_present": bool(portfolio is not None),
@@ -354,14 +445,23 @@ def get_account_intelligence_projection_status(*, owner) -> dict:
         "dispatch_last_task_name": str(getattr(dispatch_state, "last_task_name", "") or ""),
         "dispatch_last_result": str(getattr(dispatch_state, "last_result", "") or ""),
         "dispatch_last_error_message": str(getattr(dispatch_state, "last_error_message", "") or ""),
+        "dispatch_backend": str(getattr(dispatch_state, "dispatch_backend", "") or ""),
+        "dispatch_attempt_count": int(getattr(dispatch_state, "dispatch_attempt_count", 0) or 0),
+        "dispatch_last_attempt_at": dispatch_state.last_dispatch_attempt_at.isoformat() if getattr(dispatch_state, "last_dispatch_attempt_at", None) else None,
+        "dispatch_last_attempt_error": str(getattr(dispatch_state, "last_dispatch_error", "") or ""),
+        "dispatch_local_worker_locked_at": dispatch_state.local_worker_locked_at.isoformat() if getattr(dispatch_state, "local_worker_locked_at", None) else None,
+        "dispatch_local_worker_locked_by": str(getattr(dispatch_state, "local_worker_locked_by", "") or ""),
+        "dispatch_stale_recovery_count": int(getattr(dispatch_state, "stale_recovery_count", 0) or 0),
+        "dispatch_last_recovered_at": dispatch_state.last_recovered_at.isoformat() if getattr(dispatch_state, "last_recovered_at", None) else None,
+        "dispatch_last_operational_issue": str(getattr(dispatch_state, "last_operational_issue", "") or ""),
+        "dispatch_next_attempt_at": dispatch_state.next_attempt_at.isoformat() if getattr(dispatch_state, "next_attempt_at", None) else None,
     }
 
 
 def account_intelligence_local_fallback_allowed() -> bool:
-    env_value = str(getattr(settings, "ENV", "local")).strip().lower()
-    if env_value in {"prod", "production", "cloud"} and not bool(getattr(settings, "DEBUG", False)):
-        return False
-    return bool(getattr(settings, "ACCOUNTS_INTELLIGENCE_LOCAL_FALLBACK_ENABLED", True))
+    mode = account_intelligence_execution_mode()
+    fallback = account_intelligence_fallback_mode()
+    return mode == AsyncExecutionMode.LOCAL_WORKER or fallback == AsyncExecutionMode.LOCAL_WORKER
 
 
 def _event_as_dict(event) -> dict:
@@ -377,90 +477,68 @@ def _event_as_dict(event) -> dict:
     }
 
 
-def _scheduled_time() -> datetime:
-    return datetime.now(dt_timezone.utc) + timedelta(
-        seconds=max(0, int(getattr(settings, "ACCOUNTS_INTELLIGENCE_TASK_BUFFER_SECONDS", 10)))
-    )
-
-
-def enqueue_account_intelligence_refresh_task(*, event=None, owner_id: str | int | None, task_name_suffix: str | None = None, source: str = ""):
-    if not owner_id:
-        logger.info("[accounts.intelligence] owner_id vacio; no se agenda tarea.")
-        return None
-
-    if not intelligence_cloud_tasks_ready():
-        logger.info("[accounts.intelligence] Cloud Tasks no esta habilitado o le falta configuracion.")
-        return None
-
-    try:
-        from google.api_core.exceptions import AlreadyExists
-        from google.cloud import tasks_v2
-        from google.protobuf import timestamp_pb2
-    except Exception:
-        logger.warning(
-            "[accounts.intelligence] Cloud Tasks configurado, pero falta la dependencia "
-            "`google-cloud-tasks`."
-        )
-        return None
-
-    client = tasks_v2.CloudTasksClient()
-    parent = client.queue_path(
-        settings.GCP_PROJECT_ID,
-        settings.ACCOUNTS_INTELLIGENCE_CLOUD_TASKS_LOCATION,
-        settings.ACCOUNTS_INTELLIGENCE_CLOUD_TASKS_QUEUE,
-    )
-
-    body = json.dumps(
-        {
+def _cloud_task_config(*, event=None, owner_id: str | int | None, task_name_suffix: str | None = None, source: str = "") -> CloudTaskDispatchConfig:
+    safe_suffix = str(task_name_suffix or owner_id or "default").replace("/", "-").replace(":", "-")
+    return CloudTaskDispatchConfig(
+        job_type=JOB_TYPE,
+        enabled=bool(getattr(settings, "ACCOUNTS_INTELLIGENCE_CLOUD_TASKS_ENABLED", False)),
+        queue=str(getattr(settings, "ACCOUNTS_INTELLIGENCE_CLOUD_TASKS_QUEUE", "") or ""),
+        location=str(getattr(settings, "ACCOUNTS_INTELLIGENCE_CLOUD_TASKS_LOCATION", "") or ""),
+        handler_url=str(getattr(settings, "ACCOUNTS_INTELLIGENCE_HANDLER_URL", "") or ""),
+        payload={
             "event": _event_as_dict(event),
-            "owner_id": str(owner_id),
+            "owner_id": str(owner_id or ""),
             "source": source or "accounts.intelligence_dispatch",
         },
-        default=str,
-    ).encode("utf-8")
-
-    http_request = {
-        "http_method": tasks_v2.HttpMethod.POST,
-        "url": settings.ACCOUNTS_INTELLIGENCE_HANDLER_URL,
-        "headers": {
-            "Content-Type": "application/json",
+        task_name=f"accounts-intelligence-{safe_suffix}" if owner_id else "",
+        internal_token=str(getattr(settings, "ACCOUNTS_INTELLIGENCE_INTERNAL_TOKEN", "") or ""),
+        service_account_email=str(getattr(settings, "ACCOUNTS_INTELLIGENCE_TASK_SERVICE_ACCOUNT_EMAIL", "") or ""),
+        audience=str(getattr(settings, "ACCOUNTS_INTELLIGENCE_TASK_AUDIENCE", "") or ""),
+        buffer_seconds=max(0, int(getattr(settings, "ACCOUNTS_INTELLIGENCE_TASK_BUFFER_SECONDS", 10) or 10)),
+        headers={
             "X-Vexxo-Event-Type": getattr(event, "type", "accounts.intelligence.refresh.requested.v1"),
             "X-Vexxo-Context": getattr(getattr(event, "context", None), "value", "accounts"),
         },
-        "body": body,
-    }
-
-    if getattr(settings, "ACCOUNTS_INTELLIGENCE_INTERNAL_TOKEN", ""):
-        http_request["headers"]["X-Vexxo-Internal-Token"] = settings.ACCOUNTS_INTELLIGENCE_INTERNAL_TOKEN
-
-    if settings.ACCOUNTS_INTELLIGENCE_TASK_SERVICE_ACCOUNT_EMAIL:
-        http_request["oidc_token"] = {
-            "service_account_email": settings.ACCOUNTS_INTELLIGENCE_TASK_SERVICE_ACCOUNT_EMAIL,
-            "audience": settings.ACCOUNTS_INTELLIGENCE_TASK_AUDIENCE or settings.ACCOUNTS_INTELLIGENCE_HANDLER_URL,
-        }
-
-    task = {"http_request": http_request}
-
-    ts = timestamp_pb2.Timestamp()
-    ts.FromDatetime(_scheduled_time())
-    task["schedule_time"] = ts
-
-    if task_name_suffix:
-        safe_suffix = str(task_name_suffix).replace("/", "-").replace(":", "-")
-        task["name"] = f"{parent}/tasks/accounts-intelligence-{safe_suffix}"
-
-    try:
-        response = client.create_task(request={"parent": parent, "task": task})
-    except AlreadyExists:
-        logger.info(
-            "[accounts.intelligence] La Cloud Task ya existia para owner_id=%s; se evita duplicado.",
-            owner_id,
-        )
-        return None
-
-    logger.info(
-        "[accounts.intelligence] Cloud Task creada para owner_id=%s task=%s",
-        owner_id,
-        getattr(response, "name", ""),
     )
-    return response
+
+
+def _process_inline_for_tests(*, owner_id: str | int | None, event=None, source: str = "", task_name_suffix: str | None = None) -> dict:
+    from django.contrib.auth import get_user_model
+
+    from finance.accounts.services.intelligence_service import refresh_account_intelligence_for_user
+
+    if not owner_id:
+        return {"result": "owner_missing"}
+
+    task_name = f"inline:{task_name_suffix or owner_id}"
+    mark_account_intelligence_refresh_started(
+        owner_id=owner_id,
+        task_name=task_name,
+        result="inline_started",
+    )
+    user = get_user_model().objects.filter(pk=owner_id).first()
+    if user is None:
+        mark_account_intelligence_refresh_failed(
+            owner_id=owner_id,
+            task_name=task_name,
+            result="inline_failed",
+            error_message="owner_missing",
+        )
+        return {"result": "owner_missing"}
+    try:
+        refresh_result = refresh_account_intelligence_for_user(user, event=event, source=source or "accounts.intelligence.inline")
+        mark_account_intelligence_refresh_completed_for_task(
+            owner_id=owner_id,
+            task_name=task_name,
+            result="inline_completed",
+        )
+        return {"result": "processed", "refresh_result": refresh_result}
+    except Exception as exc:
+        logger.exception("[accounts.intelligence] inline handler failed owner_id=%s", owner_id)
+        mark_account_intelligence_refresh_failed(
+            owner_id=owner_id,
+            task_name=task_name,
+            result="inline_failed",
+            error_message=str(exc),
+        )
+        raise

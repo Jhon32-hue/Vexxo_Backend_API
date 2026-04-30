@@ -56,6 +56,7 @@ urlpatterns = [
     # NOTIFICATIONS / REALTIME
     # -------------------
     path("notifications/deliveries/", include("notifications.deliveries.urls")),
+    path("notifications/preferences/", include("notifications.preferences.urls")),
     path("realtime/consumers/", include("realtime.consumers.urls")),
 
     # -------------------

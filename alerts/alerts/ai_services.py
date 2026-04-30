@@ -193,7 +193,12 @@ def _call_llm_provider(payload: Dict[str, Any]) -> Dict[str, Any]:
 # ========= API PÚBLICA =========
 
 
-def enrich_alert_with_ai(alert: Alert, correlation_id: Optional[str] = None) -> None:
+def enrich_alert_with_ai(
+    alert: Alert,
+    correlation_id: Optional[str] = None,
+    *,
+    raise_on_error: bool = False,
+) -> dict:
     """
     Punto único para integrar LLMs en el futuro.
 
@@ -210,7 +215,7 @@ def enrich_alert_with_ai(alert: Alert, correlation_id: Optional[str] = None) -> 
             alert.pk,
             correlation_id,
         )
-        return
+        return {"result": "disabled"}
 
     if not allow_ai_request(
         alert.owner,
@@ -222,7 +227,7 @@ def enrich_alert_with_ai(alert: Alert, correlation_id: Optional[str] = None) -> 
             alert.owner_id,
             alert.pk,
         )
-        return
+        return {"result": "rate_limited"}
 
     try:
         payload = _build_alert_ai_payload(alert, correlation_id=correlation_id)
@@ -296,6 +301,12 @@ def enrich_alert_with_ai(alert: Alert, correlation_id: Optional[str] = None) -> 
                 "projection_event_key": f"alert-ai:{alert.pk}",
             },
         )
+        return {
+            "result": "applied",
+            "alert_id": str(alert.pk),
+            "risk_score": alert.risk_score,
+            "ai_tags": alert.ai_tags,
+        }
 
         # ================== EJEMPLOS DE USO FUTURO (CON ESTE EVENTO) ==================
         #
@@ -342,3 +353,6 @@ def enrich_alert_with_ai(alert: Alert, correlation_id: Optional[str] = None) -> 
             exc_info=True,
         )
         # En caso de error NO publicamos ALERT_AI_ENRICHED
+        if raise_on_error:
+            raise
+        return {"result": "failed", "error": str(e)}

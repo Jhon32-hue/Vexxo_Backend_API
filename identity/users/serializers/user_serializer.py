@@ -118,6 +118,7 @@ class UserRegisterSerializer(serializers.ModelSerializer):
     preferred_currency = serializers.CharField(required=False, default="COP")
     timezone_name = serializers.CharField(required=False, default="America/Bogota")
     locale = serializers.CharField(required=False, default="es_CO")
+    marketing_opt_in = serializers.BooleanField(required=False, default=False)
 
     class Meta:
         model = User
@@ -130,6 +131,7 @@ class UserRegisterSerializer(serializers.ModelSerializer):
             "preferred_currency",
             "timezone_name",
             "locale",
+            "marketing_opt_in",
             "phone_number",
         ]
         read_only_fields = ["id"]
@@ -157,6 +159,7 @@ class UserRegisterSerializer(serializers.ModelSerializer):
             timezone_name=validated_data.get("timezone_name", "America/Bogota"),
             locale=validated_data.get("locale", "es_CO"),
             phone_number=validated_data.get("phone_number", ""),
+            marketing_opt_in=bool(validated_data.get("marketing_opt_in", False)),
             plan=PlanType.FREE,
             is_active=True,
             status=UserStatus.ACTIVE,

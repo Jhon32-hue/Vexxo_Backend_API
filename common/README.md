@@ -135,12 +135,20 @@ Topologia esperada:
 
 Modo local actual:
 
-- si `DOMAIN_EVENTS_LOCAL_AUTOPUBLISH_ENABLED=true`, los bounded contexts con
-  outbox pueden autopublicar sus eventos despues del commit
-- esto permite que listeners locales, notificaciones, realtime y proyecciones
-  reaccionen en desarrollo sin correr workers aparte
-- la salida opcional a Pub/Sub sigue intacta y no se elimina la configuracion
-  cloud; simplemente no se usa si `DOMAIN_EVENTS_PUBSUB_ENABLED=false`
+- `DOMAIN_EVENTS_LOCAL_AUTOPUBLISH_ENABLED` ya no debe asumirse `true` por
+  defecto
+- el modo recomendado de desarrollo es correr workers separados por contexto,
+  igual que en cloud, y dejar el cambio de semantica solo en el transporte
+- si se fuerza `DOMAIN_EVENTS_LOCAL_AUTOPUBLISH_ENABLED=true`, los bounded
+  contexts con outbox pueden autopublicar eventos despues del commit, pero eso
+  es una via rapida de desarrollo y no la referencia operativa principal
+
+La utilidad comun para ese autopublish es:
+
+- `tasks.outbox_autopublish.schedule_local_outbox_autopublish()`
+
+Con eso, `accounts`, `transactions`, `alerts` e `identity` dejan de repetir la
+misma receta after-commit por separado.
 
 Esto permite:
 

@@ -57,3 +57,31 @@ Incluso cuando ciertas implementaciones concretas aun no esten desarrolladas.
 Hoy el bloque tiene estructura util, pero buena parte de sus apps internas aun
 estan en scaffold. La ejecucion asincrona real del sistema sigue repartida en
 los bounded contexts que ya tienen workers propios o dispatch services.
+
+## Backend comun de ejecucion
+
+La capa comun que ya empieza a ordenar esa dispersion es:
+
+- `tasks.async_backends`
+  decide `cloud_tasks | local_worker | sync_inline_for_tests | disabled`
+- `tasks.outbox_autopublish`
+  concentra el autopublish local after-commit de outboxes
+- `manage.py run_worker`
+  wrapper unificado para workers locales por `job_type`
+- `manage.py publish_outbox`
+  wrapper unificado para publicadores de outbox
+
+Eso no reemplaza la logica operativa propia de cada contexto.
+La ordena bajo una sola topologia de entrega.
+
+## Convenciones actuales
+
+- `tasks.async_backends` ya gobierna `accounts.sync`, `accounts.intelligence`,
+  `alerts.ai`, `transactions.voice` e `identity.consents`
+- la politica oficial ya vive en `ASYNC_EXECUTION_MODE*` y
+  `ASYNC_EXECUTION_FALLBACK_MODE*`, no en banderas legacy por contexto
+- `manage.py publish_outbox` ya propaga `worker_id` de forma homogena a los
+  publicadores canonicos, incluyendo `payments`
+- `identity.consents` entra por la misma frontera comun, pero hoy no expone un
+  `run_worker` durable propio; su modo local oficial es
+  `ASYNC_EXECUTION_MODE_IDENTITY_CONSENTS=sync_inline_for_tests`

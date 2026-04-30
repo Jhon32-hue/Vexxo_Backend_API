@@ -533,6 +533,7 @@ de dominio para feedback interactivo.
 - los workers pueden reclamar filas con lock
 - se respetan intentos futuros
 - hay recuperacion de locks stale
+- tambien puede operarse desde el wrapper unificado `manage.py publish_outbox payments`
 
 Sigue pendiente igualar por completo la observabilidad de `accounts`.
 

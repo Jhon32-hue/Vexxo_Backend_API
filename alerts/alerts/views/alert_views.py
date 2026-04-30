@@ -4,7 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from alerts.alerts.ai_services import enrich_alert_with_ai
+from alerts.alerts.ai_worker_service import process_alert_ai_request
 from alerts.alerts.models.alerts import Alert, AlertStatus
 from alerts.alerts.serializers.alert_serializers import AlertaSerializer
 from common.internal_auth import assert_internal_token
@@ -112,14 +112,16 @@ class AlertAiWorkerView(views.APIView):
         if alert is None:
             return Response({"detail": "Alert no encontrada."}, status=status.HTTP_404_NOT_FOUND)
 
-        enrich_alert_with_ai(
-            alert,
-            correlation_id=request.data.get("correlation_id"),
+        result = process_alert_ai_request(
+            alert_id=alert.pk,
+            correlation_id=request.data.get("correlation_id") or "",
+            source="alerts.views.AlertAiWorkerView",
         )
         return Response(
             {
-                "detail": "Alert enriched.",
+                "detail": "Alert AI request processed.",
                 "alert_id": str(alert.pk),
+                "result": result,
             },
             status=status.HTTP_200_OK,
         )

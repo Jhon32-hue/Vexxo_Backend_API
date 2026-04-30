@@ -75,6 +75,8 @@ Si quieres seguir que pasa paso a paso cuando alguien usa el producto:
 
 - [Diagramas de secuencia de flujos criticos](#6-diagramas-de-secuencia-de-flujos-criticos)
 - [register](identity/users/README.md#secuencia-critica-register)
+- [password recovery code](identity/users/README.md#secuencia-critica-recovery-code-mobile)
+- [step-up embedded](identity/users/README.md#secuencia-critica-step-up-embebido)
 - [create account](finance/accounts/README.md#secuencia-critica-create-account)
 - [manual transaction](finance/transactions/README.md#secuencias-criticas)
 - [payment confirmed](payments/payment_intents/README.md#secuencia-critica-payment-confirmed)
@@ -1118,7 +1120,7 @@ sequenceDiagram
     participant APP as mobile app
     participant API as transactions API
     participant REQ as TransactionInferenceRequest
-    participant TASK as Cloud Tasks / local fallback
+    participant TASK as Cloud Tasks / local worker durable
     participant LLM as integrations_stub.llm / llm_gateway
     participant INTAKE as transaction_intake_service
     participant TX as Transaction
@@ -1142,11 +1144,13 @@ Lectura:
 - mobile crea una solicitud asincronica en `TransactionInferenceRequest`
 - el `POST` publico solo acepta referencia y metadatos del audio; no acepta
   filas inferidas desde cliente
-- el worker de IA vive detras de Cloud Tasks o fallback local controlado
+- el worker de IA vive detras de Cloud Tasks o worker local durable controlado
 - si Cloud Tasks responde `AlreadyExists`, se trata como exito idempotente y no
   dispara un segundo procesamiento
-- el fallback local se encola en background; no debe ejecutar inferencia pesada
-  dentro del request path
+- en local el fallback serio ya no usa threads efimeros del request; usa un
+  worker durable separado que consume `TransactionInferenceRequest` desde BD
+- existe recuperacion de solicitudes `queued` viejas y `processing` stale
+  mediante comandos periodicos de worker/sweeper
 - el runtime temporal esta en `integrations_stub.llm`; el servicio real futuro
   sera `llm_gateway`
 - una nota con uno o varios movimientos termina como batch de intake canonico
@@ -1158,6 +1162,8 @@ Lectura:
   fallida o `dead_letter` con opcion de retry
 - un retry explicito reinicia contador operativo y fechas de fallo antes de
   volver a encolar
+- `TransactionInferenceRequest` conserva metricas operativas de despacho,
+  locking local y recuperacion stale
 
 #### 7. Diagramas de despliegue e interaccion cloud
 
@@ -1584,8 +1590,8 @@ Resuelven como se entrega feedback sin mezclarlo con el core transaccional.
 
 - `notifications.deliveries`: inbox durable
 - `notifications.listeners`: transforma eventos del dominio en mensajes
-- `notifications.preferences` y `templates`: contexto reservado para control y
-  contenido de entrega
+- `notifications.preferences`: control activo de inbox, push, lifecycle email y newsletter
+- `notifications.templates`: contexto reservado para plantillas y renderizado
 - `realtime.consumers`: persiste `RealtimeSignal` para polling o gateways
   futuros
 
@@ -1938,22 +1944,94 @@ no que el request espere toda la cadena externa.
 
 ### Comportamiento local
 
-En desarrollo local, Vexxo puede habilitar:
+En desarrollo local, el camino recomendado ya no es asumir autopublish.
 
-- `DOMAIN_EVENTS_LOCAL_AUTOPUBLISH_ENABLED=true`
+Ahora:
 
-Con esa bandera:
-
-- el cambio sigue persistiendo primero en outbox
-- despues del commit, el backend autopublica el evento al bus local
-- listeners de `notifications`, `realtime`, `identity` o modulos internos
-  pueden reaccionar sin correr workers aparte
+- `DOMAIN_EVENTS_LOCAL_AUTOPUBLISH_ENABLED` debe considerarse `false` por
+  defecto
+- la referencia operativa local es correr el `runserver` mas workers separados
+  por bounded context
+- si se fuerza `DOMAIN_EVENTS_LOCAL_AUTOPUBLISH_ENABLED=true`, el backend puede
+  autopublicar eventos al bus local despues del commit, pero eso es una via de
+  conveniencia y no la topologia objetivo
 
 Esto no elimina ni reemplaza la topologia cloud:
 
 - Pub/Sub sigue siendo la salida externa opcional
 - Cloud Run workers y management commands siguen siendo el camino de produccion
-- local solo gana una via rapida para probar side effects end-to-end
+- local conserva una via rapida para pruebas puntuales, pero la paridad real se
+  busca con workers durables separados
+
+### Backend comun de ejecucion async
+
+La politica de entrega ya no deberia vivir dispersa en cada bounded context.
+La frontera comun es:
+
+- `tasks.async_backends`
+- `tasks.outbox_autopublish`
+
+```mermaid
+flowchart LR
+    REQ[API request]
+    DOM[Bounded context]
+    ST[Outbox / request state]
+    AB[tasks.async_backends]
+    LW[Local durable worker]
+    CT[Cloud Tasks]
+    IH[Internal worker handler]
+    RES[Canonical domain service]
+
+    REQ --> DOM --> ST --> AB
+    AB --> LW --> RES
+    AB --> CT --> IH --> RES
+```
+
+Lectura:
+
+- local y cloud comparten dominio, estados y endpoints internos
+- cambia el runtime del trabajo async, no la semantica
+- la decision `cloud_tasks | local_worker | sync_inline_for_tests | disabled`
+  sale del bounded context y vive en una sola capa
+- `accounts.sync`, `accounts.intelligence`, `alerts.ai` y
+  `transactions.voice` e `identity.consents` ya consumen esa misma frontera
+  comun
+
+```mermaid
+flowchart LR
+    subgraph Local
+        FE1[mobile/web]
+        API1[runserver]
+        DB1[(Postgres local)]
+        OUT1[management commands]
+        FE1 --> API1
+        API1 --> DB1
+        API1 --> OUT1
+        OUT1 --> DB1
+    end
+
+    subgraph Cloud
+        FE2[mobile/web]
+        API2[Cloud Run API]
+        DB2[(Cloud SQL)]
+        TASKS[Cloud Tasks]
+        BUS[Pub/Sub]
+        WRK[Cloud Run workers]
+        FE2 --> API2
+        API2 --> DB2
+        API2 --> TASKS
+        API2 --> BUS
+        TASKS --> WRK
+        BUS --> WRK
+        WRK --> DB2
+    end
+```
+
+Lectura:
+
+- local y cloud comparten el mismo dominio y los mismos estados persistidos
+- lo que cambia idealmente es el transporte y el runtime del trabajo async
+- local usa commands durables separados; cloud usa Cloud Tasks, Pub/Sub y workers
 
 ## Workers y trabajo fuera del request path
 
@@ -1975,6 +2053,46 @@ Que tipo de trabajo se mueve aqui:
 - reconciliacion
 - enriquecimiento con IA
 - snapshots y cierres periodicos
+
+Comandos locales ya formalizados:
+
+- `manage.py accounts_publish_outbox --loop`
+- `manage.py accounts_run_sync_worker --loop`
+- `manage.py accounts_run_intelligence_worker --loop`
+- `manage.py transactions_publish_outbox --loop`
+- `manage.py transactions_run_inference_worker --loop`
+- `manage.py alerts_publish_outbox --loop`
+- `manage.py alerts_run_ai_worker --loop`
+- `manage.py identity_publish_outbox --loop`
+
+Wrappers unificados nuevos:
+
+- `manage.py publish_outbox accounts|transactions|alerts|identity`
+- `manage.py run_worker accounts.sync`
+- `manage.py run_worker accounts.intelligence`
+- `manage.py run_worker alerts.ai`
+- `manage.py run_worker transactions.voice`
+
+Matriz operativa global actual:
+
+- `accounts.sync`: `run_worker accounts.sync` en local; `Cloud Tasks` o handler
+  interno en cloud
+- `accounts.intelligence`: `run_worker accounts.intelligence` en local;
+  `Cloud Tasks` o handler interno en cloud
+- `alerts.ai`: `run_worker alerts.ai` en local; `Cloud Tasks` o handler interno
+  en cloud
+- `transactions.voice`: `run_worker transactions.voice` en local; `Cloud Tasks`
+  o handler interno en cloud
+- `identity.consents`: sin `run_worker` propio en local; el camino oficial es
+  `ASYNC_EXECUTION_MODE_IDENTITY_CONSENTS=sync_inline_for_tests`, y en cloud
+  puede resolver por `Cloud Tasks` hacia el handler interno de teardown
+
+Excepcion deliberada:
+
+- `identity.consents` usa la misma frontera comun `tasks.async_backends`, pero
+  hoy no tiene `run_worker` propio
+- su camino local oficial es `ASYNC_EXECUTION_MODE_IDENTITY_CONSENTS=sync_inline_for_tests`
+- en cloud puede resolver por `Cloud Tasks` hacia el handler interno de teardown
 
 Que resuelve:
 

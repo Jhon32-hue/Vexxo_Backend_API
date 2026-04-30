@@ -23,7 +23,7 @@ from finance.accounts.services.user_integration_service import (
     refresh_user_accounts_projection,
 )
 from identity.consents.models import ConsentType
-from identity.consents.services import dispatch_consent_revocation_teardown
+from identity.consents.dispatch_service import dispatch_consent_revocation_teardown
 
 logger = logging.getLogger(__name__)
 

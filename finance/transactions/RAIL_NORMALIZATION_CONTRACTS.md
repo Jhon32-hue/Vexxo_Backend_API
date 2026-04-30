@@ -217,6 +217,9 @@ El cliente publico no envia este payload normalizado. El `POST` publico de voz
 solo envia referencia y metadatos del audio; `voice_inferred.normalized_payload`
 es un contrato interno entre el worker de IA y `finance.transactions`.
 
+En local, ese worker interno debe correr como proceso durable separado y tomar
+solicitudes desde BD; no como thread efimero del request web.
+
 ### Campos obligatorios
 
 ```json
@@ -283,6 +286,8 @@ es un contrato interno entre el worker de IA y `finance.transactions`.
   evitar duplicados por retry
 - el worker debe ignorar solicitudes fuera de `queued` para no reprocesar
   resultados tardios sobre estados terminales
+- la operacion debe exponer metricas de despacho y recuperacion stale separadas
+  de las fallas de negocio del modelo
 
 ### Donde termina
 

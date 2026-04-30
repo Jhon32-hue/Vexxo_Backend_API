@@ -4,6 +4,7 @@ from datetime import date
 from decimal import Decimal
 from unittest.mock import patch
 
+from django.core.management import call_command
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -36,6 +37,10 @@ from finance.transactions.transaction_intake_service import (
 )
 from finance.transactions.transaction_inference_service import create_voice_transaction_inference_request
 from finance.transactions.transaction_inference_dispatch_service import dispatch_transaction_inference
+from finance.transactions.transaction_inference_worker_service import (
+    recover_stale_processing_inference_requests,
+    run_local_worker_cycle,
+)
 from finance.transactions.transaction_message_parser_service import parse_message_transaction
 from finance.transactions.transaction_reconciliation_service import resolve_reconciliation_issue
 from integrations_stub.banks.transaction_bridge import (
@@ -1157,42 +1162,215 @@ class TransactionInferenceRequestApiTests(TestCase):
 
 
 class TransactionInferenceDispatchServiceTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="tx-inference-dispatch",
+            email="tx-inference-dispatch@example.com",
+            password="secret123",
+            plan="pro",
+        )
+        self.account = Account.objects.create(
+            owner=self.user,
+            name="Cuenta Dispatch Voz",
+            currency="COP",
+        )
+
+    def _request(self, **overrides):
+        data = {
+            "owner": self.user,
+            "requested_by": self.user,
+            "account": self.account,
+            "source": TransactionInferenceRequest.Source.VOICE,
+            "provider": "voice_ai",
+            "request_id": "req-dispatch-base-001",
+            "idempotency_key": "idem-dispatch-base-001",
+            "status": TransactionInferenceRequest.Status.QUEUED,
+            "audio_object_ref": "gs://vexxo-audio/voice-dispatch-base.m4a",
+        }
+        data.update(overrides)
+        return TransactionInferenceRequest.objects.create(**data)
+
     @patch("finance.transactions.transaction_inference_dispatch_service.enqueue_transaction_inference_task")
     def test_dispatch_treats_already_enqueued_as_success(self, enqueue_mock):
+        inference_request = self._request(
+            request_id="req-dispatch-001",
+            idempotency_key="idem-dispatch-001",
+        )
         enqueue_mock.return_value = {
             "result": "already_enqueued",
             "task_name": "projects/demo/locations/us-central1/queues/q/tasks/tx-inference-1",
+            "dispatch_backend": "cloud_tasks",
         }
 
         result = dispatch_transaction_inference(
-            inference_request_id="inference-1",
+            inference_request_id=inference_request.pk,
             request_id="req-dispatch-001",
             source="tests",
         )
 
         self.assertEqual(result["result"], "already_enqueued")
         self.assertIn("task_name", result)
+        inference_request.refresh_from_db()
+        self.assertEqual(inference_request.dispatch_backend, TransactionInferenceRequest.DispatchBackend.CLOUD_TASKS)
+        self.assertEqual(inference_request.last_dispatch_result, "already_enqueued")
 
     @override_settings(
         TRANSACTION_INFERENCE_CLOUD_TASKS_ENABLED=False,
-        TRANSACTION_INFERENCE_LOCAL_FALLBACK_ENABLED=True,
+        ASYNC_EXECUTION_MODE_TRANSACTIONS_VOICE="local_worker",
     )
-    @patch("finance.transactions.transaction_inference_dispatch_service._dispatch_local_fallback_async")
-    def test_dispatch_uses_background_local_fallback(self, local_fallback_mock):
-        local_fallback_mock.return_value = {
-            "result": "local_fallback_enqueued",
-            "mode": "background_thread",
-            "inference_request_id": "inference-2",
-        }
+    def test_dispatch_uses_durable_local_worker(self):
+        inference_request = self._request(
+            request_id="req-dispatch-002",
+            idempotency_key="idem-dispatch-002",
+        )
 
         result = dispatch_transaction_inference(
-            inference_request_id="inference-2",
+            inference_request_id=inference_request.pk,
             request_id="req-dispatch-002",
             source="tests",
         )
 
-        self.assertEqual(result["result"], "local_fallback_enqueued")
-        local_fallback_mock.assert_called_once()
+        self.assertEqual(result["result"], "local_worker_pending")
+        inference_request.refresh_from_db()
+        self.assertEqual(inference_request.dispatch_backend, TransactionInferenceRequest.DispatchBackend.LOCAL_WORKER)
+        self.assertEqual(inference_request.last_dispatch_result, "local_worker_pending")
+
+    @override_settings(
+        TRANSACTION_INFERENCE_CLOUD_TASKS_ENABLED=False,
+        ASYNC_EXECUTION_MODE_TRANSACTIONS_VOICE="disabled",
+    )
+    def test_dispatch_marks_request_as_dispatch_failed_when_no_pipeline(self):
+        inference_request = self._request(
+            request_id="req-dispatch-003",
+            idempotency_key="idem-dispatch-003",
+        )
+
+        result = dispatch_transaction_inference(
+            inference_request_id=inference_request.pk,
+            request_id="req-dispatch-003",
+            source="tests",
+        )
+
+        self.assertEqual(result["result"], "pipeline_unavailable")
+        inference_request.refresh_from_db()
+        self.assertEqual(inference_request.status, TransactionInferenceRequest.Status.DISPATCH_FAILED)
+        self.assertEqual(inference_request.last_dispatch_result, "dispatch_failed")
+
+
+class TransactionInferenceWorkerServiceTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="tx-inference-worker",
+            email="tx-inference-worker@example.com",
+            password="secret123",
+            plan="pro",
+        )
+        self.account = Account.objects.create(
+            owner=self.user,
+            name="Cuenta Worker Voz",
+            currency="COP",
+        )
+
+    @override_settings(
+        TRANSACTION_INFERENCE_CLOUD_TASKS_ENABLED=False,
+        ASYNC_EXECUTION_MODE_TRANSACTIONS_VOICE="local_worker",
+    )
+    def test_local_worker_cycle_processes_queued_request_from_db(self):
+        inference_request, _created = create_voice_transaction_inference_request(
+            actor=self.user,
+            account=self.account,
+            request_id="req-worker-cycle-001",
+            idempotency_key="idem-worker-cycle-001",
+            audio_object_ref="gs://vexxo-audio/voice-worker-cycle-001.m4a",
+            raw_payload={
+                "transcript": "Registra gasto de 8000 en panaderia",
+                "normalized_rows": [
+                    {
+                        "type": "expense",
+                        "amount": "8000.00",
+                        "date": "2026-04-09",
+                        "description": "Panaderia",
+                    }
+                ],
+            },
+        )
+        inference_request.note_dispatch_attempt(
+            backend=TransactionInferenceRequest.DispatchBackend.LOCAL_WORKER,
+            result="local_worker_pending",
+        )
+
+        summary = run_local_worker_cycle(worker_id="test-worker", limit=10)
+
+        inference_request.refresh_from_db()
+        self.assertEqual(summary["process"]["processed"], 1)
+        self.assertEqual(inference_request.status, TransactionInferenceRequest.Status.APPLIED)
+        self.assertEqual(inference_request.dispatch_backend, TransactionInferenceRequest.DispatchBackend.LOCAL_WORKER)
+        self.assertEqual(inference_request.local_worker_locked_by, "")
+
+    @override_settings(
+        TRANSACTION_INFERENCE_CLOUD_TASKS_ENABLED=False,
+        ASYNC_EXECUTION_MODE_TRANSACTIONS_VOICE="local_worker",
+        TRANSACTION_INFERENCE_PROCESSING_STALE_AFTER_SECONDS=1,
+        TRANSACTION_INFERENCE_MAX_STALE_RECOVERIES=3,
+    )
+    def test_recovery_marks_processing_request_as_stale_and_redispatches(self):
+        inference_request = TransactionInferenceRequest.objects.create(
+            owner=self.user,
+            requested_by=self.user,
+            account=self.account,
+            source=TransactionInferenceRequest.Source.VOICE,
+            provider="voice_ai",
+            request_id="req-worker-stale-001",
+            idempotency_key="idem-worker-stale-001",
+            status=TransactionInferenceRequest.Status.PROCESSING,
+            audio_object_ref="gs://vexxo-audio/voice-worker-stale-001.m4a",
+            dispatch_backend=TransactionInferenceRequest.DispatchBackend.LOCAL_WORKER,
+            processing_started_at=timezone.now() - timezone.timedelta(minutes=30),
+            local_worker_locked_at=timezone.now() - timezone.timedelta(minutes=30),
+            local_worker_locked_by="stale-worker",
+        )
+
+        summary = recover_stale_processing_inference_requests(limit=10)
+
+        self.assertEqual(summary["recovered"], 1)
+        self.assertEqual(summary["redispatched"], 1)
+        inference_request.refresh_from_db()
+        self.assertEqual(inference_request.status, TransactionInferenceRequest.Status.PROCESSING_STALE)
+        self.assertEqual(inference_request.last_operational_issue, "processing_stale")
+        self.assertEqual(inference_request.dispatch_backend, TransactionInferenceRequest.DispatchBackend.LOCAL_WORKER)
+
+    @override_settings(
+        TRANSACTION_INFERENCE_CLOUD_TASKS_ENABLED=False,
+        ASYNC_EXECUTION_MODE_TRANSACTIONS_VOICE="local_worker",
+    )
+    def test_management_command_runs_local_worker_cycle(self):
+        inference_request, _created = create_voice_transaction_inference_request(
+            actor=self.user,
+            account=self.account,
+            request_id="req-worker-command-001",
+            idempotency_key="idem-worker-command-001",
+            audio_object_ref="gs://vexxo-audio/voice-worker-command-001.m4a",
+            raw_payload={
+                "transcript": "Registra gasto de 6500 en bus",
+                "normalized_rows": [
+                    {
+                        "type": "expense",
+                        "amount": "6500.00",
+                        "date": "2026-04-09",
+                        "description": "Bus",
+                    }
+                ],
+            },
+        )
+        inference_request.note_dispatch_attempt(
+            backend=TransactionInferenceRequest.DispatchBackend.LOCAL_WORKER,
+            result="local_worker_pending",
+        )
+
+        call_command("transactions_run_inference_worker", limit=10)
+
+        inference_request.refresh_from_db()
+        self.assertEqual(inference_request.status, TransactionInferenceRequest.Status.APPLIED)
 
 
 class IntegrationsStubTransactionsBridgeTests(TestCase):

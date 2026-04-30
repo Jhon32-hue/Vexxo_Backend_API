@@ -28,8 +28,10 @@ from common.domain_events import EventPriority
 from identity.devices.services import register_or_update_device
 from identity.sessions.services import (
     detect_refresh_reuse,
+    get_active_session_by_access_jti,
     get_active_session_by_refresh_jti,
     register_user_session,
+    revoke_all_active_sessions_for_user,
     revoke_session_by_refresh_token,
     revoke_session_family,
     rotate_session_refresh,
@@ -44,7 +46,23 @@ from identity.users.domain import (
     get_user_event_governance,
     get_user_event_runtime,
 )
+from identity.users.serializers import (
+    PasswordRecoveryCodeConfirmSerializer,
+    PasswordRecoveryCodeRequestSerializer,
+    PasswordResetConfirmSerializer,
+    PasswordResetRequestSerializer,
+    SetPasswordSerializer,
+    StepUpCodeConfirmSerializer,
+    StepUpCodeRequestSerializer,
+)
 from identity.users.serializers.user_serializer import UserMeSerializer, UserRegisterSerializer
+from identity.users.services.communication_service import send_password_reset_email
+from identity.users.services.recovery_service import (
+    confirm_password_recovery_code,
+    confirm_step_up_code,
+    request_password_recovery_code,
+    request_step_up_code,
+)
 from identity.users.services.event_service import publish_user_event_after_commit
 from identity.users.services.oauth_service import (
     SocialOAuthError,
@@ -110,6 +128,27 @@ def _no_store(response: Response) -> Response:
     return response
 
 
+def _resolve_request_session(request):
+    auth = getattr(request, "auth", None)
+    access_jti = ""
+    if auth is not None:
+        try:
+            access_jti = str(auth.get("jti", "") or "")
+        except Exception:
+            access_jti = ""
+    return get_active_session_by_access_jti(access_jti=access_jti)
+
+
+def _append_step_up_payload(*, response_data: dict, user, session, request, source: str) -> None:
+    response_data.setdefault("session", {})
+    response_data["session"]["requires_step_up"] = bool(session.requires_step_up)
+    if not session.requires_step_up:
+        return
+    step_up_result = request_step_up_code(user=user, session=session, request=request)
+    response_data["step_up"] = step_up_result
+    response_data["session"]["step_up_pending"] = bool(step_up_result.get("delivery_available", False))
+
+
 def _publish_social_link_event(*, result, provider: str, source: str) -> None:
     if result.login_mode == "login_existing_identity":
         return
@@ -171,29 +210,26 @@ def _build_social_session_response(*, request, user, provider: str, login_mode: 
         },
     )
     serializer = UserMeSerializer(user, context={"request": request})
-    return _no_store(
-        Response(
-            {
-                "detail": "Sesion social creada.",
-                "provider": provider,
-                "mode": login_mode,
-                "created_user": bool(created_user),
-                "linked_identity": bool(linked_identity),
-                "user": serializer.data,
-                "session": {
-                    "session_id": session.pk,
-                    "family_id": session.family_id,
-                    "risk_level": session.risk_level,
-                    "requires_step_up": bool(session.requires_step_up),
-                },
-                "tokens": {
-                    "refresh": tokens["refresh"],
-                    "access": tokens["access"],
-                },
-            },
-            status=status.HTTP_200_OK,
-        )
-    )
+    payload = {
+        "detail": "Sesion social creada.",
+        "provider": provider,
+        "mode": login_mode,
+        "created_user": bool(created_user),
+        "linked_identity": bool(linked_identity),
+        "user": serializer.data,
+        "session": {
+            "session_id": session.pk,
+            "family_id": session.family_id,
+            "risk_level": session.risk_level,
+            "requires_step_up": bool(session.requires_step_up),
+        },
+        "tokens": {
+            "refresh": tokens["refresh"],
+            "access": tokens["access"],
+        },
+    }
+    _append_step_up_payload(response_data=payload, user=user, session=session, request=request, source=source)
+    return _no_store(Response(payload, status=status.HTTP_200_OK))
 
 
 class EmailOrUsernameTokenSerializer(TokenObtainPairSerializer):
@@ -279,6 +315,135 @@ class RegisterView(generics.CreateAPIView):
     permission_classes = [permissions.AllowAny]
 
 
+class PasswordResetRequestView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data["email"]
+        redirect_url = serializer.validated_data.get("redirect_url", "")
+        user = User.objects.filter(email__iexact=email, is_active=True).first()
+        if user is not None:
+            send_password_reset_email(user=user, redirect_url=redirect_url)
+        return Response(
+            {
+                "detail": "Si el correo existe, enviaremos instrucciones para recuperar el acceso.",
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class PasswordRecoveryCodeRequestView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = PasswordRecoveryCodeRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = request_password_recovery_code(
+            phone_number=serializer.validated_data["phone_number"],
+            request=request,
+        )
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class PasswordRecoveryCodeConfirmView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = PasswordRecoveryCodeConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user, error_code, _challenge = confirm_password_recovery_code(
+            phone_number=serializer.validated_data["phone_number"],
+            code=serializer.validated_data["code"],
+        )
+        if user is None:
+            return Response(
+                {"detail": "Codigo invalido o expirado.", "code": error_code},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user.set_password(serializer.validated_data["password"])
+        user.save(update_fields=["password", "updated_at"])
+        revoke_all_active_sessions_for_user(user, reason="password_recovery_code_completed")
+        return Response({"detail": "Contrasena actualizada correctamente."}, status=status.HTTP_200_OK)
+
+
+class StepUpCodeRequestView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = StepUpCodeRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        target_session = _resolve_request_session(request)
+        requested_session_id = serializer.validated_data.get("session_id")
+        if requested_session_id:
+            candidate = request.user.identity_sessions.filter(pk=requested_session_id, status="active").first()
+            if candidate is not None:
+                target_session = candidate
+        if target_session is None:
+            return Response({"detail": "No se pudo resolver la sesion activa."}, status=status.HTTP_400_BAD_REQUEST)
+        result = request_step_up_code(user=request.user, session=target_session, request=request)
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class StepUpCodeConfirmView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = StepUpCodeConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        target_session = _resolve_request_session(request)
+        requested_session_id = serializer.validated_data.get("session_id")
+        if requested_session_id:
+            candidate = request.user.identity_sessions.filter(pk=requested_session_id, status="active").first()
+            if candidate is not None:
+                target_session = candidate
+        if target_session is None:
+            return Response({"detail": "No se pudo resolver la sesion activa."}, status=status.HTTP_400_BAD_REQUEST)
+        success, error_code, extra = confirm_step_up_code(
+            user=request.user,
+            session=target_session,
+            code=serializer.validated_data["code"],
+        )
+        if not success:
+            return Response(
+                {"detail": "Codigo invalido o expirado.", "code": error_code},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(
+            {
+                "detail": "Step-up completado correctamente.",
+                "session_id": target_session.pk,
+                "revoked_risky_sessions": int((extra or {}).get("revoked_risky_sessions", 0)),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class PasswordResetConfirmView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.validated_data["user"]
+        user.set_password(serializer.validated_data["password"])
+        user.save(update_fields=["password", "updated_at"])
+        revoke_all_active_sessions_for_user(user, reason="password_reset_completed")
+        return Response({"detail": "Contrasena actualizada correctamente."}, status=status.HTTP_200_OK)
+
+
+class SetPasswordView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = SetPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        request.user.set_password(serializer.validated_data["new_password"])
+        request.user.save(update_fields=["password", "updated_at"])
+        return Response({"detail": "Contrasena configurada correctamente."}, status=status.HTTP_200_OK)
+
+
 class LoginView(TokenObtainPairView):
     serializer_class = EmailOrUsernameTokenSerializer
 
@@ -335,6 +500,7 @@ class LoginView(TokenObtainPairView):
             "risk_level": session.risk_level,
             "requires_step_up": bool(session.requires_step_up),
         }
+        _append_step_up_payload(response_data=response.data, user=user, session=session, request=request, source="users.auth.login")
         return response
 
 

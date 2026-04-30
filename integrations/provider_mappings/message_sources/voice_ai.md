@@ -50,11 +50,12 @@ El `POST` publico solo envia audio y metadatos; no acepta filas inferidas ni
 ## Fallbacks
 
 - Si Cloud Tasks no esta listo y el entorno permite fallback local,
-  `transaction_inference_dispatch_service.py` encola `integrations_stub.llm` en
-  background dentro del mismo proceso.
+  `transaction_inference_dispatch_service.py` deja la solicitud para que un
+  worker local durable la tome desde BD.
 - En produccion sin Cloud Tasks listo, el dispatcher no ejecuta fallback local.
 - Si la transcripcion o extraccion falla, no se crea ledger.
 - El worker ignora solicitudes terminales o fuera de `queued`.
+- Un sweeper operativo puede recuperar `queued` viejas y `processing` stale.
 
 ## Confirmacion de usuario
 
