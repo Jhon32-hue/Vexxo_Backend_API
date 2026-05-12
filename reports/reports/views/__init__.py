@@ -1,9 +1,11 @@
 from datetime import date
 from django.db.models import Sum
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
+from finance.budgets.services import build_budget_monthly_overview
 from finance.transactions.Models import Transaction
 
 
@@ -35,3 +37,13 @@ class GastosPorCategoriaView(APIView):
             .order_by('-total')
         )
         return Response([{ 'categoria': r['category__name'], 'total': str(r['total']) } for r in data])
+
+
+class BudgetMonthlySummaryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        month = str(request.query_params.get("month") or "").strip()
+        if not month:
+            return Response({"detail": "Debes enviar month=YYYY-MM."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(build_budget_monthly_overview(owner=request.user, month=month))

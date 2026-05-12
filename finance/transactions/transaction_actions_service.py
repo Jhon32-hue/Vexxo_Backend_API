@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from alerts.alerts.services import create_alert
 from finance.accounts.models.account import Account
-from finance.transactions.Models.transacciones import ScheduledPayment, Transaction
+from finance.transactions.Models.transacciones import Transaction
 from finance.transactions.domain_events import TransactionDomainEventTypes, serialize_transaction_state
 from finance.transactions.event_service import publish_transaction_event_after_commit
 from finance.transactions.transaction_state_service import is_transaction_countable_for_ledger
@@ -153,37 +153,6 @@ def register_transaction_reimbursement(*, expense: Transaction, amount=None, dat
     )
     return income_tx
 
-
-@db_tx.atomic
-def materialize_transaction_from_legacy_scheduled_payment(*, scheduled_payment: ScheduledPayment) -> Transaction:
-    if scheduled_payment.status == ScheduledPayment.Status.PAID:
-        raise ValueError("Este pago programado ya esta marcado como pagado.")
-    tx = create_manual_transaction(
-        validated_data={
-            "owner": scheduled_payment.owner,
-            "type": Transaction.Type.EXPENSE,
-            "status": Transaction.Status.POSTED,
-            "amount": scheduled_payment.amount,
-            "date": scheduled_payment.due_date,
-            "account": scheduled_payment.account,
-            "category": scheduled_payment.category,
-            "vendor": scheduled_payment.vendor,
-            "debt": scheduled_payment.debt,
-            "installment": scheduled_payment.installment,
-            "scheduled_payment": scheduled_payment,
-            "source": "scheduled_payment",
-            "notes": f"Pago programado legacy: {scheduled_payment.name}",
-            "confirmed": True,
-        },
-        actor=None,
-        event_source="finance.transactions.transaction_actions_service.materialize_transaction_from_legacy_scheduled_payment.create",
-    )
-    tx.tags.set(scheduled_payment.tags.all())
-    scheduled_payment.status = ScheduledPayment.Status.PAID
-    scheduled_payment.save(update_fields=["status"])
-    return tx
-
-
 def apply_transaction_to_debt_if_any(tx: Transaction) -> None:
     if tx.type != Transaction.Type.EXPENSE or not tx.debt_id or not is_transaction_countable_for_ledger(tx):
         return
@@ -196,34 +165,6 @@ def apply_transaction_to_debt_if_any(tx: Transaction) -> None:
         pay_date=tx.date,
         installment=installment,
     )
-
-
-def mark_legacy_scheduled_payment_paid_if_needed(tx: Transaction) -> None:
-    if not tx.scheduled_payment_id or not is_transaction_countable_for_ledger(tx):
-        return
-    sp = ScheduledPayment.objects.filter(pk=tx.scheduled_payment_id).first()
-    if not sp or sp.status == ScheduledPayment.Status.PAID:
-        return
-    sp.status = ScheduledPayment.Status.PAID
-    sp.save(update_fields=["status"])
-
-
-def reconcile_legacy_scheduled_payment_state(*, scheduled_payment_id) -> None:
-    if not scheduled_payment_id:
-        return
-    sp = ScheduledPayment.objects.filter(pk=scheduled_payment_id).first()
-    if not sp:
-        return
-    has_countable_tx = Transaction.objects.filter(
-        scheduled_payment_id=scheduled_payment_id,
-        confirmed=True,
-        affects_balance=True,
-        status__in=[Transaction.Status.POSTED, Transaction.Status.RECONCILED],
-    ).exists()
-    desired_status = ScheduledPayment.Status.PAID if has_countable_tx else ScheduledPayment.Status.PENDING
-    if sp.status != desired_status:
-        sp.status = desired_status
-        sp.save(update_fields=["status"])
 
 
 def reconcile_transaction_financial_update(*, tx: Transaction, before: dict | None = None) -> None:
@@ -241,15 +182,6 @@ def reconcile_transaction_financial_update(*, tx: Transaction, before: dict | No
             debt = Debt.objects.filter(pk=debt_id).first()
             if debt:
                 reconcile_debt_payments(debt)
-
-    scheduled_ids = {
-        str(before.get("scheduled_payment_id") or "").strip(),
-        str(getattr(tx, "scheduled_payment_id", "") or "").strip(),
-    }
-    scheduled_ids.discard("")
-    for scheduled_payment_id in scheduled_ids:
-        reconcile_legacy_scheduled_payment_state(scheduled_payment_id=scheduled_payment_id)
-
 
 def create_over_limit_alert_if_needed(tx: Transaction) -> None:
     if tx.type != Transaction.Type.EXPENSE or not is_transaction_countable_for_ledger(tx):

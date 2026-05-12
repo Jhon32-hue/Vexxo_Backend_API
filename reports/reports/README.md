@@ -8,6 +8,7 @@ Su responsabilidad actual es:
 
 - cashflow
 - gastos por categoria
+- resumen mensual de presupuestos personales y compartidos
 
 ## Rol En El Producto
 
@@ -33,6 +34,11 @@ De cara al cliente sirve para:
   aporta la dimension por categoria
 - `finance.accounts`
   puede complementar vistas futuras por cuenta
+- `finance.budgets`
+  aporta el resumen mensual de presupuestos:
+  - personales por categoria
+  - compartidos por equipo
+  - con metricas `planned/actual/committed/projected`
 
 ## Encaje Con GCP
 
@@ -46,10 +52,11 @@ Importante:
 
 ## Estado Actual
 
-Hoy expone dos vistas:
+Hoy expone tres vistas:
 
 - `CashflowView`
 - `GastosPorCategoriaView`
+- `BudgetMonthlySummaryView`
 
 Son reportes directos y utiles, pero aun no constituyen una capa analitica
 amplia ni un data product separado.

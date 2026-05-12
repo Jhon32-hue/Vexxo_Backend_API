@@ -24,6 +24,7 @@ from finance.transactions.Models import (
     TransactionSourceLink,
 )
 from finance.transactions.Views.transactions_views import TransactionViewSet
+from finance.transactions.Serializers.intake_serializers import TransactionMessageIntakeEnvelopeSerializer
 from finance.transactions.domain_events import (
     TransactionDomainEventTypes,
     build_transaction_payload,
@@ -994,6 +995,56 @@ class TransactionIntakeInternalApiTests(TestCase):
         self.assertEqual(issue.resolution_action, TransactionReconciliationIssue.ResolutionAction.CREATE_ADJUSTMENT)
         self.assertTrue(Transaction.objects.filter(source="reconciliation_adjustment").exists())
 
+    def test_internal_reconciliation_resolution_rejects_non_object_payload(self):
+        receive_single_intake_row(
+            provider="belvo",
+            source="open_finance",
+            provider_account_id="acct-ext-api-001",
+            request_id="req-api-recon-invalid-001",
+            idempotency_key="idem-api-recon-invalid-001",
+            row={
+                "type": Transaction.Type.EXPENSE,
+                "status": Transaction.Status.POSTED,
+                "amount": "10000.00",
+                "date": "2026-04-08",
+                "external_id": "txn-ext-api-recon-invalid-001",
+                "description": "Compra base api invalid",
+            },
+        )
+        tx = Transaction.objects.get(external_id="txn-ext-api-recon-invalid-001")
+        receive_single_intake_row(
+            provider="belvo",
+            source="open_finance",
+            provider_account_id="acct-ext-api-001",
+            request_id="req-api-recon-invalid-002",
+            idempotency_key="idem-api-recon-invalid-002",
+            row={
+                "type": Transaction.Type.EXPENSE,
+                "status": Transaction.Status.POSTED,
+                "amount": "15000.00",
+                "date": "2026-04-08",
+                "external_id": "txn-ext-api-recon-invalid-001",
+                "description": "Compra corregida api invalid",
+            },
+        )
+        issue = TransactionReconciliationIssue.objects.get(transaction=tx)
+
+        response = self.client.post(
+            f"/api/internal/transactions/reconciliation/issues/{issue.pk}/resolve/",
+            {
+                "action": TransactionReconciliationIssue.ResolutionAction.CREATE_ADJUSTMENT,
+                "notes": "Resolver via endpoint interno.",
+                "payload": ["not", "an", "object"],
+            },
+            format="json",
+            HTTP_X_VEXXO_INTERNAL_TOKEN="internal-transactions-token",
+            HTTP_X_REQUEST_ID="req-api-recon-invalid-003",
+            HTTP_IDEMPOTENCY_KEY="idem-api-recon-invalid-003",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("payload", response.data)
+
 
 class TransactionInferenceRequestApiTests(TestCase):
     def setUp(self):
@@ -1061,6 +1112,22 @@ class TransactionInferenceRequestApiTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("raw_payload", response.data)
+
+    def test_internal_message_intake_serializer_requires_object_raw_payload(self):
+        serializer = TransactionMessageIntakeEnvelopeSerializer(
+            data={
+                "provider": "message_parser",
+                "source": "sms",
+                "account_id": self.account.pk,
+                "message_id": "msg-unsafe-001",
+                "received_at": "2026-04-08T10:00:00-05:00",
+                "text": "Pago recibido",
+                "raw_payload": ["not", "an", "object"],
+            }
+        )
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("raw_payload", serializer.errors)
 
     def test_stub_llm_processes_request_through_canonical_intake(self):
         inference_request, created = create_voice_transaction_inference_request(

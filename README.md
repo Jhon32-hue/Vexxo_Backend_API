@@ -692,14 +692,6 @@ classDiagram
         +paid_amount
     }
 
-    class ScheduledPayment {
-        +name
-        +amount
-        +frequency
-        +next_run_date
-        +is_active
-    }
-
     class TransactionIntakeBatch {
         +provider
         +source
@@ -755,7 +747,6 @@ classDiagram
     Account "1" --> "*" Transaction : contains
     User "1" --> "*" Transaction : owns
     Transaction "1" --> "*" TransactionParticipant : distributes
-    Account "1" --> "*" ScheduledPayment : plans
     Account "1" --> "*" TransactionIntakeBatch : receives_external_rows
     TransactionIntakeBatch "1" --> "*" TransactionIntakeReceipt : stores
     TransactionIntakeReceipt "0..1" --> "0..1" Transaction : materializes
@@ -1060,6 +1051,102 @@ sequenceDiagram
     PAY->>MAT: materialize ledger reflection
     MAT->>TX: create or reuse Transaction
 ```
+
+##### 6.4.b Scheduled template with budget attribution
+
+```mermaid
+sequenceDiagram
+    participant FE as Frontend
+    participant API as Django BFF
+    participant SPT as payments.scheduled_payments
+    participant PO as Payments Outbox
+    participant BUD as finance.budgets
+    participant RUN as PaymentScheduleRun
+    participant PI as PaymentIntent
+    participant TX as finance.transactions
+
+    FE->>API: create PaymentTemplate + category + budget context opcional
+    API->>SPT: resolve budget attribution
+    SPT->>PO: enqueue payments.recurring.template.*
+    PO->>BUD: recalculate committed
+    RUN->>PI: create PaymentIntent
+    PI->>TX: materialize confirmed Transaction
+    TX->>BUD: transactions.* recalculate actual
+  ```
+
+  Regla operativa actual:
+  - si una ocurrencia ya tiene `PaymentIntent` activo o liquidado, no puede
+    cerrarse manualmente como pagada; primero debe resolverse el flujo externo
+  - `Transaction.payment_schedule_run` deja trazabilidad canonica entre la
+    ocurrencia moderna y el ledger
+  - una corrida `failed` no se reabre; si el usuario insiste, nace una nueva
+    ocurrencia derivada de retry
+
+##### 6.4.c Programmed payment reminder lifecycle
+
+```mermaid
+sequenceDiagram
+    participant FE as Frontend / mobile
+    participant API as Django BFF
+    participant PT as PaymentTemplate
+    participant RUN as PaymentScheduleRun
+    participant JOB as local command / Cloud Scheduler job
+    participant N as NotificationDelivery
+    participant R as RealtimeSignal
+    participant TX as finance.transactions
+
+    FE->>API: create scheduled payment (once/repeat)
+    API->>PT: save internal template
+    PT->>RUN: bootstrap occurrence
+      JOB->>RUN: evaluate due / overdue
+      RUN->>N: create correlated reminder
+      RUN->>R: publish realtime signal
+      FE->>API: mark paid / paid outside / postpone / skip / cancel
+      API->>RUN: update occurrence state
+    API->>TX: materialize Transaction when payment is confirmed
+```
+
+Compatibilidad legacy ya retirada del runtime:
+
+```mermaid
+flowchart LR
+    PT[PaymentTemplate interno]
+    RUN[PaymentScheduleRun]
+    TX[Transaction]
+
+    PT --> RUN
+    RUN --> TX
+```
+
+Reglas del lifecycle:
+- `failed` es terminal hasta que exista retry explicito
+- cambiar `next_run_at` cancela una ocurrencia abierta editable y crea la
+  nueva corrida; si la corrida actual ya esta en `processing` o con
+    `PaymentIntent`, no se abre otra automaticamente
+- `default_amount` y `currency` se sincronizan sobre la ocurrencia abierta
+  solo cuando sigue siendo editable
+- `transactions.ScheduledPayment` fue retirado fisicamente del runtime y del
+  esquema actual; solo persiste como antecedente en migraciones historicas y
+  metadata archivada
+- deuda y cuota ya pueden colgar del `PaymentTemplate` moderno
+- la ruta legacy `/api/finance/transactions/scheduled-payments/` ya no esta
+  registrada; lo nuevo entra por `programmed-payments`
+- `scheduled_payments` no intenta cancelar automaticamente el rail externo;
+  si ya existe `PaymentIntent` activo o liquidado, primero debe resolverse ese
+  flujo y luego cancelar o reintentar la ocurrencia
+- `manage.py scheduled_payments_operational_metrics` puede usarse como job de
+  auditoria/observabilidad para conflictos y multiples runs abiertos
+
+Politica transversal de payloads JSON:
+- `public strict`
+  - endpoints publicos no aceptan blobs libres con claves internas
+  - ejemplos: `scheduled_payments request-run`, `inference-requests`
+- `internal-trusted`
+  - endpoints internos autenticados por token aceptan payload rico, pero
+    siguen exigiendo objeto JSON top-level
+- `provider-only`
+  - callbacks/reportes de PSP aceptan payload flexible por proveedor, pero no
+    escalares ni listas arbitrarias como cuerpo operativo
 
 ##### 6.5 External transaction intake
 
@@ -1552,7 +1639,10 @@ Incluye:
 - `transactions`: ledger canonico y participantes
 - `debts`: deudas y cuotas
 - `categories`, `vendors`, `fx`: catalogos y datos auxiliares del ledger
-- `budgets`, `investments`, `limits`: contextos hoy menos maduros o reservados
+- `budgets`, `investments`, `limits`: contextos secundarios; `budgets` ya expone
+  API publica para presupuesto personal por categoria y presupuesto compartido
+  por equipo, con resumen mensual reutilizable, mientras `investments/limits`
+  siguen mas reservados
 
 La idea clave es que `transactions` representa verdad contable, mientras que
 `accounts` aporta vistas operativas y relaciones de colaboracion.
@@ -1566,6 +1656,7 @@ Incluye:
 - `payment_intents`: intentos de pago, callbacks, pricing, payout, settlement,
   adapters y contratos por proveedor
 - `scheduled_payments`: planificacion y recurrencia
+- a nivel de UX deberia presentarse como un solo concepto visible: `Pago programado`
 - otros submodulos como `calendar` o `reminders`, que preparan la capa de
   programacion de pagos
 
@@ -2448,8 +2539,8 @@ documentar su estado actual, flujos, casos de uso y relaciones.
 Documentos principales:
 
 - [Flujo de dtos.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/Flujo%20de%20dtos.md)
-  Estructura de datos, tablas, dependencias, endpoints y ciclo de vida del
-  dato dentro de Vexxo.
+  Estructura de datos, inventario actual de tablas, relaciones por bounded
+  context, dependencias, endpoints y ciclo de vida del dato dentro de Vexxo.
 - [RUTAS_API.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/RUTAS_API.md)
   Mapa raiz de rutas HTTP, CRUDs, acciones custom y endpoints internos por
   modulo.
@@ -2536,7 +2627,12 @@ Documentos principales:
 - [finance/fx/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/fx/README.md)
   Snapshots de tasas de cambio y soporte multicurrency.
 - [finance/budgets/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/budgets/README.md)
-  Contexto reservado para presupuestos y control de gasto futuro.
+  Presupuestos mensuales personales por categoria y compartidos por equipo, con
+  metricas `planned/actual/committed` contra el ledger y resumen mensual
+  reutilizable desde `reports`.
+- [payments/scheduled_payments/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/payments/scheduled_payments/README.md)
+  Templates y corridas de pagos programados, ahora con attribution de budget
+  separada de categoria para alimentar `committed`.
 - [finance/investments/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/investments/README.md)
   Contexto reservado para posiciones y producto de inversion.
 - [finance/limits/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/limits/README.md)

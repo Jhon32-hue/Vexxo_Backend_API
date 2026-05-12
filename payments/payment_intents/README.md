@@ -231,8 +231,28 @@ se guarda primero aqui, no en `finance.transactions`.
 - `integrations_stub` o futuros adapters: ejecutan el rail externo real
 - `payments.payment_intents.adapters`: registry configurable por proveedor
 - `payments.payment_intents.callback_service`: intake canonico de callbacks
+- cuando el intent nace desde `PaymentTemplate`, la materializacion contable ya
+  puede heredar `budget_scope/shared_budget` desde ese template
 - `payments.payment_intents.reconciliation_service`: settlement y casos operativos
 - `payments.payment_intents.realtime_services`: senales UX complementarias
+
+## Politica de payloads JSON
+
+Las superficies de este modulo se separan por confianza:
+
+- `provider-only`
+  - `PaymentProviderCallbackSerializer`
+  - acepta payload variable por PSP, pero exige objeto JSON top-level
+  - no acepta escalares o listas arbitrarias
+- `internal worker/provider metadata`
+  - `PaymentWorkerReportSerializer.provider_metadata`
+  - exige objeto JSON acotado para no volver opaco el contrato operativo
+
+Regla:
+
+- el contrato puede ser flexible por proveedor
+- pero la forma minima sigue siendo estructurada y validable
+- el PSP no debe colarse como blob sin frontera semantica
 
 ## Contrato de rail vs reflejo contable
 
@@ -507,8 +527,9 @@ La regla es: cambiar mapping/configuracion o adapter, no redisenar el dominio.
 
 ## Nota importante
 
-`finance.transactions.ScheduledPayment.generar_transaccion` no debe usarse como
-semantica de pago externo. Ese flujo sigue siendo contable/manual.
+El antiguo path legacy basado en `finance.transactions.ScheduledPayment` ya fue
+retirado. La semantica de pago externo vive en `PaymentIntent` y en las
+ocurrencias modernas de `scheduled_payments`.
 
 ## Capa de entrega
 

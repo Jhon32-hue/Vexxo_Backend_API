@@ -323,16 +323,15 @@ Base: `/api/finance/transactions/income-sources/`
 
 ### scheduled-payments legacy
 
-Base: `/api/finance/transactions/scheduled-payments/`
+La superficie legacy `/api/finance/transactions/scheduled-payments/` fue
+retirada fisicamente y ya no forma parte del router activo.
 
-| Ruta | Metodos | Auth | Uso |
-|---|---|---|---|
-| `/api/finance/transactions/scheduled-payments/` | `GET` | `Bearer` | listar scheduled payments legacy |
-| `/api/finance/transactions/scheduled-payments/` | `POST` | `Bearer` | crear scheduled payment legacy |
-| `/api/finance/transactions/scheduled-payments/{id}/` | `GET` | `Bearer` | detalle |
-| `/api/finance/transactions/scheduled-payments/{id}/` | `PUT`, `PATCH` | `Bearer` | actualizar |
-| `/api/finance/transactions/scheduled-payments/{id}/` | `DELETE` | `Bearer` | eliminar |
-| `/api/finance/transactions/scheduled-payments/{id}/generar_transaccion/` | `POST` | `Bearer` | materializar a transaccion |
+Usa:
+
+- `/api/payments/scheduled/programmed-payments/`
+- `/api/payments/scheduled/programmed-payment-runs/`
+- la ruta sucesora visible es `/api/payments/scheduled/programmed-payments/`
+- deuda/cuota y alertas ya migran al flujo moderno `PaymentTemplate/PaymentScheduleRun`
 
 ### transaction-participants
 
@@ -434,6 +433,44 @@ Base: `/api/finance/vendors/proveedores/`
 | `/api/finance/vendors/proveedores/{id}/` | `PUT`, `PATCH` | `Bearer` | actualizar |
 | `/api/finance/vendors/proveedores/{id}/` | `DELETE` | `Bearer` | eliminar |
 
+## Finance budgets
+
+### presupuestos-categoria
+
+Base: `/api/finance/budgets/presupuestos-categoria/`
+
+| Ruta | Metodos | Auth | Uso |
+|---|---|---|---|
+| `/api/finance/budgets/presupuestos-categoria/` | `GET` | `Bearer` | listar presupuestos de categoria con summary y metricas |
+| `/api/finance/budgets/presupuestos-categoria/` | `POST` | `Bearer` | crear presupuesto de categoria |
+| `/api/finance/budgets/presupuestos-categoria/{id}/` | `GET` | `Bearer` | detalle de presupuesto de categoria |
+| `/api/finance/budgets/presupuestos-categoria/{id}/` | `PUT`, `PATCH` | `Bearer` | actualizar presupuesto de categoria |
+| `/api/finance/budgets/presupuestos-categoria/{id}/` | `DELETE` | `Bearer` | eliminar presupuesto de categoria |
+| `/api/finance/budgets/presupuestos-categoria/merge-period/` | `POST` | `Bearer` | upsert parcial de un periodo |
+| `/api/finance/budgets/presupuestos-categoria/replace-period/` | `POST` | `Bearer` | reemplazar completamente un periodo |
+
+### presupuestos-compartidos
+
+Base: `/api/finance/budgets/presupuestos-compartidos/`
+
+| Ruta | Metodos | Auth | Uso |
+|---|---|---|---|
+| `/api/finance/budgets/presupuestos-compartidos/` | `GET` | `Bearer` | listar presupuestos compartidos visibles para el actor |
+| `/api/finance/budgets/presupuestos-compartidos/` | `POST` | `Bearer` | crear presupuesto compartido sobre un team |
+| `/api/finance/budgets/presupuestos-compartidos/{id}/` | `GET` | `Bearer` | detalle de presupuesto compartido |
+| `/api/finance/budgets/presupuestos-compartidos/{id}/` | `PUT`, `PATCH` | `Bearer` | actualizar presupuesto compartido |
+| `/api/finance/budgets/presupuestos-compartidos/{id}/` | `DELETE` | `Bearer` | eliminar presupuesto compartido |
+| `/api/finance/budgets/presupuestos-compartidos/{id}/link-transaction/` | `POST` | `Bearer` | vincular una transaccion al shared budget |
+| `/api/finance/budgets/presupuestos-compartidos/{id}/unlink-transaction/` | `POST` | `Bearer` | desvincular una transaccion del shared budget |
+| `/api/finance/budgets/presupuestos-compartidos/{id}/link-template/` | `POST` | `Bearer` | vincular una plantilla programada al shared budget |
+| `/api/finance/budgets/presupuestos-compartidos/{id}/unlink-template/` | `POST` | `Bearer` | desvincular una plantilla programada del shared budget |
+
+### resumen mensual de budgets
+
+| Ruta | Metodos | Auth | Uso |
+|---|---|---|---|
+| `/api/finance/budgets/resumen-mensual/?month=YYYY-MM` | `GET` | `Bearer` | overview mensual de budgets personales por categoria y compartidos |
+
 ## Planning y social
 
 ### goals
@@ -506,16 +543,42 @@ Base: `/api/payments/scheduled/`
 
 | Ruta | Metodos | Auth | Uso |
 |---|---|---|---|
-| `/api/payments/scheduled/templates/` | `GET` | `Bearer` | listar templates |
-| `/api/payments/scheduled/templates/` | `POST` | `Bearer` | crear template |
-| `/api/payments/scheduled/templates/{id}/` | `GET` | `Bearer` | detalle de template |
-| `/api/payments/scheduled/templates/{id}/` | `PUT`, `PATCH` | `Bearer` | actualizar template |
-| `/api/payments/scheduled/templates/{id}/` | `DELETE` | `Bearer` | eliminar template |
-| `/api/payments/scheduled/templates/{id}/request-run/` | `POST` | `Bearer` | pedir corrida programada |
-| `/api/payments/scheduled/templates/from-intent/` | `POST` | `Bearer` | crear template desde intent |
-| `/api/payments/scheduled/runs/` | `GET` | `Bearer` | listar corridas |
-| `/api/payments/scheduled/runs/{id}/` | `GET` | `Bearer` | detalle de corrida |
-| `/api/payments/scheduled/runs/{id}/materialize-intent/` | `POST` | `Bearer` | materializar intent desde corrida |
+| `/api/payments/scheduled/programmed-payments/` | `GET` | `Bearer` | listar pagos programados |
+| `/api/payments/scheduled/programmed-payments/` | `POST` | `Bearer` | crear pago programado |
+| `/api/payments/scheduled/programmed-payments/{id}/` | `GET` | `Bearer` | detalle de pago programado |
+| `/api/payments/scheduled/programmed-payments/{id}/` | `PUT`, `PATCH` | `Bearer` | actualizar pago programado |
+| `/api/payments/scheduled/programmed-payments/{id}/` | `DELETE` | `Bearer` | eliminar pago programado |
+| `/api/payments/scheduled/programmed-payments/{id}/request-run/` | `POST` | `Bearer` | pedir corrida programada |
+| `/api/payments/scheduled/programmed-payments/from-intent/` | `POST` | `Bearer` | crear pago programado desde intent |
+| `/api/payments/scheduled/programmed-payment-runs/` | `GET` | `Bearer` | listar ocurrencias |
+| `/api/payments/scheduled/programmed-payment-runs/{id}/` | `GET` | `Bearer` | detalle de ocurrencia |
+| `/api/payments/scheduled/programmed-payment-runs/{id}/materialize-intent/` | `POST` | `Bearer` | materializar intent desde ocurrencia |
+| `/api/payments/scheduled/programmed-payment-runs/{id}/mark-paid/` | `POST` | `Bearer` | confirmar ocurrencia como pagada |
+| `/api/payments/scheduled/programmed-payment-runs/{id}/mark-paid-outside/` | `POST` | `Bearer` | marcar ocurrencia como pagada fuera de Vexxo |
+| `/api/payments/scheduled/programmed-payment-runs/{id}/postpone/` | `POST` | `Bearer` | posponer ocurrencia |
+| `/api/payments/scheduled/programmed-payment-runs/{id}/skip/` | `POST` | `Bearer` | omitir esta ocurrencia |
+| `/api/payments/scheduled/programmed-payment-runs/{id}/cancel/` | `POST` | `Bearer` | cancelar esta ocurrencia |
+| `/api/payments/scheduled/programmed-payment-runs/{id}/retry/` | `POST` | `Bearer` | crear una nueva ocurrencia derivada desde un `failed` |
+| `/api/payments/scheduled/programmed-payment-runs/operational-metrics/` | `GET` | `Bearer` | metricas operativas agregadas del modulo |
+
+Rutas tecnicas de compatibilidad que siguen expuestas:
+
+- `/api/payments/scheduled/templates/...`
+- `/api/payments/scheduled/runs/...`
+
+Politica operativa:
+
+- cliente nuevo no deberia depender de esas rutas tecnicas
+- si una ocurrencia ya tiene `PaymentIntent` activo o liquidado, no puede
+  resolverse manualmente ni cancelarse desde `scheduled_payments`
+- primero debe resolverse el intent externo y luego:
+  - dejar el historial como `failed/cancelled`
+  - o crear replacement con `retry`
+
+Comandos operativos relacionados:
+
+- `manage.py scheduled_payments_process_runs`
+- `manage.py scheduled_payments_operational_metrics [--owner-id <id>] [--fail-on-anomalies]`
 
 ## Alerts, notifications y realtime
 
@@ -597,6 +660,7 @@ Base: `/api/reports/reportes/`
 |---|---|---|---|
 | `/api/reports/reportes/cashflow` | `GET` | `Bearer` | reporte de cashflow |
 | `/api/reports/reportes/gastos-por-categoria` | `GET` | `Bearer` | gastos por categoria |
+| `/api/reports/reportes/presupuestos-mensuales?month=YYYY-MM` | `GET` | `Bearer` | resumen mensual de presupuestos |
 
 ### support.audit
 

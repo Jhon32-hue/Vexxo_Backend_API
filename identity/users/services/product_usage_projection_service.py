@@ -39,11 +39,16 @@ def day_bounds(reference=None):
     return start, end
 
 
+def _scheduled_payments_active_count_for_user(user) -> int:
+    from payments.scheduled_payments.models import PaymentTemplate
+
+    return PaymentTemplate.objects.filter(owner=user, is_active=True).count()
+
+
 def compute_user_usage_snapshot_from_oltp(user, *, reference=None) -> dict:
     from alerts.alerts.models.alerts import Alert
     from alerts.rules.models import Rule
     from finance.accounts.models import Account, AccountMembership, AccountStatus
-    from finance.transactions.Models.transacciones import ScheduledPayment
     from payments.payment_intents.models import PaymentIntent
 
     start, end = month_bounds(reference=reference)
@@ -103,7 +108,6 @@ def compute_user_usage_snapshot_from_oltp(user, *, reference=None) -> dict:
             PayoutInstruction.Status.SUCCEEDED,
         },
     )
-    scheduled_qs = ScheduledPayment.objects.filter(owner=user, status=ScheduledPayment.Status.PENDING)
     payment_volume = payment_qs.aggregate(total=Sum("amount"))["total"] or ZERO
     payment_volume_day = payment_qs_day.aggregate(total=Sum("amount"))["total"] or ZERO
     payout_volume = payout_qs.aggregate(total=Sum("amount"))["total"] or ZERO
@@ -129,7 +133,7 @@ def compute_user_usage_snapshot_from_oltp(user, *, reference=None) -> dict:
         "payouts_count_day": payout_qs_day.count(),
         "payouts_volume_day": payout_volume_day,
         "ocr_used_month": 0,
-        "scheduled_payments_active_count": scheduled_qs.count(),
+        "scheduled_payments_active_count": _scheduled_payments_active_count_for_user(user),
         "shared_memberships_count": pending_or_active_memberships.count(),
     }
 
@@ -770,16 +774,12 @@ def sync_shared_memberships_slice(owner_id, *, source: str = "", event_type: str
 
 def sync_scheduled_payments_slice(owner_id, *, source: str = "", event_type: str = "", correlation_id: str = ""):
     from django.contrib.auth import get_user_model
-    from finance.transactions.Models.transacciones import ScheduledPayment
 
     user = get_user_model().objects.filter(pk=owner_id).first()
     if user is None:
         return None
 
-    count = ScheduledPayment.objects.filter(
-        owner=user,
-        status=ScheduledPayment.Status.PENDING,
-    ).count()
+    count = _scheduled_payments_active_count_for_user(user)
 
     def mutator(projection):
         projection.scheduled_payments_active_count = _clamp_non_negative(count)

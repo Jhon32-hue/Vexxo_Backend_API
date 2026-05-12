@@ -5,6 +5,8 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+from finance.budgets.attribution import BudgetAttributionSource, BudgetScope
+
 User = get_user_model()
 
 
@@ -195,6 +197,27 @@ class Transaction(models.Model):
         on_delete=models.SET_NULL,
         related_name="transactions",
     )
+    budget_scope = models.CharField(
+        max_length=16,
+        choices=BudgetScope.choices,
+        blank=True,
+        default="",
+        help_text=_("Atribucion presupuestaria: personal, shared o none."),
+    )
+    shared_budget = models.ForeignKey(
+        "budgets.SharedBudget",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="transactions",
+    )
+    budget_attribution_source = models.CharField(
+        max_length=32,
+        choices=BudgetAttributionSource.choices,
+        blank=True,
+        default="",
+        help_text=_("Indica si la atribucion fue manual, sugerida o heredada."),
+    )
     vendor = models.ForeignKey(
         "vendors.Vendor",
         null=True,
@@ -223,12 +246,13 @@ class Transaction(models.Model):
         on_delete=models.SET_NULL,
         related_name="transactions",
     )
-    scheduled_payment = models.ForeignKey(
-        "transactions.ScheduledPayment",
+    payment_schedule_run = models.ForeignKey(
+        "scheduled_payments.PaymentScheduleRun",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name="transactions",
+        related_name="ledger_transactions",
+        help_text=_("Ocurrencia moderna de pago programado que origino este reflejo contable."),
     )
     payment_intent = models.OneToOneField(
         "payment_intents.PaymentIntent",
@@ -321,10 +345,13 @@ class Transaction(models.Model):
             models.Index(fields=["owner", "account", "date"]),
             models.Index(fields=["owner", "type", "date"]),
             models.Index(fields=["owner", "status"]),
+            models.Index(fields=["owner", "budget_scope", "date"]),
+            models.Index(fields=["shared_budget", "date"]),
             models.Index(fields=["owner", "rail"]),
             models.Index(fields=["owner", "channel"]),
             models.Index(fields=["owner", "fingerprint"]),
             models.Index(fields=["external_id", "provider"]),
+            models.Index(fields=["payment_schedule_run"]),
         ]
 
     def __str__(self):
@@ -357,76 +384,19 @@ class Transaction(models.Model):
             raise ValidationError(
                 {"confirmed": _("Una transaccion reconciliada debe estar confirmada.")}
             )
+        if self.type != self.Type.EXPENSE:
+            if self.budget_scope not in {"", BudgetScope.NONE} or self.shared_budget_id:
+                raise ValidationError(
+                    {"budget_scope": _("Solo los gastos pueden llevar attribution presupuestaria.")}
+                )
+        if self.budget_scope == BudgetScope.SHARED and not self.shared_budget_id:
+            raise ValidationError({"shared_budget": _("Debes indicar un presupuesto compartido cuando budget_scope=shared.")})
+        if self.budget_scope in {"", BudgetScope.NONE, BudgetScope.PERSONAL} and self.shared_budget_id:
+            raise ValidationError({"shared_budget": _("shared_budget solo aplica cuando budget_scope=shared.")})
 
     def save(self, *args, **kwargs):
         self.normalize_state()
         super().save(*args, **kwargs)
-
-
-class ScheduledPayment(models.Model):
-    class Status(models.TextChoices):
-        PENDING = "pending", _("pendiente")
-        PAID = "paid", _("pagado")
-        CANCELED = "canceled", _("cancelado")
-
-    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="scheduled_payments")
-    name = models.CharField(max_length=140)
-    amount = models.DecimalField(max_digits=16, decimal_places=2)
-    due_date = models.DateField()
-    account = models.ForeignKey(
-        "accounts.Account",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="scheduled_payments",
-    )
-    category = models.ForeignKey(
-        "categories.Category",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="scheduled_payments",
-    )
-    vendor = models.ForeignKey(
-        "vendors.Vendor",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="scheduled_payments",
-    )
-    debt = models.ForeignKey(
-        "debts.Debt",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="scheduled_payments",
-    )
-    installment = models.ForeignKey(
-        "debts.DebtInstallment",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="scheduled_payments",
-    )
-    priority = models.CharField(
-        max_length=8,
-        choices=Transaction.Priority.choices,
-        default=Transaction.Priority.MEDIUM,
-    )
-    tags = models.ManyToManyField("transactions.Tag", blank=True, related_name="scheduled_payments")
-    status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING)
-    notes = models.TextField(blank=True, default="")
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["due_date", "-id"]
-        indexes = [
-            models.Index(fields=["owner", "due_date"]),
-            models.Index(fields=["owner", "status"]),
-        ]
-
-    def __str__(self):
-        return f"{self.name} due {self.due_date}"
 
 
 class TransactionParticipant(models.Model):

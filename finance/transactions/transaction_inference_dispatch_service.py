@@ -98,11 +98,8 @@ def _process_inline_for_tests(*, inference_request_id, request_id: str = "", sou
     )
 
 
-def dispatch_transaction_inference(*, inference_request_id, request_id: str = "", source: str = "") -> dict:
-    if not inference_request_id:
-        return {"result": "missing_inference_request_id"}
-
-    dispatch_result = dispatch_job(
+def enqueue_transaction_inference_task(*, inference_request_id, request_id: str = "", source: str = "") -> dict:
+    return dispatch_job(
         job_type=JOB_TYPE,
         cloud_task_config=_cloud_task_config(
             inference_request_id=inference_request_id,
@@ -114,6 +111,17 @@ def dispatch_transaction_inference(*, inference_request_id, request_id: str = ""
             request_id=request_id,
             source=source,
         ),
+    )
+
+
+def dispatch_transaction_inference(*, inference_request_id, request_id: str = "", source: str = "") -> dict:
+    if not inference_request_id:
+        return {"result": "missing_inference_request_id"}
+
+    dispatch_result = enqueue_transaction_inference_task(
+        inference_request_id=inference_request_id,
+        request_id=request_id,
+        source=source,
     )
     result = str(dispatch_result.get("result") or "")
     backend = str(dispatch_result.get("dispatch_backend") or "")

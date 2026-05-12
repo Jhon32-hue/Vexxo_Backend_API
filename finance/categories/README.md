@@ -21,6 +21,13 @@ De cara al usuario, sostienen:
 - reglas o automatizaciones futuras
 - mejor interpretacion en dashboard, alertas y recomendaciones
 
+Importante:
+
+- categoria no equivale a presupuesto
+- una categoria puede terminar en budget `personal`, `shared` o `none`
+- el eje presupuestario ahora se resuelve aparte via `budget_scope` y
+  `shared_budget`
+
 ## Flujo Principal
 
 1. el usuario o backoffice crea/edita una categoria
@@ -33,6 +40,9 @@ De cara al usuario, sostienen:
   usa categoria como parte del ledger y del reporting
 - `payments`
   puede propagar categoria sugerida a intents o templates
+- `finance.budgets`
+  usa categoria para presupuestos personales, pero no para decidir si el gasto
+  es personal o compartido por si solo
 - `reports`
   agrupa gasto por categoria
 

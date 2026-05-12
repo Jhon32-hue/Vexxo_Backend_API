@@ -141,8 +141,6 @@ Este es el nucleo contable real de Vexxo.
 - `transactions_tag`
 - `transactions_transaction_tags`
 - `transactions_incomesource`
-- `transactions_scheduledpayment`
-- `transactions_scheduledpayment_tags`
 - `transactions_transactiondomaineventoutbox`
 
 ### Flujo
@@ -210,6 +208,9 @@ Estas tablas separan ejecucion externa de ledger.
 - `fx_exchangerate`
 - `budgets_budget`
 - `budgets_accountbudget`
+- `budgets_sharedbudget`
+- `budgets_sharedbudgettransactionlink`
+- `budgets_sharedbudgettemplatelink`
 - `goals_goal`
 - `investments_asset`
 - `investments_investmentaccount`
@@ -273,7 +274,12 @@ Si se prioriza entendimiento tecnico, las tablas mas centrales hoy son:
 - auditoria: que hizo el sistema o el usuario
 - catalogos auxiliares: clasificacion, deuda, contactos, FX, metas e inversion
 
-## Tabla maestra de las 81 tablas
+## Tabla maestra del inventario actual de tablas
+
+Este inventario esta pensado para la instancia actual que muestras en Cloud SQL /
+PostgreSQL local. El numero exacto puede variar si se habilitan modulos nuevos o
+si cambian migraciones futuras, pero la agrupacion por bounded context debe
+mantenerse estable.
 
 ### Framework, auth y base Django
 
@@ -340,8 +346,12 @@ Si se prioriza entendimiento tecnico, las tablas mas centrales hoy son:
 | `transactions_tag` | `finance.transactions` | Tags del usuario para movimientos | usuario/API | UX/reportes | baja |
 | `transactions_transaction_tags` | `finance.transactions` | Relacion transaccion-tag | ORM/API | UX/reportes | baja |
 | `transactions_incomesource` | `finance.transactions` | Catalogo de fuentes de ingreso | usuario/API | ledger/reportes | baja |
-| `transactions_scheduledpayment` | `finance.transactions` legacy | Programacion/recordatorio local legacy | usuario/API legacy | ledger/deudas | media |
-| `transactions_scheduledpayment_tags` | `finance.transactions` | Relacion scheduled payment-tag | ORM/API | UX | baja |
+| `transactions_transactionexternaldetails` | `finance.transactions` | Vista normalizada y consultable de metadata externa del movimiento sin inflar `Transaction` | intake/materialization service | soporte, reporting, integraciones | media |
+| `transactions_transactioninferencerequest` | `finance.transactions` | Solicitud durable del flujo de voz/IA antes de materializar movimientos | mobile + inference service | mobile, worker de inferencia, soporte | media |
+| `transactions_transactionintakebatch` | `finance.transactions` | Lote canonico de intake interno para filas externas o inferidas | intake service, bridges internos | receipts, reconciliation, soporte | alta |
+| `transactions_transactionintakereceipt` | `finance.transactions` | Recibo por fila ingerida; conserva payload normalizado/crudo y resultado de materializacion | intake service | soporte, dedupe, reconciliacion | alta |
+| `transactions_transactionsourcelink` | `finance.transactions` | Fingerprint/idempotencia y enlace entre fuente externa y ledger materializado | intake service | dedupe, reconciliacion, soporte | alta |
+| `transactions_transactionreconciliationissue` | `finance.transactions` | Issue formal cuando un proveedor corrige, revierte o contradice un movimiento ya materializado | reconciliation service | soporte, ops, resolucion interna | alta |
 | `transactions_transactiondomaineventoutbox` | `finance.transactions` | Outbox del ledger | transaction signals/actions | worker/event bus | alta |
 
 ### Pagos externos y dispersion
@@ -356,13 +366,15 @@ Si se prioriza entendimiento tecnico, las tablas mas centrales hoy son:
 | `payment_intents_payoutbatch` | `payments.payment_intents` | Lote de dispersion | payout service | ops/UX | media |
 | `payment_intents_payoutinstruction` | `payments.payment_intents` | Instruccion individual de dispersion | payout service | ops/UX | media |
 | `scheduled_payments_paymenttemplate` | `payments.scheduled_payments` | Plantilla moderna de pago recurrente | scheduled payments service | scheduler/payments | media |
-| `scheduled_payments_paymentschedulerun` | `payments.scheduled_payments` | Corrida concreta de la plantilla | scheduler/workers | payments/ops | media |
+| `scheduled_payments_paymentschedulerun` | `payments.scheduled_payments` | Ocurrencia concreta del pago programado con estado, reminders y resolucion | scheduler/workers + scheduled payments service | payments/ops/notifications/realtime | media |
 
 ### Alertas, reglas, notificaciones y realtime
 
 | Tabla | Modulo | Que hace | Quien la escribe | Quien la lee | Criticidad |
 |---|---|---|---|---|---|
 | `alerts_alert` | `alerts.alerts` | Alerta visible al usuario | alert services/listeners | mobile/dashboard | media |
+| `alerts_alertaidispatchstate` | `alerts.alerts` | Estado operativo del enrichment IA o de su dispatch asincrono | dispatch service / ai worker | ops, soporte, workers | media |
+| `alerts_alertdomaineventoutbox` | `alerts.alerts` | Outbox del bounded context de alertas | alert services | worker/event bus | media |
 | `rules_rule` | `alerts.rules` | Regla de automatizacion/alerta | usuario/API | alerts/rule engine | media |
 | `notification_deliveries_notificationdelivery` | `notifications.deliveries` | Inbox durable del usuario | notifications listeners/services | mobile/inbox | media |
 | `realtime_consumers_realtimesignal` | `realtime.consumers` | Feed tecnico liviano para polling/realtime | realtime services de domains | mobile/web | baja |
@@ -378,8 +390,17 @@ Si se prioriza entendimiento tecnico, las tablas mas centrales hoy son:
 | `debts_debt` | `finance.debts` | Deuda/obligacion financiera | usuario/API | debts, transactions | media |
 | `debts_debtinstallment` | `finance.debts` | Cuotas de una deuda | usuario/API | debts, transactions | media |
 | `fx_exchangerate` | `finance.fx` | Tasas de cambio | jobs/API | accounts/reports | baja |
-| `budgets_budget` | `finance.budgets` | Presupuesto | budgets service/API | budgets/reporting | baja |
-| `budgets_accountbudget` | `finance.budgets` | Relacion presupuesto-cuenta | budgets service/API | budgets | baja |
+| `budgets_budget` | `finance.budgets` | Presupuesto personal por categoria | budgets service/API + listeners `transactions.*` y `payments.recurring.template.*` | budgets/reporting/alerts | baja |
+| `budgets_accountbudget` | `finance.budgets` | Presupuesto legacy por cuenta sin superficie publica V2 | compatibilidad historica | budgets | baja |
+| `budgets_sharedbudget` | `finance.budgets` | Presupuesto compartido por team | budgets service/API + linking explicito | budgets/reporting/alerts/social | baja |
+| `budgets_sharedbudgettransactionlink` | `finance.budgets` | Vinculo entre shared budget y transaccion | budgets service + listeners `transactions.*` | budgets/social | baja |
+| `budgets_sharedbudgettemplatelink` | `finance.budgets` | Vinculo entre shared budget y plantilla programada | budgets service | budgets/payments | baja |
+| `transactions_transaction.budget_scope/shared_budget_id` | `finance.transactions` | Attribution presupuestaria del gasto real | transaction write + eventing + budgets listeners | budgets/reporting/social | baja |
+| `transactions_transaction.payment_schedule_run_id` | `finance.transactions` | Enlace canonico desde ledger a la ocurrencia moderna de pago programado | transaction materialization + scheduled payments service | payments/support/auditoria | media |
+| `scheduled_payments_paymenttemplate.budget_scope/shared_budget_id` | `payments.scheduled_payments` | Attribution presupuestaria del committed moderno | template services + payments outbox | budgets/payments | baja |
+| `scheduled_payments_paymentschedulerun.status/due_on/reminder_stage` | `payments.scheduled_payments` | Lifecycle de ocurrencia del pago programado | scheduled payments service + scheduler/job | mobile/notifications/ops | media |
+| `scheduled_payments_paymentschedulerun.materialized_transaction_id` | `payments.scheduled_payments` | Vinculo al ledger cuando el pago se confirma manualmente o por Vexxo | scheduled payments service | transactions/payments/support | media |
+| `scheduled_payments_paymentschedulerun.run_payload.retry_of_schedule_run_id / retried_by_schedule_run_id` | `payments.scheduled_payments` | Relacion entre corrida fallida y nueva ocurrencia derivada de retry | scheduled payments service | soporte/ops | baja |
 | `goals_goal` | `planning.goals` | Meta financiera | goals service/API | planning/dashboard | baja |
 | `investments_asset` | `finance.investments` | Activo financiero | investments service | investments | baja |
 | `investments_investmentaccount` | `finance.investments` | Cuenta de inversion | investments service | investments | baja |
@@ -395,6 +416,127 @@ Si se prioriza entendimiento tecnico, las tablas mas centrales hoy son:
 | `teams_membership` | `social.teams` | Membresia dentro del equipo | social service/API | social UX | baja |
 | `users_user_groups` | Django + `users` | Relacion usuario-grupo | Django/admin | auth/admin | baja |
 | `users_user_user_permissions` | Django + `users` | Permisos directos del usuario | Django/admin | auth/admin | baja |
+
+## Mapa relacional resumido de las tablas
+
+Esta seccion no repite columna por columna toda la BD. Resume la relacion
+entre tablas para que se entienda rapido donde esta la tabla raiz de cada
+contexto y cuales son sus satelites operativos.
+
+### 1. Auth e identidad
+
+- `users_user` es la raiz funcional del sistema.
+- Alrededor de `users_user` viven:
+  - `devices_userdevice`
+  - `identity_sessions_usersession`
+  - `identity_permissions_userpermissiongrant`
+  - `consents_userconsent`
+  - `social_identities_usersocialidentity`
+  - `social_identities_socialauthhandoff`
+- Las tablas `account_email*`, `socialaccount_*`, `authtoken_*`,
+  `token_blacklist_*`, `auth_*`, `django_session` y `django_site` sostienen
+  login, social auth, confirmacion de email y revocacion de tokens.
+- `identity_eventing_identitydomaineventoutbox` publica eventos del contexto.
+- `identity_eventing_userproductusageprojection` y
+  `identity_eventing_userproductusageprojectionevent` materializan el estado de
+  uso/plan que luego leen guards de producto y dashboard.
+
+### 2. Cuentas y colaboracion financiera
+
+- `accounts_account` es la tabla raiz del dinero operativo.
+- Se conecta con:
+  - `accounts_accountmembership` para acceso efectivo compartido
+  - `accounts_accountinvitation` para el flujo previo a aceptar acceso
+  - `accounts_accountaccess` como rastro legacy/historico
+- Se apoya en tablas derivadas:
+  - `accounts_balancesnapshot`
+  - `accounts_accountbalancefallback`
+  - `accounts_accountportfoliosnapshot`
+  - `accounts_accountrisksnapshot`
+  - `accounts_accountproductsignal`
+  - `accounts_accountownermetrics`
+  - `accounts_accountcurrencyexposure`
+  - `accounts_accounttypedistribution`
+  - `accounts_accountintelligencedispatchstate`
+- `accounts_domaineventoutbox` publica cambios del contexto y desacopla
+  intelligence, notificaciones y realtime.
+
+### 3. Ledger e intake de transacciones
+
+- `transactions_transaction` es la fuente de verdad contable.
+- Sus extensiones directas son:
+  - `transactions_transactionparticipant`
+  - `transactions_transaction_tags` <-> `transactions_tag`
+  - `transactions_incomesource`
+  - `transactions_transactionexternaldetails`
+- El pipeline de intake externo/inferido se apoya en:
+  - `transactions_transactioninferencerequest`
+  - `transactions_transactionintakebatch`
+  - `transactions_transactionintakereceipt`
+  - `transactions_transactionsourcelink`
+  - `transactions_transactionreconciliationissue`
+- `transactions_transactiondomaineventoutbox` publica side effects hacia
+  `accounts`, `alerts`, `debts`, `contacts`, `budgets`, `notifications` y
+  `realtime`.
+- `transactions.ScheduledPayment` ya no forma parte del esquema actual.
+- El antecedente legacy solo sobrevive en migraciones antiguas y metadata
+  archivada de backfill.
+
+### 4. Pagos externos y pagos programados
+
+- `payment_intents_paymentintent` es la raiz del bounded context de pagos
+  externos.
+- Se conecta con:
+  - `payment_intents_paymentprovidercallbackreceipt`
+  - `payment_intents_paymentsettlementrecord`
+  - `payment_intents_paymentoperationalcase`
+  - `payment_intents_paymentdomaineventoutbox`
+- Para dispersiones:
+  - `payment_intents_payoutbatch`
+  - `payment_intents_payoutinstruction`
+- El scheduling moderno vive en:
+  - `scheduled_payments_paymenttemplate`
+  - `scheduled_payments_paymentschedulerun`
+- El enlace moderno entre pagos programados y ledger termina en
+  `transactions_transaction.payment_schedule_run_id`.
+
+### 5. Presupuestos, deudas, metas, FX e inversiones
+
+- `budgets_budget` modela presupuesto personal.
+- `budgets_sharedbudget` modela presupuesto/evento compartido.
+- Los enlaces explicitos son:
+  - `budgets_accountbudget`
+  - `budgets_sharedbudgettransactionlink`
+  - `budgets_sharedbudgettemplatelink`
+- `debts_debt` es la raiz de obligaciones financieras.
+- `debts_debtinstallment` representa cuotas y ya puede enlazarse al scheduling
+  moderno por `payment_template`.
+- `categories_category`, `vendors_vendor` y `contacts_contact` funcionan como
+  catalogos reutilizados por ledger, payments y UX.
+- `fx_exchangerate` alimenta valuacion y reporting.
+- `goals_goal` queda como modulo de metas.
+- En inversiones, la cadena es:
+  - `investments_asset`
+  - `investments_investmentaccount`
+  - `investments_position`
+  - `investments_pricehistory`
+  - `investments_trade`
+
+### 6. Alertas, inbox, realtime y auditoria
+
+- `alerts_alert` es el agregado visible al usuario.
+- `alerts_alertaidispatchstate` modela el runtime asincrono del enrichment IA.
+- `alerts_alertdomaineventoutbox` publica eventos del contexto de alertas.
+- `notification_deliveries_notificationdelivery` es el inbox durable.
+- `realtime_consumers_realtimesignal` es la senal tecnica corta para mobile/web.
+- `audit_auditlog` guarda trazabilidad funcional para soporte/compliance.
+
+### 7. Equipos y colaboracion general
+
+- `teams_team` agrupa usuarios fuera del sharing de cuenta puntual.
+- `teams_membership` une usuario con equipo.
+- Sirven como base de features sociales, shared budgets y futuras experiencias
+  colaborativas.
 
 ## Matriz de dependencia de datos
 
@@ -442,7 +584,6 @@ Si se prioriza entendimiento tecnico, las tablas mas centrales hoy son:
 | `transactions_transaction` | create/confirm/financial update | `debts_debt`, `debts_debtinstallment` reconciliados | modulo de deudas |
 | `transactions_transaction` | over-limit check | `alerts_alert` | alertas |
 | `transactions_transactionparticipant` | create/update/delete/settled | `contacts_contact.net_balance` recalculado | contactos |
-| `transactions_scheduledpayment` | create/update/delete/paid | refresh slice de usage | `identity_eventing_userproductusageprojection` |
 | `transactions_transaction` | agregacion simple | vistas de `reports` | `/api/reports/reportes/...` |
 
 ### Pagos externos
@@ -457,8 +598,9 @@ Si se prioriza entendimiento tecnico, las tablas mas centrales hoy son:
 | `payment_intents_paymentintent` | eventos `payments.intent.*` | delta de pagos en `identity_eventing_userproductusageprojection` | plan/usage |
 | `payment_intents_payoutbatch` / `payment_intents_payoutinstruction` | `payments.payout.*` | delta de payouts en `identity_eventing_userproductusageprojection` | plan/usage |
 | `payments.intent.*`, `payments.payout.*` | realtime payment service | `realtime_consumers_realtimesignal` | mobile/web |
-| `scheduled_payments_paymenttemplate` | corrida programada | `scheduled_payments_paymentschedulerun` | scheduling/payments |
-| `scheduled_payments_paymentschedulerun` | ejecucion futura | `payment_intents_paymentintent` | payments |
+| `scheduled_payments_paymenttemplate` | plantilla del pago programado | `scheduled_payments_paymentschedulerun` | scheduling/payments |
+| `scheduled_payments_paymentschedulerun` | ocurrencia del pago programado | `payment_intents_paymentintent` | payments |
+| `scheduled_payments_paymentschedulerun` | confirmacion manual / fuera de Vexxo | `transactions_transaction` | transactions |
 
 ## Matriz por endpoint
 
@@ -495,8 +637,6 @@ Si se prioriza entendimiento tecnico, las tablas mas centrales hoy son:
 | `PATCH /api/finance/transactions/transactions/{id}/` | actualiza transaccion | `transactions_transaction`, `transactions_transactiondomaineventoutbox` | `transactions.updated.v1` o `transactions.financial.updated.v1` | accounts, debts, alerts |
 | `POST /api/finance/transactions/transactions/{id}/marcar_confirmada/` | confirma movimiento | `transactions_transaction`, `transactions_transactiondomaineventoutbox` | `transactions.confirmed.v1` | accounts, debts, alerts |
 | `POST /api/finance/transactions/transactions/{id}/registrar_reembolso/` | registra reembolso | `transactions_transaction`, `transactions_transactiondomaineventoutbox` | `transactions.reimbursement.recorded.v1` | ledger, accounts, reports |
-| `POST /api/finance/transactions/scheduled-payments/{id}/generar_transaccion/` | materializa scheduled legacy | `transactions_scheduledpayment`, `transactions_transaction` | `transactions.scheduled_payment.paid.v1` + evento de transaccion | ledger, accounts, usage |
-
 ### Payments
 
 | Endpoint | Que toca | Tablas principales | Evento / side effects | Que termina consumiendolo |
@@ -736,17 +876,16 @@ Eso significa que:
 - pero la cobertura funcional del flujo de notificaciones todavia no es tan
   amplia como la del event bus general
 
-### 4. Coexisten dos mundos de pagos programados
+### 4. Retiro completado del legacy de pagos programados
 
-Hoy conviven:
+El esquema actual ya no contiene `transactions_scheduledpayment`.
 
-- `transactions_scheduledpayment`
-  - legacy/local/manual
-- `scheduled_payments_paymenttemplate`
-  - capa nueva moderna
-
-La convivencia esta documentada y es intencional, pero sigue siendo una
-frontera a consolidar a mediano plazo.
+- toda escritura, lifecycle y alertado canonico de pagos programados vive en
+  `payments.scheduled_payments`
+- el enlace canonico con ledger vive en
+  `transactions_transaction.payment_schedule_run_id`
+- el antecedente legacy solo existe dentro de migraciones historicas y metadata
+  archivada de backfill; no como tabla o ruta operativa actual
 
 ### 5. Falta una salida analitica explicita fuera de Cloud SQL
 
@@ -828,7 +967,8 @@ no deberia salir de Cloud SQL request-path.
 ### Prioridad media
 
 - materializar snapshots o read models propios para reporting frecuente
-- consolidar la historia de scheduled payments entre legacy y modulo nuevo
+- vigilar que nuevas migraciones, tests o docs no reintroduzcan supuestos del
+  modelo `transactions_scheduledpayment` ya retirado
 - agregar mas visibilidad de causalidad entre evento emitido y proyeccion
   afectada
 
@@ -907,4 +1047,3 @@ Documentos canonicos relacionados:
 - [INTEGRATION_SOURCE_CATALOG.md](/D:/Vexxo_Backend_API/INTEGRATION_SOURCE_CATALOG.md)
 - [RAIL_NORMALIZATION_CONTRACTS.md](/D:/Vexxo_Backend_API/finance/transactions/RAIL_NORMALIZATION_CONTRACTS.md)
 - [PAYMENT_EXECUTION_CONTRACTS.md](/D:/Vexxo_Backend_API/payments/payment_intents/PAYMENT_EXECUTION_CONTRACTS.md)
-

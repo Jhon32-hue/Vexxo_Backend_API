@@ -15,6 +15,18 @@ class TransactionInferenceRequestCreateSerializer(serializers.Serializer):
     language = serializers.CharField(max_length=16, required=False, allow_blank=True, default="")
     provider = serializers.CharField(max_length=64, required=False, allow_blank=True, default="voice_ai")
 
+    def validate(self, attrs):
+        forbidden_fields = []
+        if "raw_payload" in getattr(self, "initial_data", {}):
+            forbidden_fields.append("raw_payload")
+        if "normalized_payload" in getattr(self, "initial_data", {}):
+            forbidden_fields.append("normalized_payload")
+        if forbidden_fields:
+            raise serializers.ValidationError(
+                {field: "Este campo no puede ser enviado por cliente en el endpoint publico." for field in forbidden_fields}
+            )
+        return attrs
+
     def validate_account_id(self, value):
         user = self.context["request"].user
         account = account_scope_for_user(user, Account.objects.all()).filter(pk=value).first()

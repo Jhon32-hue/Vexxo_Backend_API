@@ -41,7 +41,14 @@ def save_transaction_with_events(
 
 
 @db_tx.atomic
-def create_manual_transaction(*, validated_data: dict, actor=None, tags_data=None, event_source: str = "finance.transactions.transaction_write_service.create"):
+def create_manual_transaction(
+    *,
+    validated_data: dict,
+    actor=None,
+    tags_data=None,
+    event_source: str = "finance.transactions.transaction_write_service.create",
+    budget_context_shared_budget=None,
+):
     account = validated_data.get("account")
     if account is not None:
         validated_data["owner"] = account.owner
@@ -67,6 +74,7 @@ def update_manual_transaction(
     actor=None,
     tags_data=None,
     event_source: str = "finance.transactions.transaction_write_service.update",
+    budget_context_shared_budget=None,
 ):
     before = serialize_transaction_state(instance)
     for attr, value in validated_data.items():

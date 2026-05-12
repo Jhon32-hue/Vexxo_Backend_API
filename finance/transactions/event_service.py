@@ -107,7 +107,6 @@ def publish_transaction_event_after_commit(
         str(event_metadata.get("aggregate_id") or "")
         or str((payload or {}).get("transaction_id") or "")
         or str((payload or {}).get("participant_id") or "")
-        or str((payload or {}).get("scheduled_payment_id") or "")
         or str(correlation_id or "")
     )
     idempotency_key = stable_transaction_event_key(

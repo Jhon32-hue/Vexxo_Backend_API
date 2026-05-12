@@ -84,6 +84,19 @@ Lectura:
 - `AlertAiDispatchState` es la fuente de verdad operativa del enrichment async
 - local y cloud cambian de transporte, no de semantica del lifecycle
 
+## Alertas de pagos programados
+
+El flujo canonico de pagos programados ya no lee `transactions.ScheduledPayment`.
+Ese modelo tambien fue retirado fisicamente del runtime y del esquema actual.
+
+- `generate_scheduled_payment_alerts(...)` consulta `PaymentScheduleRun`
+- genera `AlertType.SCHEDULED_PAYMENT_DUE`
+- cada alerta nueva referencia:
+  - `payment_schedule_run_id`
+  - `payment_template_id`
+- cualquier wrapper legacy alrededor de este flujo es solo placeholder
+  historico y no debe reintroducir ids o payloads legacy en alertas nuevas
+
 ## Flujo actual
 
 ### Creacion
@@ -159,10 +172,94 @@ interno es `/api/internal/alerts/...`.
 - friccion de pago o fallo externo
 - insight resumido a partir de patrones o IA
 
+## Alertas de Pago Programado
+
+El flujo de alertas de pagos proximos ya no lee
+`transactions.ScheduledPayment` como fuente operativa.
+
+La fuente operativa actual es:
+
+- `PaymentTemplate`: define el pago programado
+- `PaymentScheduleRun`: representa la ocurrencia concreta
+
+La alerta se genera desde `alerts.alerts.services.generate_scheduled_payment_alerts()`
+leyendo corridas con estado:
+
+- `scheduled`
+- `due`
+- `postponed`
+
+```mermaid
+flowchart LR
+    PT[PaymentTemplate]
+    RUN[PaymentScheduleRun]
+    ALSVC[generate_scheduled_payment_alerts]
+    AL[Alert]
+    UI[Inbox / Push / Dashboard]
+
+    PT --> RUN
+    RUN --> ALSVC
+    ALSVC --> AL
+    AL --> UI
+```
+
+Lectura:
+
+- el template define el plan reusable
+- el run define la ocurrencia que realmente vence
+- `alerts` mira la fecha `due_on` del run
+- la alerta queda enlazada al `payment_schedule_run_id`
+
+### Payload esperado
+
+La alerta de pago programado ya puede incluir:
+
+- `payment_schedule_run_id`
+- `payment_template_id`
+- `name`
+- `amount`
+- `currency`
+- `due_date`
+- `account_id`
+- `account_name`
+
+### Por que importa
+
+Esto evita dos problemas del esquema viejo:
+
+- alertar sobre un concepto abstracto en vez de una ocurrencia real
+- depender de `ScheduledPayment` cuando el lifecycle operativo ya vive en
+  `PaymentScheduleRun`
+
+## Flujo de alerta por vencimiento
+
+```mermaid
+sequenceDiagram
+    participant JOB as command/job
+    participant RUN as PaymentScheduleRun
+    participant ALS as alerts.services
+    participant A as Alert
+    participant UX as mobile/web
+
+    JOB->>RUN: busca runs scheduled/due/postponed
+    RUN-->>ALS: due_on dentro de ventana
+    ALS->>A: create_alert(...)
+    A-->>UX: inbox / notificacion / dashboard
+```
+
+Regla actual:
+
+- el scheduler de alertas mira una ventana `today .. today + days_ahead`
+- no necesita crear o tocar transacciones
+- solo interpreta la proximidad operativa del run
+- la materializacion contable sigue ocurriendo en `transactions`
+
 ## Relacion con otros modulos
 
 - `finance.accounts`: produce eventos de balance/sync que disparan alertas
 - `finance.transactions`: puede aportar hechos contables para alertas
+- `payments.scheduled_payments`: aporta el lifecycle canonico de pagos
+  programados
 - `payments.payment_intents`: aporta eventos operativos de pagos externos
 - `identity.users`: consume `alerts.*` para refrescar usage projection
 - `notifications`: puede convertir alertas o eventos relacionados en inbox

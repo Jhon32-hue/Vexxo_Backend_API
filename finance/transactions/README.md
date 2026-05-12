@@ -54,13 +54,6 @@ classDiagram
         +paid_amount
     }
 
-    class ScheduledPayment {
-        +amount
-        +frequency
-        +next_run_date
-        +is_active
-    }
-
     class TransactionIntakeBatch {
         +provider
         +source
@@ -155,8 +148,12 @@ Campos importantes:
   - `original_amount` / `original_currency` / `fx_rate`
 - relaciones a `account`, `category`, `vendor`, `debt`, `installment`
 - vinculo opcional a `payment_intent`
-- metadata externa ligera: `source`, `provider`, `external_id`, `raw_payload`
-- soporte de split y reembolso
+- attribution presupuestaria opcional:
+  - `budget_scope`
+  - `shared_budget`
+  - `budget_attribution_source`
+  - metadata externa ligera: `source`, `provider`, `external_id`, `raw_payload`
+  - soporte de split y reembolso
 
 ### `TransactionExternalDetails`
 
@@ -192,17 +189,18 @@ Decision de diseno actual:
 - `TransactionIntakeReceipt` = staging/intake
 - `TransactionExternalDetails` = vista normalizada rica del rail
 
-### `ScheduledPayment`
+### Retiro de `ScheduledPayment`
 
-Es el modelo legacy/local de recordatorio o programacion manual dentro de `transactions`.
+`transactions.ScheduledPayment` ya fue retirado fisicamente del runtime y del
+esquema actual.
 
-No es el scheduler canonico para ejecucion externa.
+Politica actual:
 
-Se mantiene para:
-
-- recordatorios locales
-- materializacion manual de un movimiento contable
-- compatibilidad con deudas/cuotas y vistas legacy
+- la planificacion visible y operativa vive en `payments.scheduled_payments`
+- deuda/cuota ya pueden vivir en `PaymentTemplate.debt/installment`
+- la ruta legacy ya no esta registrada
+- el antecedente legacy solo persiste en migraciones antiguas y metadata
+  archivada de backfill
 
 ### `TransactionParticipant`
 
@@ -217,6 +215,25 @@ Ahora ya no hay dos modelos efectivos compitiendo. Esta clase cubre:
 - `status` operativo del share
 
 Esto alimenta `contacts` y futuros escenarios de shared expenses.
+
+## Categoria vs budget attribution
+
+`transactions` ahora distingue dos ejes:
+
+- `category`
+  - taxonomia del movimiento
+- `budget attribution`
+  - como participa ese gasto en planning
+
+Reglas actuales:
+
+- una transaccion `expense` puede contar para:
+  - `personal`
+  - `shared`
+  - `none`
+- el shared concreto se representa con `shared_budget`
+- la app puede enviar `budget_context_shared_budget` como sugerencia interna de
+  flujo, sin obligar al usuario a entender IDs o wiring tecnico
 
 ### `TransactionDomainEventOutbox`
 
@@ -559,6 +576,28 @@ Regla:
 - en local el procesamiento durable corre fuera del web app via management
   command que consume la tabla desde BD
 
+## Politica de payloads JSON
+
+En `finance.transactions` no todo JSON tiene el mismo nivel de confianza.
+
+- `public strict`
+  - `TransactionInferenceRequestCreateSerializer`
+  - el cliente publico solo puede enviar referencia de audio y metadata segura
+  - no puede inyectar `raw_payload`, `normalized_payload` ni filas inferidas
+- `internal-trusted`
+  - serializers de intake interno:
+    - `TransactionIntakeRowSerializer`
+    - `TransactionIntakeBatchSerializer`
+    - `TransactionMessageIntakeEnvelopeSerializer`
+    - `TransactionReconciliationIssueResolveSerializer`
+  - siguen siendo internos y autenticados por token, pero aun asi exigen que
+    `raw_payload`, `metadata` y similares sean objetos JSON
+
+Regla:
+
+- el intake interno puede transportar payload rico
+- el endpoint publico nunca debe convertirse en un bypass del pipeline canonico
+
 Estados de `TransactionInferenceRequest`:
 
 - `queued`: solicitud persistida y pendiente de worker
@@ -593,17 +632,19 @@ Endpoint interno del worker temporal:
   recibe `inference_request_id`, valida `X-Vexxo-Internal-Token` y delega al
   servicio canonico de `transactions`.
 
-### 3. Pago programado legacy local
+### 3. Pago programado moderno
 
-1. el usuario crea `transactions.ScheduledPayment`
-2. si quiere materializarlo localmente, usa `generar_transaccion`
-3. eso crea `Transaction` y marca el scheduled legacy como `paid`
+1. `PaymentTemplate` define el patron reusable
+2. `PaymentScheduleRun` modela la ocurrencia concreta
+3. `PaymentIntent` ejecuta el rail externo cuando aplica
+4. `Transaction` materializa el cierre contable final
 
 Regla:
 
-- este flujo es local/manual
+- la superficie legacy fue retirada del runtime y ya no es el motor canonico
 - no reemplaza `payments.scheduled_payments`
-- no ejecuta rails externos
+- no ejecuta rails externos por si misma
+- ya no existe como ruta o modelo operativo de producto
 
 ### 4. Reembolso
 
@@ -707,14 +748,20 @@ El contexto ya emite eventos canonicos como:
 - `transactions.reversed.v1`
 - `transactions.account.reassigned.v1`
 - `transactions.reimbursement.recorded.v1`
-- `transactions.participant.created.v1`
+  - `transactions.participant.created.v1`
 - `transactions.participant.updated.v1`
 - `transactions.participant.deleted.v1`
 - `transactions.participant.settled.v1`
 - `transactions.scheduled_payment.created.v1`
 - `transactions.scheduled_payment.updated.v1`
-- `transactions.scheduled_payment.deleted.v1`
-- `transactions.scheduled_payment.paid.v1`
+  - `transactions.scheduled_payment.deleted.v1`
+  - `transactions.scheduled_payment.paid.v1`
+
+Los payloads de transacciones y scheduled payments ya incluyen:
+
+- `budget_scope`
+- `shared_budget_id`
+- `budget_attribution_source`
 
 ### `transactions.financial.updated.v1`
 
@@ -820,7 +867,7 @@ En esta pasada ya no son el coordinador principal del CRUD manual de
 
 - create/update/delete manual via API pasan por `transaction_write_service.py`
 - acciones manuales clave como `confirm`, `reassign`, `add_comment`,
-  `register_reimbursement` y `materialize_transaction_from_legacy_scheduled_payment`
+  `register_reimbursement`
   tambien ya publican por write path explicito
 - ese servicio publica los eventos de CRUD de forma explicita
 - los signals quedan para intake, materializaciones y otros paths todavia no
@@ -886,19 +933,21 @@ Regla cloud:
 - llama estos endpoints internos
 - el backend sigue siendo el unico que escribe Cloud SQL
 
-## Convivencia entre `transactions.ScheduledPayment` y `payments.scheduled_payments`
+## Estado final del retiro legacy
 
 La decision actual es explicita:
 
 - `transactions.ScheduledPayment`
-  - legacy/local
-  - recordatorio y materializacion manual del ledger
-  - compatibilidad con deudas/cuotas existentes
+  - retirado fisicamente del esquema y del runtime actual
+  - solo persiste como antecedente de migracion
 
 - `payments.scheduled_payments`
-  - capa nueva y mas limpia de planificacion
-  - genera `PaymentIntent`
-  - orientada a ejecucion externa futura
+    - capa nueva y mas limpia de planificacion
+    - motor canonico futuro del concepto visible `Pago programado`
+    - separa plantilla (`PaymentTemplate`) de ocurrencia (`PaymentScheduleRun`)
+    - genera `PaymentIntent` y maneja reminder lifecycle por ocurrencia
+    - cuando la ocurrencia termina en ledger, `Transaction.payment_schedule_run`
+      deja el enlace canonico con esa corrida moderna
 
 No se mezclan:
 

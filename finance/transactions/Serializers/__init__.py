@@ -2,9 +2,9 @@ from django.utils import timezone
 from django.db import models
 from rest_framework import serializers
 
+from finance.budgets.models import SharedBudget
 from finance.transactions.Models.transacciones import (
     IncomeSource,
-    ScheduledPayment,
     Tag,
     Transaction,
     TransactionParticipant,
@@ -16,7 +16,7 @@ from finance.transactions.transaction_validation_service import (
     resolve_transaction_ledger_owner,
     validate_transaction_payload,
 )
-from identity.users.services.product_access_service import validate_scheduled_payments_limit
+from finance.transactions.transaction_write_service import create_manual_transaction, update_manual_transaction
 
 
 class BaseOwnerSerializer(serializers.ModelSerializer):
@@ -41,44 +41,6 @@ class IncomeSourceSerializer(BaseOwnerSerializer):
         model = IncomeSource
         fields = "__all__"
         read_only_fields = ("owner",)
-
-
-class ScheduledPaymentSerializer(BaseOwnerSerializer):
-    class Meta:
-        model = ScheduledPayment
-        fields = "__all__"
-        read_only_fields = ("owner", "created_at")
-
-    def validate(self, attrs):
-        account = attrs.get("account", getattr(self.instance, "account", None))
-        ledger_owner = resolve_transaction_ledger_owner(
-            user=self.context["request"].user,
-            account=account,
-            instance=self.instance,
-        )
-        activating_pending = (
-            self.instance is not None
-            and attrs.get("status") == ScheduledPayment.Status.PENDING
-            and getattr(self.instance, "status", None) != ScheduledPayment.Status.PENDING
-        )
-        if self.instance is None or activating_pending:
-            validate_scheduled_payments_limit(
-                self.context["request"].user,
-                source=(
-                    "transactions.scheduled_payments.create"
-                    if self.instance is None
-                    else "transactions.scheduled_payments.reactivate"
-                ),
-            )
-        for field in ["category", "vendor", "debt", "installment"]:
-            assert_ledger_owner(ledger_owner, attrs.get(field) or getattr(self.instance, field, None), field)
-        return attrs
-
-    def create(self, validated_data):
-        account = validated_data.get("account")
-        if account is not None:
-            validated_data["owner"] = account.owner
-        return super().create(validated_data)
 
 
 class TransactionParticipantSerializer(BaseOwnerSerializer):
@@ -163,6 +125,12 @@ class TransactionParticipantSerializer(BaseOwnerSerializer):
 
 
 class TransactionSerializer(BaseOwnerSerializer):
+    budget_context_shared_budget = serializers.PrimaryKeyRelatedField(
+        queryset=SharedBudget.objects.all(),
+        required=False,
+        allow_null=True,
+        write_only=True,
+    )
     account_name = serializers.CharField(source="account.name", read_only=True)
     category_name = serializers.CharField(source="category.name", read_only=True)
     vendor_name = serializers.CharField(source="vendor.name", read_only=True)
@@ -178,6 +146,7 @@ class TransactionSerializer(BaseOwnerSerializer):
             "fingerprint",
             "reimbursed",
             "reimbursement_transaction",
+            "budget_attribution_source",
         )
 
     def validate(self, attrs):
@@ -185,20 +154,29 @@ class TransactionSerializer(BaseOwnerSerializer):
             user=self.context["request"].user,
             attrs=attrs,
             instance=self.instance,
+            budget_context_shared_budget=attrs.get("budget_context_shared_budget"),
         )
 
     def create(self, validated_data):
-        account = validated_data.get("account")
-        if account is not None:
-            validated_data["owner"] = account.owner
-        tx = super().create(validated_data)
-        tx._event_actor_id = getattr(self.context.get("request"), "user", None).id if self.context.get("request") else ""
-        return apply_tag_selection(tx, self.initial_data.get("tags"))
+        actor = getattr(self.context.get("request"), "user", None)
+        budget_context_shared_budget = validated_data.pop("budget_context_shared_budget", None)
+        return create_manual_transaction(
+            validated_data=validated_data,
+            actor=actor,
+            tags_data=self.initial_data.get("tags"),
+            budget_context_shared_budget=budget_context_shared_budget,
+        )
 
     def update(self, instance, validated_data):
-        tx = super().update(instance, validated_data)
-        tx._event_actor_id = getattr(self.context.get("request"), "user", None).id if self.context.get("request") else ""
-        return apply_tag_selection(tx, self.initial_data.get("tags"))
+        actor = getattr(self.context.get("request"), "user", None)
+        budget_context_shared_budget = validated_data.pop("budget_context_shared_budget", None)
+        return update_manual_transaction(
+            instance=instance,
+            validated_data=validated_data,
+            actor=actor,
+            tags_data=self.initial_data.get("tags"),
+            budget_context_shared_budget=budget_context_shared_budget,
+        )
 
     @staticmethod
     def add_comment(tx: Transaction, text: str, user):

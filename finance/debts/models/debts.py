@@ -127,8 +127,12 @@ class DebtInstallment(models.Model):
     paid_transaction = models.ForeignKey(
         "transactions.Transaction", null=True, blank=True, on_delete=models.SET_NULL, related_name="paid_installments"
     )
-    scheduled_payment = models.ForeignKey(
-        "transactions.ScheduledPayment", null=True, blank=True, on_delete=models.SET_NULL, related_name="installments"
+    payment_template = models.ForeignKey(
+        "scheduled_payments.PaymentTemplate",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="debt_installments",
     )
 
     created_at = models.DateTimeField(auto_now_add=True)

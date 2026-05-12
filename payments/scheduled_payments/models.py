@@ -8,7 +8,10 @@ despues una corrida genere un `PaymentIntent`.
 from __future__ import annotations
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
+
+from finance.budgets.attribution import BudgetAttributionSource, BudgetScope
 
 
 class PaymentTemplate(models.Model):
@@ -24,6 +27,7 @@ class PaymentTemplate(models.Model):
         VARIABLE = "variable", "Variable"
 
     class Cadence(models.TextChoices):
+        ONCE = "once", "Once"
         DAILY = "daily", "Daily"
         WEEKLY = "weekly", "Weekly"
         MONTHLY = "monthly", "Monthly"
@@ -35,13 +39,6 @@ class PaymentTemplate(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="payment_templates",
-    )
-    legacy_scheduled_payment = models.OneToOneField(
-        "transactions.ScheduledPayment",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="payment_template",
     )
     account = models.ForeignKey(
         "accounts.Account",
@@ -57,8 +54,41 @@ class PaymentTemplate(models.Model):
         on_delete=models.SET_NULL,
         related_name="payment_templates",
     )
+    budget_scope = models.CharField(
+        max_length=16,
+        choices=BudgetScope.choices,
+        blank=True,
+        default="",
+    )
+    shared_budget = models.ForeignKey(
+        "budgets.SharedBudget",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="payment_templates",
+    )
+    budget_attribution_source = models.CharField(
+        max_length=32,
+        choices=BudgetAttributionSource.choices,
+        blank=True,
+        default="",
+    )
     vendor = models.ForeignKey(
         "vendors.Vendor",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="payment_templates",
+    )
+    debt = models.ForeignKey(
+        "debts.Debt",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="payment_templates",
+    )
+    installment = models.ForeignKey(
+        "debts.DebtInstallment",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
@@ -88,16 +118,52 @@ class PaymentTemplate(models.Model):
         indexes = [
             models.Index(fields=["owner", "is_active"]),
             models.Index(fields=["next_run_at"]),
+            models.Index(fields=["owner", "budget_scope", "is_active"]),
+            models.Index(fields=["shared_budget", "next_run_at"]),
         ]
+
+    def clean(self):
+        super().clean()
+        if self.installment_id and not self.debt_id:
+            self.debt_id = getattr(self.installment, "debt_id", None)
+        if self.budget_scope == BudgetScope.SHARED and not self.shared_budget_id:
+            raise ValidationError({"shared_budget": "Debes indicar un presupuesto compartido cuando budget_scope=shared."})
+        if self.budget_scope in {"", BudgetScope.NONE, BudgetScope.PERSONAL} and self.shared_budget_id:
+            raise ValidationError({"shared_budget": "shared_budget solo aplica cuando budget_scope=shared."})
+        if self.debt_id and getattr(self.debt, "owner_id", None) not in (None, self.owner_id):
+            raise ValidationError({"debt": "La deuda debe pertenecer al mismo owner del pago programado."})
+        if self.installment_id:
+            installment_owner_id = getattr(self.installment, "owner_id", None)
+            if installment_owner_id not in (None, self.owner_id):
+                raise ValidationError({"installment": "La cuota debe pertenecer al mismo owner del pago programado."})
+            if self.debt_id and getattr(self.installment, "debt_id", None) not in (None, self.debt_id):
+                raise ValidationError({"installment": "La cuota no pertenece a la deuda seleccionada."})
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
 
 
 class PaymentScheduleRun(models.Model):
     class Status(models.TextChoices):
-        REQUESTED = "requested", "Requested"
+        SCHEDULED = "scheduled", "Scheduled"
+        DUE = "due", "Due"
+        OVERDUE = "overdue", "Overdue"
         PROCESSING = "processing", "Processing"
-        SUCCEEDED = "succeeded", "Succeeded"
+        PAID = "paid", "Paid"
+        PAID_OUTSIDE_VEXXO = "paid_outside_vexxo", "Paid outside Vexxo"
+        POSTPONED = "postponed", "Postponed"
+        SKIPPED = "skipped", "Skipped"
+        CANCELED = "canceled", "Canceled"
         FAILED = "failed", "Failed"
-        CANCELLED = "cancelled", "Cancelled"
+
+    class ResolutionAction(models.TextChoices):
+        MARK_PAID = "mark_paid", "Mark paid"
+        PAID_OUTSIDE_VEXXO = "paid_outside_vexxo", "Paid outside Vexxo"
+        POSTPONE = "postpone", "Postpone"
+        SKIP = "skip", "Skip"
+        CANCEL = "cancel", "Cancel"
+        PAY_WITH_VEXXO = "pay_with_vexxo", "Pay with Vexxo"
 
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -116,8 +182,26 @@ class PaymentScheduleRun(models.Model):
         on_delete=models.SET_NULL,
         related_name="schedule_runs",
     )
+    materialized_transaction = models.ForeignKey(
+        "transactions.Transaction",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="payment_schedule_runs",
+    )
     scheduled_for = models.DateTimeField()
-    status = models.CharField(max_length=24, choices=Status.choices, default=Status.REQUESTED)
+    due_on = models.DateField(null=True, blank=True)
+    expected_amount = models.DecimalField(max_digits=20, decimal_places=2, null=True, blank=True)
+    expected_currency = models.CharField(max_length=12, default="COP")
+    status = models.CharField(max_length=24, choices=Status.choices, default=Status.SCHEDULED)
+    reminder_stage = models.PositiveSmallIntegerField(default=0)
+    reminder_count = models.PositiveSmallIntegerField(default=0)
+    last_reminded_at = models.DateTimeField(null=True, blank=True)
+    postponed_until = models.DateField(null=True, blank=True)
+    paid_at = models.DateField(null=True, blank=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolution_action = models.CharField(max_length=32, choices=ResolutionAction.choices, blank=True, default="")
+    resolution_note = models.TextField(blank=True, default="")
     idempotency_key = models.CharField(max_length=160, unique=True)
     run_payload = models.JSONField(default=dict, blank=True)
     failure_message = models.TextField(blank=True, default="")
@@ -129,4 +213,5 @@ class PaymentScheduleRun(models.Model):
         indexes = [
             models.Index(fields=["owner", "scheduled_for"]),
             models.Index(fields=["status", "scheduled_for"]),
+            models.Index(fields=["owner", "status", "due_on"]),
         ]

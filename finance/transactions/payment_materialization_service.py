@@ -11,7 +11,28 @@ from __future__ import annotations
 from django.db import transaction
 from django.utils import timezone
 
+from finance.budgets.attribution import BudgetAttributionSource, BudgetScope
 from finance.transactions.Models.transacciones import Transaction
+
+
+def _resolve_payment_intent_schedule_run(payment_intent):
+    return payment_intent.schedule_runs.select_related("template").order_by("-id").first()
+
+
+def _resolve_payment_intent_budget_attribution(payment_intent) -> dict:
+    latest_run = _resolve_payment_intent_schedule_run(payment_intent)
+    if latest_run and latest_run.template_id:
+        template = latest_run.template
+        return {
+            "budget_scope": getattr(template, "budget_scope", "") or BudgetScope.PERSONAL,
+            "shared_budget_id": getattr(template, "shared_budget_id", None),
+            "budget_attribution_source": BudgetAttributionSource.INHERITED_FROM_TEMPLATE,
+        }
+    return {
+        "budget_scope": BudgetScope.PERSONAL if payment_intent.category_id else BudgetScope.NONE,
+        "shared_budget_id": None,
+        "budget_attribution_source": "",
+    }
 
 
 @transaction.atomic
@@ -28,6 +49,9 @@ def materialize_transaction_from_payment_intent(payment_intent):
     if payment_intent.account_id is None:
         return None
 
+    latest_run = _resolve_payment_intent_schedule_run(payment_intent)
+    attribution = _resolve_payment_intent_budget_attribution(payment_intent)
+
     tx, _created = Transaction.objects.get_or_create(
         payment_intent=payment_intent,
         defaults={
@@ -38,6 +62,12 @@ def materialize_transaction_from_payment_intent(payment_intent):
             "date": timezone.now().date(),
             "account_id": payment_intent.account_id,
             "category_id": payment_intent.category_id,
+            "debt_id": getattr(getattr(latest_run, "template", None), "debt_id", None),
+            "installment_id": getattr(getattr(latest_run, "template", None), "installment_id", None),
+            "budget_scope": attribution["budget_scope"],
+            "shared_budget_id": attribution["shared_budget_id"],
+            "budget_attribution_source": attribution["budget_attribution_source"],
+            "payment_schedule_run": latest_run,
             "vendor_id": payment_intent.vendor_id,
             "source": "payment_intent",
             "provider": payment_intent.provider,
@@ -60,4 +90,18 @@ def materialize_transaction_from_payment_intent(payment_intent):
             "confirmed": True,
         },
     )
+    if latest_run and tx.payment_schedule_run_id != latest_run.pk:
+        tx.payment_schedule_run = latest_run
+        update_fields = ["payment_schedule_run"]
+        template = getattr(latest_run, "template", None)
+        if template and tx.debt_id != getattr(template, "debt_id", None):
+            tx.debt_id = getattr(template, "debt_id", None)
+            update_fields.append("debt")
+        if template and tx.installment_id != getattr(template, "installment_id", None):
+            tx.installment_id = getattr(template, "installment_id", None)
+            update_fields.append("installment")
+        tx.save(update_fields=update_fields + ["updated_at"])
+    if latest_run and latest_run.materialized_transaction_id != tx.pk:
+        latest_run.materialized_transaction = tx
+        latest_run.save(update_fields=["materialized_transaction", "updated_at"])
     return tx

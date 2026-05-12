@@ -13,14 +13,12 @@ from finance.accounts.services.permission_service import account_scope_for_user,
 from finance.transactions.actor_context import bind_transaction_actor
 from finance.transactions.Models.transacciones import (
     IncomeSource,
-    ScheduledPayment,
     Tag,
     Transaction,
     TransactionParticipant,
 )
 from finance.transactions.Serializers.transactions_serializers import (
     IncomeSourceSerializer,
-    ScheduledPaymentSerializer,
     TagSerializer,
     TransactionParticipantSerializer,
     TransactionSerializer,
@@ -28,13 +26,11 @@ from finance.transactions.Serializers.transactions_serializers import (
 from finance.transactions.transaction_actions_service import (
     add_transaction_comment,
     confirm_transaction,
-    materialize_transaction_from_legacy_scheduled_payment,
     reassign_transaction_account,
     register_transaction_reimbursement,
 )
 from finance.transactions.transaction_validation_service import (
     participant_scope_for_user,
-    scheduled_payment_scope_for_user,
     transaction_scope_for_user,
 )
 
@@ -98,7 +94,6 @@ class TransactionViewSet(OwnerScopedMixin, viewsets.ModelViewSet):
             "debt",
             "installment",
             "income_source",
-            "scheduled_payment",
             "payment_intent",
         )
         .prefetch_related("tags", "participants")
@@ -218,67 +213,6 @@ class TransactionViewSet(OwnerScopedMixin, viewsets.ModelViewSet):
             )
         return Response(
             {"detail": "Reembolso registrado.", "reimbursement_transaction_id": income_tx.id},
-            status=status.HTTP_201_CREATED,
-        )
-
-
-class ScheduledPaymentViewSet(OwnerScopedMixin, viewsets.ModelViewSet):
-    queryset = (
-        ScheduledPayment.objects.select_related("account", "category", "vendor", "debt", "installment")
-        .prefetch_related("tags")
-        .all()
-    )
-    serializer_class = ScheduledPaymentSerializer
-    filter_backends = [filters.SearchFilter, DjangoFilterBackend, filters.OrderingFilter]
-    search_fields = ["name", "notes", "vendor__name"]
-    ordering_fields = ["due_date", "amount", "created_at"]
-    filterset_fields = {
-        "status": ["exact"],
-        "priority": ["exact"],
-        "due_date": ["exact", "gte", "lte"],
-        "debt": ["exact"],
-        "installment": ["exact"],
-    }
-
-    def get_queryset(self):
-        queryset = scheduled_payment_scope_for_user(self.request.user, self.queryset)
-        scope = (self.request.query_params.get("scope") or "all").strip().lower()
-        if scope == "owned":
-            queryset = queryset.filter(account__owner=self.request.user)
-        elif scope == "shared":
-            queryset = queryset.exclude(account__owner=self.request.user)
-        return _apply_temporal_filters(queryset, self.request.query_params, field_name="due_date")
-
-    def perform_create(self, serializer):
-        account = serializer.validated_data.get("account")
-        with bind_transaction_actor(self.request.user):
-            serializer.save(owner=account.owner if account is not None else self.request.user)
-
-    def perform_update(self, serializer):
-        with bind_transaction_actor(self.request.user):
-            serializer.save()
-
-    def perform_destroy(self, instance):
-        if instance.account and not user_can_post_transactions(self.request.user, instance.account):
-            raise PermissionDenied("No tienes permisos para eliminar pagos programados en esta cuenta.")
-        with bind_transaction_actor(self.request.user):
-            super().perform_destroy(instance)
-
-    @db_tx.atomic
-    @action(detail=True, methods=["post"])
-    def generar_transaccion(self, request, pk=None):
-        sp = self.get_object()
-        if sp.account and not user_can_post_transactions(request.user, sp.account):
-            return Response({"detail": "No tienes permisos para generar transacciones en esta cuenta."}, status=status.HTTP_403_FORBIDDEN)
-        if sp.status == ScheduledPayment.Status.PAID:
-            return Response({"detail": "Este pago programado ya esta marcado como pagado."}, status=status.HTTP_400_BAD_REQUEST)
-        with bind_transaction_actor(request.user):
-            tx = materialize_transaction_from_legacy_scheduled_payment(scheduled_payment=sp)
-        return Response(
-            {
-                "detail": "Transaccion generada a partir del pago programado.",
-                "transaction_id": tx.id,
-            },
             status=status.HTTP_201_CREATED,
         )
 

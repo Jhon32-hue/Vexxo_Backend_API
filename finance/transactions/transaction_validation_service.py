@@ -6,12 +6,14 @@ from django.db.models import Q
 from rest_framework import serializers
 
 from finance.accounts.models import Account
+from finance.budgets.attribution import BudgetScope
+from finance.budgets.attribution_service import resolve_budget_attribution
 from finance.accounts.services.permission_service import (
     account_scope_for_user,
     user_can_post_transactions,
     user_can_view_account,
 )
-from finance.transactions.Models.transacciones import ScheduledPayment, Tag, Transaction
+from finance.transactions.Models.transacciones import Tag, Transaction
 from finance.transactions.utils_limits import account_month_expense_total, user_month_tx_count
 from identity.users.domain.plan_matrix import get_plan_capabilities
 
@@ -61,7 +63,7 @@ def assert_ledger_owner(owner, obj, field: str) -> None:
         raise serializers.ValidationError({field: "No pertenece al ledger de la cuenta seleccionada."})
 
 
-def validate_transaction_payload(*, user, attrs: dict, instance=None) -> dict:
+def validate_transaction_payload(*, user, attrs: dict, instance=None, budget_context_shared_budget=None) -> dict:
     amount = attrs.get("amount", getattr(instance, "amount", None))
     if amount is None or Decimal(amount) <= 0:
         raise serializers.ValidationError({"amount": "El monto debe ser mayor a 0."})
@@ -75,7 +77,6 @@ def validate_transaction_payload(*, user, attrs: dict, instance=None) -> dict:
         "income_source",
         "debt",
         "installment",
-        "scheduled_payment",
         "payment_intent",
     ]:
         assert_ledger_owner(ledger_owner, attrs.get(field) or getattr(instance, field, None), field)
@@ -86,7 +87,6 @@ def validate_transaction_payload(*, user, attrs: dict, instance=None) -> dict:
     income_source = attrs.get("income_source", getattr(instance, "income_source", None))
     debt = attrs.get("debt", getattr(instance, "debt", None))
     installment = attrs.get("installment", getattr(instance, "installment", None))
-    scheduled_payment = attrs.get("scheduled_payment", getattr(instance, "scheduled_payment", None))
 
     if category and hasattr(category, "type"):
         if tx_type == Transaction.Type.EXPENSE and category.type != "expense":
@@ -112,9 +112,6 @@ def validate_transaction_payload(*, user, attrs: dict, instance=None) -> dict:
 
     if debt and installment and getattr(installment, "debt_id", None) != debt.id:
         raise serializers.ValidationError({"installment": "La cuota no pertenece a la deuda seleccionada."})
-
-    if scheduled_payment and getattr(scheduled_payment, "status", None) == ScheduledPayment.Status.PAID:
-        raise serializers.ValidationError({"scheduled_payment": "Este pago programado ya esta marcado como pagado."})
 
     is_reimbursable = attrs.get("is_reimbursable", getattr(instance, "is_reimbursable", False))
     if is_reimbursable and tx_type != Transaction.Type.EXPENSE:
@@ -163,6 +160,46 @@ def validate_transaction_payload(*, user, attrs: dict, instance=None) -> dict:
                     )
                 }
             )
+
+    attribution = resolve_budget_attribution(
+        user=user,
+        budget_scope=attrs["budget_scope"] if "budget_scope" in attrs else None,
+        shared_budget=attrs["shared_budget"] if "shared_budget" in attrs else None,
+        budget_context_shared_budget=budget_context_shared_budget,
+        current_scope=getattr(instance, "budget_scope", ""),
+        current_shared_budget=getattr(instance, "shared_budget", None),
+        current_source=getattr(instance, "budget_attribution_source", ""),
+        expense_expected=(tx_type == Transaction.Type.EXPENSE),
+    )
+    attrs["budget_scope"] = attribution["budget_scope"]
+    attrs["shared_budget"] = attribution["shared_budget"]
+    attrs["budget_attribution_source"] = attribution["budget_attribution_source"]
+
+    return attrs
+
+
+def validate_scheduled_payment_payload(*, user, attrs: dict, instance=None, budget_context_shared_budget=None) -> dict:
+    account = attrs.get("account", getattr(instance, "account", None))
+    ledger_owner = resolve_transaction_ledger_owner(user=user, account=account, instance=instance)
+    for field in ["category", "vendor", "debt", "installment"]:
+        assert_ledger_owner(ledger_owner, attrs.get(field) or getattr(instance, field, None), field)
+
+    attribution = resolve_budget_attribution(
+        user=user,
+        budget_scope=attrs["budget_scope"] if "budget_scope" in attrs else None,
+        shared_budget=attrs["shared_budget"] if "shared_budget" in attrs else None,
+        budget_context_shared_budget=budget_context_shared_budget,
+        current_scope=getattr(instance, "budget_scope", ""),
+        current_shared_budget=getattr(instance, "shared_budget", None),
+        current_source=getattr(instance, "budget_attribution_source", ""),
+        expense_expected=True,
+    )
+    attrs["budget_scope"] = attribution["budget_scope"]
+    attrs["shared_budget"] = attribution["shared_budget"]
+    attrs["budget_attribution_source"] = attribution["budget_attribution_source"]
+
+    if attrs["budget_scope"] == BudgetScope.SHARED and attrs["shared_budget"] is None:
+        raise serializers.ValidationError({"shared_budget": "Debes indicar un presupuesto compartido valido."})
 
     return attrs
 

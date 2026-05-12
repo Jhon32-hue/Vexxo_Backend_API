@@ -234,6 +234,7 @@ def create_payment_intent(
     - dejar un registro persistente antes de hablar con integradores externos
     """
     normalized_key = str(idempotency_key or "").strip()
+    normalized_source = str(source or "payments.payment_intents.create").strip()[:64]
     _assert_owned_by_user(user, account, "account")
     _assert_owned_by_user(user, category, "category")
     _assert_owned_by_user(user, vendor, "vendor")
@@ -263,7 +264,7 @@ def create_payment_intent(
         beneficiary_document=beneficiary_document,
         beneficiary_account_ref=beneficiary_account_ref,
         invoice_reference=invoice_reference,
-        source=source,
+        source=normalized_source,
     )
     pricing_snapshot = calculate_embedded_payment_pricing(
         user=user,
@@ -291,7 +292,7 @@ def create_payment_intent(
             "beneficiary_name": str(beneficiary_name or "").strip(),
             "beneficiary_document": str(beneficiary_document or "").strip(),
             "beneficiary_account_ref": str(beneficiary_account_ref or "").strip(),
-            "source": source,
+            "source": normalized_source,
             "command_payload": command,
             "destination_payload": {
                 "beneficiary_name": str(beneficiary_name or "").strip(),

@@ -106,6 +106,9 @@ class EventNames:
     ACCOUNT_UNARCHIVED = "accounts.unarchived.v1"
     ACCOUNT_RECALCULATED = "accounts.recalculated.v1"
     ACCOUNT_SNAPSHOT_CREATED = "accounts.balance.snapshot.created.v1"
+    BUDGET_CREATED = "budgets.created.v1"
+    BUDGET_UPDATED = "budgets.updated.v1"
+    BUDGET_DELETED = "budgets.deleted.v1"
     ACCOUNT_DRIFT_DETECTED = "accounts.balance.drift.detected.v1"
     ACCOUNT_EXTERNAL_LINKED = "accounts.external.linked.v1"
     ACCOUNT_EXTERNAL_UNLINKED = "accounts.external.unlinked.v1"
@@ -138,6 +141,9 @@ class EventNames:
     PAYMENT_SETTLEMENT_RECORDED = "payments.settlement.recorded.v1"
     PAYMENT_RECURRING_TEMPLATE_CREATED = "payments.recurring.template.created.v1"
     PAYMENT_RECURRING_TEMPLATE_UPDATED = "payments.recurring.template.updated.v1"
+    PAYMENT_RECURRING_TEMPLATE_DELETED = "payments.recurring.template.deleted.v1"
+    PAYMENT_RECURRING_TEMPLATE_ACTIVATED = "payments.recurring.template.activated.v1"
+    PAYMENT_RECURRING_TEMPLATE_DEACTIVATED = "payments.recurring.template.deactivated.v1"
     PAYMENT_RECURRING_RUN_REQUESTED = "payments.recurring.run.requested.v1"
     PAYMENT_PAYOUT_REQUESTED = "payments.payout.requested.v1"
     PAYMENT_PAYOUT_SUCCEEDED = "payments.payout.succeeded.v1"
@@ -164,10 +170,6 @@ class EventNames:
     TRANSACTION_PARTICIPANT_UPDATED = "transactions.participant.updated.v1"
     TRANSACTION_PARTICIPANT_DELETED = "transactions.participant.deleted.v1"
     TRANSACTION_PARTICIPANT_SETTLED = "transactions.participant.settled.v1"
-    TRANSACTION_SCHEDULED_PAYMENT_CREATED = "transactions.scheduled_payment.created.v1"
-    TRANSACTION_SCHEDULED_PAYMENT_UPDATED = "transactions.scheduled_payment.updated.v1"
-    TRANSACTION_SCHEDULED_PAYMENT_DELETED = "transactions.scheduled_payment.deleted.v1"
-    TRANSACTION_SCHEDULED_PAYMENT_PAID = "transactions.scheduled_payment.paid.v1"
 
     # --- ALERTS ---
     ALERT_CREATED = "alerts.created.v1"
@@ -243,6 +245,9 @@ KNOWN_EVENT_TYPES: Dict[str, str] = {
     EventNames.ACCOUNT_UNARCHIVED: "Cuenta desarchivada",
     EventNames.ACCOUNT_RECALCULATED: "Balance de cuenta recalculado manualmente",
     EventNames.ACCOUNT_SNAPSHOT_CREATED: "Snapshot de balance de cuenta creado",
+    EventNames.BUDGET_CREATED: "Presupuesto creado",
+    EventNames.BUDGET_UPDATED: "Presupuesto actualizado",
+    EventNames.BUDGET_DELETED: "Presupuesto eliminado",
     EventNames.ACCOUNT_DRIFT_DETECTED: "Drift detectado entre cache y ledger de cuenta",
     EventNames.ACCOUNT_EXTERNAL_LINKED: "Cuenta vinculada a proveedor externo",
     EventNames.ACCOUNT_EXTERNAL_UNLINKED: "Cuenta desvinculada de proveedor externo",
@@ -273,6 +278,9 @@ KNOWN_EVENT_TYPES: Dict[str, str] = {
     EventNames.PAYMENT_SETTLEMENT_RECORDED: "Settlement de pago registrado",
     EventNames.PAYMENT_RECURRING_TEMPLATE_CREATED: "Template recurrente de pago creado",
     EventNames.PAYMENT_RECURRING_TEMPLATE_UPDATED: "Template recurrente de pago actualizado",
+    EventNames.PAYMENT_RECURRING_TEMPLATE_DELETED: "Template recurrente de pago eliminado",
+    EventNames.PAYMENT_RECURRING_TEMPLATE_ACTIVATED: "Template recurrente de pago activado",
+    EventNames.PAYMENT_RECURRING_TEMPLATE_DEACTIVATED: "Template recurrente de pago desactivado",
     EventNames.PAYMENT_RECURRING_RUN_REQUESTED: "Corrida recurrente de pago solicitada",
     EventNames.PAYMENT_PAYOUT_REQUESTED: "Dispersion solicitada",
     EventNames.PAYMENT_PAYOUT_SUCCEEDED: "Dispersion completada",
@@ -296,10 +304,6 @@ KNOWN_EVENT_TYPES: Dict[str, str] = {
     EventNames.TRANSACTION_PARTICIPANT_UPDATED: "Participante de transaccion actualizado",
     EventNames.TRANSACTION_PARTICIPANT_DELETED: "Participante de transaccion eliminado",
     EventNames.TRANSACTION_PARTICIPANT_SETTLED: "Participante de transaccion liquidado",
-    EventNames.TRANSACTION_SCHEDULED_PAYMENT_CREATED: "Pago programado legacy creado",
-    EventNames.TRANSACTION_SCHEDULED_PAYMENT_UPDATED: "Pago programado legacy actualizado",
-    EventNames.TRANSACTION_SCHEDULED_PAYMENT_DELETED: "Pago programado legacy eliminado",
-    EventNames.TRANSACTION_SCHEDULED_PAYMENT_PAID: "Pago programado legacy marcado como pagado",
     EventNames.ALERT_CREATED: "Alerta creada",
     #Recientemente agregado
     EventNames.ALERT_AI_ENRICHED: "Alerta enriquecida con IA",

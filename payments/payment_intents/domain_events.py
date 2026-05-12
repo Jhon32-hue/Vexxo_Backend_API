@@ -44,6 +44,9 @@ class PaymentDomainEventTypes:
     PAYMENT_SETTLEMENT_RECORDED = EventNames.PAYMENT_SETTLEMENT_RECORDED
     PAYMENT_RECURRING_TEMPLATE_CREATED = EventNames.PAYMENT_RECURRING_TEMPLATE_CREATED
     PAYMENT_RECURRING_TEMPLATE_UPDATED = EventNames.PAYMENT_RECURRING_TEMPLATE_UPDATED
+    PAYMENT_RECURRING_TEMPLATE_DELETED = EventNames.PAYMENT_RECURRING_TEMPLATE_DELETED
+    PAYMENT_RECURRING_TEMPLATE_ACTIVATED = EventNames.PAYMENT_RECURRING_TEMPLATE_ACTIVATED
+    PAYMENT_RECURRING_TEMPLATE_DEACTIVATED = EventNames.PAYMENT_RECURRING_TEMPLATE_DEACTIVATED
     PAYMENT_RECURRING_RUN_REQUESTED = EventNames.PAYMENT_RECURRING_RUN_REQUESTED
     PAYMENT_PAYOUT_REQUESTED = EventNames.PAYMENT_PAYOUT_REQUESTED
     PAYMENT_PAYOUT_SUCCEEDED = EventNames.PAYMENT_PAYOUT_SUCCEEDED
@@ -191,7 +194,31 @@ PAYMENT_EVENT_CATALOG = [
         "description": "Se emite al actualizar un template recurrente/programado.",
         "emitted_by": ["payments.scheduled_payments.services.update_payment_template"],
         "current_local_listeners": [],
-        "intended_consumers": ["scheduler", "ui", "analytics"],
+        "intended_consumers": ["scheduler", "ui", "analytics", "budgets"],
+    },
+    {
+        "event_type": PaymentDomainEventTypes.PAYMENT_RECURRING_TEMPLATE_DELETED,
+        "category": "planning",
+        "description": "Se emite al eliminar un template recurrente/programado.",
+        "emitted_by": ["payments.scheduled_payments.services.delete_payment_template"],
+        "current_local_listeners": [],
+        "intended_consumers": ["scheduler", "ui", "analytics", "budgets"],
+    },
+    {
+        "event_type": PaymentDomainEventTypes.PAYMENT_RECURRING_TEMPLATE_ACTIVATED,
+        "category": "planning",
+        "description": "Se emite cuando un template programado se reactiva.",
+        "emitted_by": ["payments.scheduled_payments.services.update_payment_template"],
+        "current_local_listeners": [],
+        "intended_consumers": ["scheduler", "ui", "budgets"],
+    },
+    {
+        "event_type": PaymentDomainEventTypes.PAYMENT_RECURRING_TEMPLATE_DEACTIVATED,
+        "category": "planning",
+        "description": "Se emite cuando un template programado se desactiva.",
+        "emitted_by": ["payments.scheduled_payments.services.update_payment_template"],
+        "current_local_listeners": [],
+        "intended_consumers": ["scheduler", "ui", "budgets"],
     },
     {
         "event_type": PaymentDomainEventTypes.PAYMENT_RECURRING_RUN_REQUESTED,
@@ -312,12 +339,24 @@ PAYMENT_EVENT_GOVERNANCE = {
         "required_fields": ["payment_intent_id", "settlement_id", "provider", "amount"],
     },
     PaymentDomainEventTypes.PAYMENT_RECURRING_TEMPLATE_CREATED: {
-        "payload_fields": ["template_id", "owner_id", "payment_type", "cadence", "is_active"],
-        "required_fields": ["template_id", "owner_id", "payment_type", "cadence"],
+        "payload_fields": ["template_id", "owner_id", "category_id", "budget_scope", "shared_budget_id", "amount_mode", "default_amount", "next_run_at", "is_active", "before", "after", "changed_fields"],
+        "required_fields": ["template_id", "owner_id", "budget_scope", "is_active"],
     },
     PaymentDomainEventTypes.PAYMENT_RECURRING_TEMPLATE_UPDATED: {
-        "payload_fields": ["template_id", "owner_id", "payment_type", "cadence", "is_active"],
-        "required_fields": ["template_id", "owner_id", "payment_type", "cadence"],
+        "payload_fields": ["template_id", "owner_id", "category_id", "budget_scope", "shared_budget_id", "amount_mode", "default_amount", "next_run_at", "is_active", "before", "after", "changed_fields"],
+        "required_fields": ["template_id", "owner_id", "budget_scope", "is_active"],
+    },
+    PaymentDomainEventTypes.PAYMENT_RECURRING_TEMPLATE_DELETED: {
+        "payload_fields": ["template_id", "owner_id", "category_id", "budget_scope", "shared_budget_id", "amount_mode", "default_amount", "next_run_at", "is_active", "before", "changed_fields"],
+        "required_fields": ["template_id", "owner_id"],
+    },
+    PaymentDomainEventTypes.PAYMENT_RECURRING_TEMPLATE_ACTIVATED: {
+        "payload_fields": ["template_id", "owner_id", "budget_scope", "shared_budget_id", "next_run_at", "is_active", "before", "after", "changed_fields"],
+        "required_fields": ["template_id", "owner_id", "is_active"],
+    },
+    PaymentDomainEventTypes.PAYMENT_RECURRING_TEMPLATE_DEACTIVATED: {
+        "payload_fields": ["template_id", "owner_id", "budget_scope", "shared_budget_id", "next_run_at", "is_active", "before", "after", "changed_fields"],
+        "required_fields": ["template_id", "owner_id", "is_active"],
     },
     PaymentDomainEventTypes.PAYMENT_RECURRING_RUN_REQUESTED: {
         "payload_fields": ["schedule_run_id", "template_id", "owner_id", "scheduled_for", "payment_type"],

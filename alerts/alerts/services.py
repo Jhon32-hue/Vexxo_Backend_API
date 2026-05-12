@@ -55,7 +55,7 @@ def create_alert(
           * Persistencia consistente.
           * Eventos de dominio (para dashboards, notificaciones, etc.).
           * Enriquecimiento opcional por IA, sin acoplarse a detalles de LLM.
-      - Para tests, puedes mockear este servicio y no tocar el resto del sistema.
+      - Para tests, se puede mockear este servicio y no tocar el resto del sistema.
 
     Ejemplos de uso:
       - Desde reglas de gasto: evaluate_balance_alerts_for_account(...)
@@ -268,61 +268,56 @@ def evaluate_balance_alerts_for_account(
 # ========= ALERTAS POR PAGOS PROGRAMADOS =========
 
 
-def generate_scheduled_payment_alerts(
+def _generate_scheduled_payment_alerts_legacy_shadow(
     *,
     days_ahead: int = 3,
 ) -> int:
     """
-    Genera alertas para pagos programados próximos a vencer.
+    Placeholder historico sin rol operativo.
 
-    Usado por el management command:
-        python manage.py generate_scheduled_payment_alerts
-
-    Flujo:
-      1) Busca ScheduledPayment pendientes cuya fecha de vencimiento esté
-         dentro del rango [hoy, hoy + days_ahead].
-      2) Por cada uno, crea una alerta SCHEDULED_PAYMENT_DUE usando create_alert.
-      3) Devuelve el número de alertas creadas.
-
-    Como pasa por create_alert:
-      - Se publicará ALERT_CREATED.
-      - Se intentará enriquecer con IA (ALERT_AI_ENRICHED).
-
-    FUTURO:
-      - Podrías variar la severidad según qué tan cerca esté la fecha de vencimiento.
-      - Podrías agrupar múltiples pagos en una "alerta resumen" para no saturar al usuario.
+    Se conserva temporalmente para no romper imports viejos, pero el flujo
+    canonico de alertas de pagos programados vive en
+    `generate_scheduled_payment_alerts(...)` y usa solo `PaymentScheduleRun`.
     """
+    return generate_scheduled_payment_alerts(days_ahead=days_ahead)
+def generate_scheduled_payment_alerts(
+    *,
+    days_ahead: int = 3,
+) -> int:
+    """Genera alertas de pagos programados proximos usando `PaymentScheduleRun`."""
     from datetime import timedelta
 
-    from finance.transactions.Models.transacciones import ScheduledPayment
+    from payments.scheduled_payments.models import PaymentScheduleRun
 
     now = timezone.now().date()
     cutoff = now + timedelta(days=days_ahead)
 
-    qs = ScheduledPayment.objects.filter(
-        status=ScheduledPayment.Status.PENDING,
-        due_date__gte=now,
-        due_date__lte=cutoff,
+    qs = PaymentScheduleRun.objects.filter(
+        status__in=[
+            PaymentScheduleRun.Status.SCHEDULED,
+            PaymentScheduleRun.Status.DUE,
+            PaymentScheduleRun.Status.POSTPONED,
+        ],
+        due_on__gte=now,
+        due_on__lte=cutoff,
     )
 
     count = 0
 
-    for sp in qs.select_related("owner", "account"):
-        owner = sp.owner
-        account = getattr(sp, "account", None)
-
-        title = f"Pago programado próximo: {sp.name}"
-        message = (
-            f"Tienes un pago programado de {sp.amount} {sp.currency} que vence "
-            f"el {sp.due_date}."
-        )
+    for run in qs.select_related("owner", "template", "template__account"):
+        template = run.template
+        owner = run.owner
+        account = getattr(template, "account", None)
+        amount = run.expected_amount or template.default_amount or 0
+        currency = run.expected_currency or template.currency or "COP"
 
         payload = {
-            "scheduled_payment_id": sp.pk,
-            "name": sp.name,
-            "amount": float(sp.amount),
-            "currency": sp.currency,
-            "due_date": sp.due_date.isoformat(),
+            "payment_schedule_run_id": run.pk,
+            "payment_template_id": template.pk,
+            "name": template.name,
+            "amount": float(amount),
+            "currency": currency,
+            "due_date": run.due_on.isoformat(),
             "account_id": getattr(account, "pk", None),
             "account_name": getattr(account, "name", None),
         }
@@ -330,8 +325,8 @@ def generate_scheduled_payment_alerts(
         create_alert(
             owner=owner,
             type=AlertType.SCHEDULED_PAYMENT_DUE,
-            title=title,
-            message=message,
+            title=f"Pago programado proximo: {template.name}",
+            message=f"Tienes un pago programado de {amount} {currency} que vence el {run.due_on}.",
             category=AlertCategory.CASHFLOW,
             severity=AlertSeverity.INFO,
             payload=payload,
@@ -340,9 +335,5 @@ def generate_scheduled_payment_alerts(
 
         count += 1
 
-    logger.info(
-        "[alerts] generate_scheduled_payment_alerts creó %s alertas (days_ahead=%s)",
-        count,
-        days_ahead,
-    )
+    logger.info("[alerts] generate_scheduled_payment_alerts moderno creo %s alertas (days_ahead=%s)", count, days_ahead)
     return count

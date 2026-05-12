@@ -16,6 +16,17 @@ from payments.payment_intents.models import (
 )
 
 
+def _validate_provider_json_object(*, field_name: str, value, max_keys: int = 128):
+    if not isinstance(value, dict):
+        raise serializers.ValidationError({field_name: "Debe ser un objeto JSON."})
+    if len(value) > max_keys:
+        raise serializers.ValidationError({field_name: f"Maximo {max_keys} claves top-level."})
+    invalid_keys = [key for key in value.keys() if not isinstance(key, str) or not key.strip()]
+    if invalid_keys:
+        raise serializers.ValidationError({field_name: "Todas las claves deben ser strings no vacios."})
+    return value
+
+
 class PaymentIntentSerializer(serializers.ModelSerializer):
     class Meta:
         model = PaymentIntent
@@ -79,8 +90,17 @@ class PaymentPricingPreviewSerializer(serializers.Serializer):
 
 
 class PaymentProviderCallbackSerializer(serializers.Serializer):
+    """
+    Superficie provider-only.
+
+    Se mantiene flexible porque cada PSP puede variar el payload, pero exigimos
+    que llegue como objeto JSON y no como scalar/lista arbitraria.
+    """
     provider = serializers.CharField(max_length=64)
     payload = serializers.JSONField()
+
+    def validate_payload(self, value):
+        return _validate_provider_json_object(field_name="payload", value=value)
 
 
 class PaymentWorkerReportSerializer(serializers.Serializer):
@@ -104,6 +124,9 @@ class PaymentWorkerReportSerializer(serializers.Serializer):
     failure_code = serializers.CharField(max_length=64, required=False, allow_blank=True, default="")
     failure_message = serializers.CharField(required=False, allow_blank=True, default="")
     provider_metadata = serializers.JSONField(required=False)
+
+    def validate_provider_metadata(self, value):
+        return _validate_provider_json_object(field_name="provider_metadata", value=value, max_keys=32)
 
 
 class PayoutInstructionSerializer(serializers.ModelSerializer):

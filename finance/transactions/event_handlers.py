@@ -7,7 +7,6 @@ from finance.transactions.domain_events import TransactionDomainEventTypes
 from finance.transactions.transaction_actions_service import (
     apply_transaction_to_debt_if_any,
     create_over_limit_alert_if_needed,
-    mark_legacy_scheduled_payment_paid_if_needed,
     reconcile_transaction_financial_update,
 )
 
@@ -20,7 +19,7 @@ def _load_tx(event):
     transaction_id = (event.payload or {}).get("transaction_id")
     if not transaction_id:
         return None
-    return Transaction.objects.filter(pk=transaction_id).select_related("account", "debt", "installment", "scheduled_payment").first()
+    return Transaction.objects.filter(pk=transaction_id).select_related("account", "debt", "installment").first()
 
 
 def _load_contact(contact_id):
@@ -59,7 +58,6 @@ def handle_transaction_side_effects(event):
         return
     if event.type != TransactionDomainEventTypes.TRANSACTION_FINANCIAL_UPDATED:
         apply_transaction_to_debt_if_any(tx)
-        mark_legacy_scheduled_payment_paid_if_needed(tx)
     else:
         reconcile_transaction_financial_update(tx=tx, before=(event.payload or {}).get("before") or {})
     create_over_limit_alert_if_needed(tx)
@@ -77,18 +75,3 @@ def handle_participant_side_effects(event):
     if hasattr(contact, "recalc_net_balance") and callable(contact.recalc_net_balance):
         contact.recalc_net_balance()
 
-
-@subscribe(TransactionDomainEventTypes.SCHEDULED_PAYMENT_CREATED, contexts=[EventContext.TRANSACTIONS], required=True)
-@subscribe(TransactionDomainEventTypes.SCHEDULED_PAYMENT_UPDATED, contexts=[EventContext.TRANSACTIONS], required=True)
-@subscribe(TransactionDomainEventTypes.SCHEDULED_PAYMENT_DELETED, contexts=[EventContext.TRANSACTIONS], required=True)
-@subscribe(TransactionDomainEventTypes.SCHEDULED_PAYMENT_PAID, contexts=[EventContext.TRANSACTIONS], required=True)
-def handle_scheduled_payment_projection(event):
-    owner_id = (event.payload or {}).get("owner_id")
-    if not owner_id:
-        return
-    from identity.users.services.product_usage_projection_service import sync_scheduled_payments_slice
-
-    sync_scheduled_payments_slice(
-        owner_id,
-        source=f"finance.transactions.event_handlers.{event.type}",
-    )

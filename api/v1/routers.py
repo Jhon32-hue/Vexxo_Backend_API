@@ -22,6 +22,7 @@ urlpatterns = [
     path("finance/accounts/", include("finance.accounts.urls")),
     path("finance/transactions/", include("finance.transactions.urls")),
     path("finance/categories/", include("finance.categories.urls")),
+    path("finance/budgets/", include("finance.budgets.urls")),
     path("finance/debts/", include("finance.debts.urls")),
     path("finance/fx/", include("finance.fx.urls")),
     path("finance/vendors/", include("finance.vendors.urls")),

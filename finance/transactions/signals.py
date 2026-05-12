@@ -3,13 +3,11 @@ from __future__ import annotations
 from django.db.models.signals import post_delete, post_save, pre_delete, pre_save
 from django.dispatch import receiver
 
-from finance.transactions.Models.transacciones import ScheduledPayment, Transaction, TransactionParticipant
+from finance.transactions.Models.transacciones import Transaction, TransactionParticipant
 from finance.transactions.domain_events import (
     TransactionDomainEventTypes,
     build_participant_payload,
-    build_scheduled_payment_payload,
     serialize_participant_state,
-    serialize_scheduled_payment_state,
     serialize_transaction_state,
 )
 from finance.transactions.event_service import publish_transaction_event_after_commit
@@ -126,57 +124,4 @@ def enqueue_participant_delete(sender, instance: TransactionParticipant, **kwarg
         aggregate_type="participant",
         aggregate_id=instance.pk,
         source="finance.transactions.signals.enqueue_participant_delete",
-    )
-
-
-@receiver(pre_save, sender=ScheduledPayment)
-def capture_scheduled_payment_previous_state(sender, instance: ScheduledPayment, **kwargs):
-    _capture_previous_state(instance, serialize_scheduled_payment_state)
-
-
-@receiver(post_save, sender=ScheduledPayment)
-def enqueue_scheduled_payment_events(sender, instance: ScheduledPayment, created: bool, **kwargs):
-    before = getattr(instance, "_previous_state", {}) or {}
-    payload = build_scheduled_payment_payload(instance, before=before)
-    event_type = (
-        TransactionDomainEventTypes.SCHEDULED_PAYMENT_CREATED
-        if created
-        else TransactionDomainEventTypes.SCHEDULED_PAYMENT_UPDATED
-    )
-    _publish(
-        event_type,
-        payload,
-        aggregate_type="scheduled_payment",
-        aggregate_id=instance.pk,
-        source="finance.transactions.signals.enqueue_scheduled_payment_events",
-    )
-    if not created and before.get("status") != ScheduledPayment.Status.PAID and instance.status == ScheduledPayment.Status.PAID:
-        _publish(
-            TransactionDomainEventTypes.SCHEDULED_PAYMENT_PAID,
-            payload,
-            aggregate_type="scheduled_payment",
-            aggregate_id=instance.pk,
-            source="finance.transactions.signals.enqueue_scheduled_payment_events.paid",
-        )
-
-
-@receiver(pre_delete, sender=ScheduledPayment)
-def capture_scheduled_payment_delete_state(sender, instance: ScheduledPayment, **kwargs):
-    setattr(instance, "_delete_state", serialize_scheduled_payment_state(instance))
-
-
-@receiver(post_delete, sender=ScheduledPayment)
-def enqueue_scheduled_payment_delete(sender, instance: ScheduledPayment, **kwargs):
-    payload = {
-        "scheduled_payment_id": str(instance.pk),
-        "owner_id": str(instance.owner_id),
-        "actor_user_id": str(getattr(instance, "_event_actor_id", "") or get_current_transaction_actor_id() or ""),
-        "before": getattr(instance, "_delete_state", {}) or {},
-    }
-    _publish(
-        TransactionDomainEventTypes.SCHEDULED_PAYMENT_DELETED,
-        payload,
-        aggregate_type="scheduled_payment",
-        aggregate_id=instance.pk,
-        source="finance.transactions.signals.enqueue_scheduled_payment_delete",
     )

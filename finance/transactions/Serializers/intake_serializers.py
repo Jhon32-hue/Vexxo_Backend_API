@@ -5,7 +5,26 @@ from rest_framework import serializers
 from finance.transactions.Models import TransactionIntakeBatch
 
 
+def _validate_internal_json_object(*, field_name: str, value, max_keys: int = 256):
+    if value in (None, ""):
+        return {}
+    if not isinstance(value, dict):
+        raise serializers.ValidationError({field_name: "Debe ser un objeto JSON."})
+    if len(value) > max_keys:
+        raise serializers.ValidationError({field_name: f"Maximo {max_keys} claves top-level."})
+    invalid_keys = [key for key in value.keys() if not isinstance(key, str) or not key.strip()]
+    if invalid_keys:
+        raise serializers.ValidationError({field_name: "Todas las claves deben ser strings no vacios."})
+    return value
+
+
 class TransactionIntakeRowSerializer(serializers.Serializer):
+    """
+    Superficie internal-trusted.
+
+    Acepta payloads amplios porque modela intake desde conectores/proveedores,
+    pero aun asi exige objetos JSON en los campos estructurados principales.
+    """
     account_id = serializers.IntegerField(required=False)
     internal_account_id = serializers.IntegerField(required=False)
     external_id = serializers.CharField(required=False, allow_blank=True, max_length=128)
@@ -101,14 +120,27 @@ class TransactionIntakeRowSerializer(serializers.Serializer):
     raw = serializers.JSONField(required=False)
     metadata = serializers.JSONField(required=False)
 
+    def validate_transaction_information(self, value):
+        return _validate_internal_json_object(field_name="transaction_information", value=value)
+
+    def validate_raw_payload(self, value):
+        return _validate_internal_json_object(field_name="raw_payload", value=value)
+
+    def validate_metadata(self, value):
+        return _validate_internal_json_object(field_name="metadata", value=value)
+
 
 class TransactionIntakeBatchSerializer(serializers.Serializer):
+    """Superficie internal-trusted para batches de intake."""
     provider = serializers.CharField(max_length=64)
     source = serializers.CharField(max_length=64, default="open_finance")
     provider_account_id = serializers.CharField(required=False, allow_blank=True, max_length=128)
     cursor = serializers.CharField(required=False, allow_blank=True, max_length=255)
     raw_summary = serializers.JSONField(required=False)
     rows = TransactionIntakeRowSerializer(many=True)
+
+    def validate_raw_summary(self, value):
+        return _validate_internal_json_object(field_name="raw_summary", value=value)
 
 
 class TransactionIntakeSingleRowEnvelopeSerializer(serializers.Serializer):
@@ -119,6 +151,7 @@ class TransactionIntakeSingleRowEnvelopeSerializer(serializers.Serializer):
 
 
 class TransactionMessageIntakeEnvelopeSerializer(serializers.Serializer):
+    """Superficie internal-trusted para intake desde parser/mensajeria."""
     provider = serializers.CharField(max_length=64, required=False, default="message_parser")
     source = serializers.ChoiceField(choices=["sms", "email", "message"], required=False, default="sms")
     provider_account_id = serializers.CharField(required=False, allow_blank=True, max_length=128)
@@ -142,6 +175,12 @@ class TransactionMessageIntakeEnvelopeSerializer(serializers.Serializer):
                 "Debes enviar provider_account_id o una referencia interna de cuenta (account_id/internal_account_id)."
             )
         return attrs
+
+    def validate_raw_payload(self, value):
+        return _validate_internal_json_object(field_name="raw_payload", value=value)
+
+    def validate_metadata(self, value):
+        return _validate_internal_json_object(field_name="metadata", value=value)
 
 
 class TransactionIntakeBatchResponseSerializer(serializers.ModelSerializer):

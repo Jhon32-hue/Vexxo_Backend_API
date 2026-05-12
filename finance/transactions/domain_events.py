@@ -28,10 +28,6 @@ class TransactionDomainEventTypes:
     PARTICIPANT_UPDATED = EventNames.TRANSACTION_PARTICIPANT_UPDATED
     PARTICIPANT_DELETED = EventNames.TRANSACTION_PARTICIPANT_DELETED
     PARTICIPANT_SETTLED = EventNames.TRANSACTION_PARTICIPANT_SETTLED
-    SCHEDULED_PAYMENT_CREATED = EventNames.TRANSACTION_SCHEDULED_PAYMENT_CREATED
-    SCHEDULED_PAYMENT_UPDATED = EventNames.TRANSACTION_SCHEDULED_PAYMENT_UPDATED
-    SCHEDULED_PAYMENT_DELETED = EventNames.TRANSACTION_SCHEDULED_PAYMENT_DELETED
-    SCHEDULED_PAYMENT_PAID = EventNames.TRANSACTION_SCHEDULED_PAYMENT_PAID
 
 
 def _base_metadata(source: str, metadata: dict | None = None) -> dict:
@@ -60,10 +56,12 @@ def build_transaction_payload(tx, *, before: dict | None = None, after: dict | N
         "account_owner_id": str(getattr(tx.account, "owner_id", tx.owner_id) or tx.owner_id),
         "account_id": str(tx.account_id) if tx.account_id else "",
         "category_id": str(tx.category_id) if tx.category_id else "",
+        "budget_scope": str(getattr(tx, "budget_scope", "") or ""),
+        "shared_budget_id": str(getattr(tx, "shared_budget_id", "") or ""),
+        "budget_attribution_source": str(getattr(tx, "budget_attribution_source", "") or ""),
         "vendor_id": str(tx.vendor_id) if tx.vendor_id else "",
         "debt_id": str(tx.debt_id) if tx.debt_id else "",
         "installment_id": str(tx.installment_id) if tx.installment_id else "",
-        "scheduled_payment_id": str(tx.scheduled_payment_id) if tx.scheduled_payment_id else "",
         "payment_intent_id": str(tx.payment_intent_id) if tx.payment_intent_id else "",
         "parent_id": str(tx.parent_id) if tx.parent_id else "",
         "type": tx.type,
@@ -108,13 +106,15 @@ def serialize_transaction_state(tx) -> dict:
         "affects_balance": tx.affects_balance,
         "account_id": str(tx.account_id) if tx.account_id else "",
         "category_id": str(tx.category_id) if tx.category_id else "",
+        "budget_scope": str(getattr(tx, "budget_scope", "") or ""),
+        "shared_budget_id": str(getattr(tx, "shared_budget_id", "") or ""),
+        "budget_attribution_source": str(getattr(tx, "budget_attribution_source", "") or ""),
         "vendor_id": str(tx.vendor_id) if tx.vendor_id else "",
         "debt_id": str(tx.debt_id) if tx.debt_id else "",
         "installment_id": str(tx.installment_id) if tx.installment_id else "",
         "payment_intent_id": str(tx.payment_intent_id) if tx.payment_intent_id else "",
         "provider": tx.provider,
         "external_id": tx.external_id,
-        "scheduled_payment_id": str(tx.scheduled_payment_id) if tx.scheduled_payment_id else "",
         "reimbursed": tx.reimbursed,
         "reimbursement_transaction_id": str(tx.reimbursement_transaction_id) if tx.reimbursement_transaction_id else "",
         "amount": str(tx.amount),
@@ -141,12 +141,13 @@ FINANCIAL_TRACKED_FIELDS = [
     "amount",
     "date",
     "type",
+    "budget_scope",
+    "shared_budget_id",
     "status",
     "confirmed",
     "affects_balance",
     "debt_id",
     "installment_id",
-    "scheduled_payment_id",
     "payment_intent_id",
 ]
 
@@ -177,31 +178,6 @@ def _build_financial_change(before: dict | None, after: dict | None) -> dict:
         "changed_fields": changed_fields,
         "countable_before": countable_before,
         "countable_after": countable_after,
-    }
-
-
-def serialize_scheduled_payment_state(sp) -> dict:
-    return {
-        "status": sp.status,
-        "amount": str(sp.amount),
-        "due_date": _serialize_dateish(sp.due_date),
-        "account_id": str(sp.account_id) if sp.account_id else "",
-        "vendor_id": str(sp.vendor_id) if sp.vendor_id else "",
-    }
-
-
-def build_scheduled_payment_payload(sp, *, before: dict | None = None) -> dict:
-    return {
-        "scheduled_payment_id": str(sp.pk),
-        "owner_id": str(sp.owner_id),
-        "account_id": str(sp.account_id) if sp.account_id else "",
-        "debt_id": str(sp.debt_id) if sp.debt_id else "",
-        "installment_id": str(sp.installment_id) if sp.installment_id else "",
-        "status": sp.status,
-        "amount": str(sp.amount),
-        "due_date": _serialize_dateish(sp.due_date),
-        "before": before or {},
-        "after": serialize_scheduled_payment_state(sp),
     }
 
 
@@ -239,9 +215,7 @@ __all__ = [
     "TransactionDomainEventTypes",
     "_base_metadata",
     "build_transaction_payload",
-    "build_scheduled_payment_payload",
     "build_participant_payload",
     "serialize_transaction_state",
-    "serialize_scheduled_payment_state",
     "serialize_participant_state",
 ]
