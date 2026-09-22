@@ -176,13 +176,30 @@ class UserMeSerializer(BaseUserSerializer):
     full_name = serializers.CharField(write_only=True, required=False)
     display_name = serializers.CharField(source="full_name", read_only=True)
     plan_usage = serializers.SerializerMethodField(read_only=True)
+    registration_country = serializers.SerializerMethodField(read_only=True)
+    onboarding_profile = serializers.SerializerMethodField(read_only=True)
 
     class Meta(BaseUserSerializer.Meta):
-        fields = BaseUserSerializer.Meta.fields + ["display_name", "plan_usage"]
+        fields = BaseUserSerializer.Meta.fields + [
+            "display_name",
+            "plan_usage",
+            "registration_country",
+            "onboarding_profile",
+        ]
         read_only_fields = BaseUserSerializer.Meta.read_only_fields + ["username", "plan"]
 
     def get_plan_usage(self, obj):
         return get_user_usage_snapshot(obj)
+
+    def get_registration_country(self, obj):
+        profile = getattr(obj, "onboarding_profile", None)
+        return profile.registration_country if profile is not None else "CO"
+
+    def get_onboarding_profile(self, obj):
+        from identity.users.serializers.onboarding_serializer import UserOnboardingProfileSerializer
+
+        profile = getattr(obj, "onboarding_profile", None)
+        return UserOnboardingProfileSerializer(profile).data if profile is not None else {}
 
     def update(self, instance, validated_data):
         full_name = validated_data.pop("full_name", None)

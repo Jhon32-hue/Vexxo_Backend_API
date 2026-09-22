@@ -6,6 +6,12 @@ eliminacion, tamano maximo y frontera de validacion. Los overrides protegen
 envelopes, credenciales, auditoria y payloads de proveedores; los demas campos
 reciben una politica conservadora revisada.
 
+El perfil post-registro `users.UserOnboardingProfile` se clasifica como
+`confidential`. Sus listas JSONB (`preferred_currencies`, `income_sources` y
+`use_cases`) tienen catalogos cerrados, validacion de modelo, retencion de 365
+dias y capacidad de eliminacion. Edad, empleo e ingresos no se publican en
+outboxes, logs ni notificaciones.
+
 ## Reglas
 
 - `public`: contenido publicable, sin secretos.

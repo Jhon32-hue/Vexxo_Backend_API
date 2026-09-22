@@ -1099,14 +1099,19 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Complete Onboarding: status esperado', function () {",
-                  "  pm.expect([200, 400]).to.include(pm.response.code);",
-                  "});"
+                  "  pm.expect([200]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.onboarding_completed).to.eql(true);",
+                  "  pm.expect(data.onboarding_profile.profile_version).to.be.above(0);",
+                  "}"
                 ]
               }
             }
           ],
           "request": {
-            "description": "Marca onboarding completo con preferencias iniciales.",
+            "description": "Persiste el perfil versionado y marca onboarding completo de forma atomica.",
             "method": "POST",
             "header": [
               {
@@ -1117,7 +1122,7 @@
             "url": "{{base_url}}/api/identity/users/onboarding/complete/",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"preferred_currency\": \"COP\",\n  \"timezone_name\": \"America/Bogota\",\n  \"locale\": \"es_CO\"\n}",
+              "raw": "{\n  \"registration_country\": \"CO\",\n  \"age_range\": \"25_34\",\n  \"preferred_currencies\": [\n    \"COP\",\n    \"USD\"\n  ],\n  \"income_sources\": [\n    \"salary\"\n  ],\n  \"employment_type\": \"employee\",\n  \"finance_method\": \"other_apps\",\n  \"monthly_income_range\": \"1m_3m\",\n  \"use_cases\": [\n    \"track_expenses\",\n    \"shared_expenses\"\n  ],\n  \"locale\": \"es_CO\",\n  \"timezone_name\": \"America/Bogota\"\n}",
               "options": {
                 "raw": {
                   "language": "json"

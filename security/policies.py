@@ -162,6 +162,9 @@ REVIEWED_JSON_FIELDS = frozenset(
         "transactions.TransactionSourceLink.last_normalized_payload",
         "users.UserAuthChallenge.metadata",
         "users.UserMfaMethod.recovery_code_hashes",
+        "users.UserOnboardingProfile.income_sources",
+        "users.UserOnboardingProfile.preferred_currencies",
+        "users.UserOnboardingProfile.use_cases",
         "access_history.SupportAccessRecord.safe_metadata",
     }
 )
@@ -197,6 +200,9 @@ MODEL_VALIDATED_JSON_FIELDS = frozenset(
         "open_banking.OpenBankingWebhookReceipt.safe_metadata",
         "security.SecurityAuditEvent.safe_metadata",
         "users.UserMfaMethod.recovery_code_hashes",
+        "users.UserOnboardingProfile.income_sources",
+        "users.UserOnboardingProfile.preferred_currencies",
+        "users.UserOnboardingProfile.use_cases",
         "access_history.SupportAccessRecord.safe_metadata",
     }
 )
@@ -268,6 +274,9 @@ JSON_FIELD_POLICY_OVERRIDES: dict[str, JsonFieldPolicy] = {
     "debts.DebtRestructuring.new_terms": JsonFieldPolicy(DataClassification.CONFIDENTIAL, "debts.restructuring.terms.v1", 2555, True, False, False),
     "debts.DebtRestructuring.replaced_installment_ids": JsonFieldPolicy(DataClassification.INTERNAL, "debts.restructuring.ids.v1", 2555, False, False, False),
     "debts.DebtRestructuring.created_installment_ids": JsonFieldPolicy(DataClassification.INTERNAL, "debts.restructuring.ids.v1", 2555, False, False, False),
+    "users.UserOnboardingProfile.income_sources": JsonFieldPolicy(DataClassification.CONFIDENTIAL, "identity.onboarding.income_sources.v1", 365, True, True, True),
+    "users.UserOnboardingProfile.preferred_currencies": JsonFieldPolicy(DataClassification.CONFIDENTIAL, "identity.onboarding.preferred_currencies.v1", 365, True, True, True),
+    "users.UserOnboardingProfile.use_cases": JsonFieldPolicy(DataClassification.CONFIDENTIAL, "identity.onboarding.use_cases.v1", 365, True, True, True),
 }
 
 

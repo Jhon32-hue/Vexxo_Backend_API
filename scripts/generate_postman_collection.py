@@ -262,7 +262,32 @@ def build_collection() -> dict:
     identity_items = [
         request("Me", "GET", "/api/identity/users/me/", "Perfil del usuario autenticado.", capture=("user_id", "data.id")),
         request("Dashboard", "GET", "/api/identity/users/dashboard/", "Vista agregada inicial del producto."),
-        request("Complete Onboarding", "POST", "/api/identity/users/onboarding/complete/", "Marca onboarding completo con preferencias iniciales.", body={"preferred_currency": "COP", "timezone_name": "America/Bogota", "locale": "es_CO"}, expected=(200, 400)),
+        request(
+            "Complete Onboarding",
+            "POST",
+            "/api/identity/users/onboarding/complete/",
+            "Persiste el perfil versionado y marca onboarding completo de forma atomica.",
+            body={
+                "registration_country": "CO",
+                "age_range": "25_34",
+                "preferred_currencies": ["COP", "USD"],
+                "income_sources": ["salary"],
+                "employment_type": "employee",
+                "finance_method": "other_apps",
+                "monthly_income_range": "1m_3m",
+                "use_cases": ["track_expenses", "shared_expenses"],
+                "locale": "es_CO",
+                "timezone_name": "America/Bogota",
+            },
+            expected=(200,),
+            extra_tests=[
+                "if (pm.response.code === 200) {",
+                "  const data = pm.response.json();",
+                "  pm.expect(data.onboarding_completed).to.eql(true);",
+                "  pm.expect(data.onboarding_profile.profile_version).to.be.above(0);",
+                "}",
+            ],
+        ),
         request("Identity Event Contract", "GET", "/api/identity/users/event-contract/", "Catalogo versionado de eventos de identidad."),
         folder(
             "Devices",

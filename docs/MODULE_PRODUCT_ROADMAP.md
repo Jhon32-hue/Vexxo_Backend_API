@@ -54,7 +54,7 @@ conservan la autoridad contable y de permisos.
 
 | Modulo | Estado | Flujo de usuario | Flujo interno o de soporte | Siguiente cierre |
 | --- | --- | --- | --- | --- |
-| `identity.users` | Operativo | Registro, login, perfil, onboarding, recovery, MFA, plan y capacidades. | Suspender exige motivo, audita y revoca todas las familias. | Certificar canales externos antes de produccion. |
+| `identity.users` | Operativo | Registro, login, perfil, onboarding versionado, recovery, MFA, plan y capacidades. | Onboarding persiste perfil confidencial, usa lock transaccional, version optimista y outbox idempotente. | Certificar canales externos antes de produccion y definir retencion del perfil. |
 | `identity.devices` | Operativo | Registrar, probar clave, atestar y revocar dispositivos. | Soporte ve conteos y estados, nunca secretos del dispositivo. | Certificar Play Integrity/App Attest en hardware real. |
 | `identity.sessions` | Operativo | Consultar y cerrar sesiones. | Password, dispositivo, suspension y riesgo critico revocan estado persistente. | Monitorear anomalias y ajustar umbrales con datos reales. |
 | `identity.consents` | Operativo | Aceptar, consultar y retirar consentimientos versionados. | Cumplimiento reconstruye evidencia y teardown asociado. | Probar retiro idempotente y sus efectos por integracion. |

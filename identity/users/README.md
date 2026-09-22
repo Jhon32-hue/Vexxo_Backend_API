@@ -59,6 +59,21 @@ classDiagram
         +shared_memberships_count
     }
 
+    class UserOnboardingProfile {
+        +registration_country
+        +age_range
+        +preferred_currencies
+        +income_sources
+        +employment_type
+        +finance_method
+        +monthly_income_range
+        +use_cases
+        +questionnaire_version
+        +profile_version
+        +completed_at
+    }
+
+    User "1" --> "0..1" UserOnboardingProfile : completes
     User "1" --> "*" UserPermissionGrant : derives_capabilities
     User "1" --> "*" UserConsent : authorizes
     User "1" --> "1" UserProductUsageProjection : summarized_into
@@ -86,6 +101,44 @@ sequenceDiagram
 ```
 
 ## Flujos principales
+
+### Onboarding post-registro
+
+`POST /api/identity/users/onboarding/complete/` ya no activa solamente una
+bandera. El request se valida contra catalogos cerrados y se persiste en
+`UserOnboardingProfile` dentro de la misma transaccion que actualiza moneda,
+locale, zona horaria y `User.onboarding_completed`.
+
+Propiedades operativas:
+
+- `User` se bloquea con `SELECT ... FOR UPDATE` para serializar finalizaciones
+  concurrentes.
+- `profile_version` permite enviar `base_version`; una version obsoleta recibe
+  `409 onboarding_version_conflict` con el perfil autoritativo.
+- un retry con el mismo payload no incrementa la version ni duplica
+  `users.onboarding.completed.v1`.
+- ingresos, edad y fuentes son datos `confidential`; no se copian al outbox,
+  logs ni notificaciones.
+- la respuesta contiene el `UserMeSerializer` completo, incluido
+  `onboarding_profile`, y es la confirmacion que Flutter debe aceptar como
+  verdad del servidor.
+- el bootstrap de categorias/equipo permanece asociado a `users.registered.v1`;
+  onboarding no crea un segundo flujo de bootstrap financiero.
+
+```mermaid
+sequenceDiagram
+    participant FE as Flutter
+    participant API as CompleteOnboardingView
+    participant SVC as onboarding_service
+    participant DB as PostgreSQL
+    participant OB as Identity Outbox
+
+    FE->>API: payload validado + base_version opcional
+    API->>SVC: complete_onboarding
+    SVC->>DB: lock User + upsert profile + update User
+    DB->>OB: users.onboarding.completed.v1 al primer cierre
+    API-->>FE: perfil autoritativo + profile_version
+```
 
 ### Auth y comunicaciones del usuario
 
@@ -307,6 +360,8 @@ sin volver a meter lecturas OLTP pesadas en el request path.
 - `GET /api/identity/users/auth/social/{provider}/start/`
 - `GET /api/identity/users/auth/social/{provider}/callback/`
 - `POST /api/identity/users/auth/social/exchange/`
+- `GET /api/identity/users/me/`
+- `POST /api/identity/users/onboarding/complete/`
 
 ## Relacion con notificaciones y correo
 

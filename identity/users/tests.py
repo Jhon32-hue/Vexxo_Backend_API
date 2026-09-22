@@ -11,12 +11,27 @@ from rest_framework.test import APIClient
 from identity.devices.models import UserDevice
 from identity.sessions.services import register_user_session
 from identity.users.models import AuthChallengeStatus, UserAuthChallenge
+from identity.users.models import UserOnboardingProfile
 from identity.users.domain import get_plan_capabilities, get_user_event_catalog
 from identity.users.serializers.user_serializer import UserRegisterSerializer
 from identity.users.services.oauth_service import get_supported_social_providers
 from notifications.deliveries.models import NotificationDelivery
+from identity.eventing.models import IdentityDomainEventOutbox
 
 User = get_user_model()
+
+VALID_ONBOARDING_PAYLOAD = {
+    "registration_country": "CO",
+    "age_range": "25_34",
+    "preferred_currencies": ["COP", "USD"],
+    "income_sources": ["salary", "freelance"],
+    "employment_type": "employee",
+    "finance_method": "other_apps",
+    "monthly_income_range": "1m_3m",
+    "use_cases": ["track_expenses", "shared_expenses"],
+    "locale": "es_CO",
+    "timezone_name": "America/Bogota",
+}
 
 
 class IdentityUsersTests(TestCase):
@@ -75,6 +90,110 @@ class IdentityUsersTests(TestCase):
     def test_user_event_catalog_contains_registration_event(self):
         catalog = get_user_event_catalog()
         self.assertIn("users.registered.v1", catalog)
+
+    def test_complete_onboarding_persists_authoritative_profile(self):
+        user = User.objects.create_user(
+            username="onboarding-user",
+            email="onboarding@example.com",
+            password="VexxoPass2026!",
+        )
+        self.client.force_authenticate(user)
+
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                "/api/identity/users/onboarding/complete/",
+                VALID_ONBOARDING_PAYLOAD,
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        user.refresh_from_db()
+        profile = UserOnboardingProfile.objects.get(user=user)
+        self.assertTrue(user.onboarding_completed)
+        self.assertEqual(user.preferred_currency, "COP")
+        self.assertEqual(profile.registration_country, "CO")
+        self.assertEqual(profile.preferred_currencies, ["COP", "USD"])
+        self.assertEqual(profile.income_sources, ["freelance", "salary"])
+        self.assertEqual(profile.profile_version, 1)
+        self.assertEqual(response.data["registration_country"], "CO")
+        self.assertEqual(response.data["onboarding_profile"]["profile_version"], 1)
+        self.assertEqual(
+            IdentityDomainEventOutbox.objects.filter(
+                aggregate_id=str(user.pk),
+                event_type="users.onboarding.completed.v1",
+            ).count(),
+            1,
+        )
+
+    def test_complete_onboarding_is_idempotent_and_rejects_stale_version(self):
+        user = User.objects.create_user(
+            username="onboarding-version-user",
+            email="onboarding-version@example.com",
+            password="VexxoPass2026!",
+        )
+        self.client.force_authenticate(user)
+
+        with self.captureOnCommitCallbacks(execute=True):
+            first = self.client.post(
+                "/api/identity/users/onboarding/complete/",
+                VALID_ONBOARDING_PAYLOAD,
+                format="json",
+            )
+        retry_payload = {**VALID_ONBOARDING_PAYLOAD, "base_version": 1}
+        with self.captureOnCommitCallbacks(execute=True):
+            retry = self.client.post(
+                "/api/identity/users/onboarding/complete/",
+                retry_payload,
+                format="json",
+            )
+        changed_payload = {
+            **retry_payload,
+            "use_cases": ["track_expenses", "save_goals"],
+        }
+        changed = self.client.post(
+            "/api/identity/users/onboarding/complete/",
+            changed_payload,
+            format="json",
+        )
+        stale = self.client.post(
+            "/api/identity/users/onboarding/complete/",
+            {**changed_payload, "finance_method": "excel", "base_version": 1},
+            format="json",
+        )
+
+        self.assertEqual(first.status_code, 200, first.data)
+        self.assertEqual(retry.status_code, 200, retry.data)
+        self.assertFalse(retry.data["profile_changed"])
+        self.assertEqual(changed.status_code, 200, changed.data)
+        self.assertEqual(changed.data["onboarding_profile"]["profile_version"], 2)
+        self.assertEqual(stale.status_code, 409, stale.data)
+        self.assertEqual(stale.data["code"], "onboarding_version_conflict")
+        self.assertEqual(UserOnboardingProfile.objects.filter(user=user).count(), 1)
+        self.assertEqual(
+            IdentityDomainEventOutbox.objects.filter(
+                aggregate_id=str(user.pk),
+                event_type="users.onboarding.completed.v1",
+            ).count(),
+            1,
+        )
+
+    def test_complete_onboarding_rejects_unknown_catalog_values(self):
+        user = User.objects.create_user(
+            username="onboarding-invalid-user",
+            email="onboarding-invalid@example.com",
+            password="VexxoPass2026!",
+        )
+        self.client.force_authenticate(user)
+        response = self.client.post(
+            "/api/identity/users/onboarding/complete/",
+            {**VALID_ONBOARDING_PAYLOAD, "registration_country": "XX"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        user.refresh_from_db()
+        self.assertFalse(user.onboarding_completed)
+        self.assertFalse(UserOnboardingProfile.objects.filter(user=user).exists())
 
     @override_settings(
         EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",

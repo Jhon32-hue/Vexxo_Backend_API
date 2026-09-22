@@ -1828,6 +1828,14 @@ Resuelven soporte transversal.
 
 ## Ruta recomendada de onboarding
 
+El onboarding de producto post-registro es un contrato backend real, no una
+bandera controlada por Flutter. `identity.users.UserOnboardingProfile` conserva
+campos validados y versionados; el endpoint completa perfil y usuario de forma
+atomica y devuelve el snapshot autoritativo. Flutter puede conservar un
+borrador cifrado sin red, pero solo navega como completado despues del `200`.
+
+Referencia: [`identity/users/README.md`](identity/users/README.md#onboarding-post-registro).
+
 Dependiendo del objetivo, no todo el mundo deberia leer el repo en el mismo
 orden.
 

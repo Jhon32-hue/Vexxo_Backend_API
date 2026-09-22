@@ -48,6 +48,7 @@ from identity.users.domain import (
     get_user_event_runtime,
 )
 from identity.users.serializers import (
+    CompleteOnboardingSerializer,
     PasswordRecoveryCodeConfirmSerializer,
     PasswordRecoveryCodeRequestSerializer,
     PasswordResetConfirmSerializer,
@@ -58,6 +59,7 @@ from identity.users.serializers import (
     MfaCodeSerializer,
     MfaDisableSerializer,
     MfaTotpEnrollSerializer,
+    UserOnboardingProfileSerializer,
 )
 from identity.users.serializers.user_serializer import UserMeSerializer, UserRegisterSerializer
 from identity.users.services.communication_service import send_password_reset_email
@@ -87,6 +89,7 @@ from identity.users.services.mfa_service import (
     get_active_mfa_method,
     verify_mfa_step_up,
 )
+from identity.users.services.onboarding_service import OnboardingVersionConflict, complete_onboarding
 from security.audit import record_security_event
 from security.models import SecurityAuditEvent
 from security.rate_limits import consume_rate_limit
@@ -706,16 +709,23 @@ class CompleteOnboardingView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        user = request.user
-        if not user.onboarding_completed:
-            user.onboarding_completed = True
-            user.save(update_fields=["onboarding_completed", "updated_at"])
-        return Response(
-            {
-                "detail": "Onboarding actualizado.",
-                "onboarding_completed": bool(user.onboarding_completed),
-            }
-        )
+        serializer = CompleteOnboardingSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            result = complete_onboarding(user=request.user, validated_data=serializer.validated_data)
+        except OnboardingVersionConflict as exc:
+            return Response(
+                {
+                    "detail": "El perfil de onboarding cambio en otro cliente.",
+                    "code": "onboarding_version_conflict",
+                    "onboarding_profile": UserOnboardingProfileSerializer(exc.profile).data,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        response_data = UserMeSerializer(result.user, context={"request": request}).data
+        response_data["detail"] = "Onboarding actualizado."
+        response_data["profile_changed"] = result.profile_changed
+        return Response(response_data)
 
 
 class SocialProvidersView(APIView):
