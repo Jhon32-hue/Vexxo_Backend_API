@@ -1,0 +1,21 @@
+services:
+  api:
+    command:
+      - gunicorn
+      - backend.wsgi:application
+      - --bind=0.0.0.0:8000
+      - --worker-class=gthread
+      - --workers=${VEXXO_LOCAL_GUNICORN_WORKERS:-2}
+      - --threads=${VEXXO_LOCAL_GUNICORN_THREADS:-4}
+      - --timeout=${VEXXO_LOCAL_GUNICORN_TIMEOUT_SECONDS:-30}
+      - --graceful-timeout=${VEXXO_LOCAL_GUNICORN_GRACEFUL_TIMEOUT_SECONDS:-30}
+      - --keep-alive=${VEXXO_LOCAL_GUNICORN_KEEP_ALIVE_SECONDS:-5}
+      - --max-requests=${VEXXO_LOCAL_GUNICORN_MAX_REQUESTS:-10000}
+      - --max-requests-jitter=${VEXXO_LOCAL_GUNICORN_MAX_REQUESTS_JITTER:-1000}
+      - --access-logfile=-
+      - --error-logfile=-
+    environment:
+      API_DB_CONNECTION_BUDGET: ${VEXXO_LOCAL_API_DB_CONNECTION_BUDGET:-8}
+      BACKGROUND_DB_CONNECTION_BUDGET: ${VEXXO_LOCAL_BACKGROUND_DB_CONNECTION_BUDGET:-12}
+      DB_OPERATIONAL_CONNECTION_RESERVE: ${VEXXO_LOCAL_DB_OPERATIONAL_CONNECTION_RESERVE:-20}
+      LOCAL_SERVER_PROFILE: performance

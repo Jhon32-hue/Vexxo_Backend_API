@@ -1,3 +1,1 @@
-from django.shortcuts import render
-
-# Create your views here.
+"""Migration package for admin_tools.user_lookup."""

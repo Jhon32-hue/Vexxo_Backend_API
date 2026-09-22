@@ -1,154 +1,168 @@
-# scripts
+# Operacion local
 
-## Que hace
+Este directorio contiene el unico entrypoint operativo soportado durante la
+etapa local-first. Los scripts no contienen credenciales ni logica de negocio.
 
-`scripts` contiene utilidades operativas y de mantenimiento fuera del request
-path normal del backend.
-
-## Archivos Presentes
-
-- `backfill_events.py`
-- `bootstrap.py`
-- `generate_reports.py`
-- `migrate_data.py`
-
-## Estado Del Codigo
-
-En esta pasada no detecte implementacion funcional visible dentro de esos
-archivos. Por eso conviene documentarlos por su rol estructural y no como
-herramientas cerradas.
-
-Eso aplica a los scripts Python listados arriba. Los wrappers `.cmd` locales no
-versionados si tienen una responsabilidad operativa concreta: ejecutar
-`manage.py` contra PostgreSQL local `Vexxo` sin tocar el `.env` cloud.
-
-## Rol En El Sistema
-
-Este directorio es el lugar correcto para:
-
-- bootstrap local o de entorno
-- backfills de eventos o proyecciones
-- migraciones de datos extraordinarias
-- generacion puntual de reportes o artefactos
-
-## Criterio De Uso
-
-Los scripts aqui no deben reemplazar logica de aplicacion estable. Su espacio es
-para:
-
-- operaciones puntuales
-- bootstrap
-- mantenimientos o migraciones controladas
-- backfills excepcionales
-
-## Runner Local Para PostgreSQL `Vexxo`
-
-### Alcance
-
-Estos wrappers son solo para desarrollo local y debugging de ingenieria.
-
-No deben quedar versionados en Git. La convención local esperada es:
-
-- `scripts/run_manage_vexxo_app.cmd`
-- `scripts/migrate_vexxo_app.cmd`
-- `scripts/test_transactions_vexxo_app.cmd`
-
-No son para:
-
-- produccion
-- Cloud Run
-- jobs cloud
-- pipelines de despliegue
-- automatizacion operativa sobre GCP
-
-Pueden existir localmente en la máquina del desarrollador, pero no deben
-tratarse como scripts de release ni como artefactos del repositorio.
-
-### Que significa "por sesion"
-
-Cuando se usa una configuracion "por sesion", las variables de entorno viven
-solo en la consola actual:
-
-- no modifican el archivo `.env`
-- no cambian la configuracion cloud del proyecto
-- desaparecen al cerrar la terminal
-
-Ademas, los wrappers `.cmd` usan `setlocal`, asi que las variables internas del
-script (`ENV=local`, `DB_ENGINE`, `DB_NAME`, etc.) tampoco se fugan fuera del
-proceso del script.
-
-### Credenciales y overrides
-
-Por seguridad, la contrasena no queda hardcodeada en el repo. Debe venir por:
-
-- `VEXXO_APP_DB_PASSWORD`
-
-Tambien puedes overridear:
-
-- `VEXXO_APP_DB_NAME`
-- `VEXXO_APP_DB_USER`
-- `VEXXO_APP_DB_HOST`
-- `VEXXO_APP_DB_PORT`
-
-Si no haces overrides, los wrappers asumen:
-
-- base: `Vexxo`
-- usuario: `postgres`
-- host: `127.0.0.1`
-- puerto: `5432`
-
-### Comandos de uso
-
-Desde PowerShell:
+## Comando canonico
 
 ```powershell
-$env:VEXXO_APP_DB_PASSWORD='Colsander32'
-.\scripts\migrate_vexxo_app.cmd
-.\scripts\test_transactions_vexxo_app.cmd
+Copy-Item .env.local.example .env.local
+.\scripts\run_stack.ps1 local up core -Build
+.\scripts\run_stack.ps1 local status core
+.\scripts\run_stack.ps1 local verify full
+.\scripts\run_stack.ps1 local logs core -Follow
+.\scripts\run_stack.ps1 local down
 ```
 
-Para cualquier otro comando Django:
+El wrapper `run_stack.cmd` acepta los mismos argumentos.
+
+## Perfil local de rendimiento
+
+El rendimiento no es otro entorno ni otro fork de aplicacion. Es un override
+del stack `local` que reemplaza `runserver` por Gunicorn y conserva la misma DB,
+outboxes, workers y scheduler:
 
 ```powershell
-$env:VEXXO_APP_DB_PASSWORD='Colsander32'
-.\scripts\run_manage_vexxo_app.cmd showmigrations
-.\scripts\run_manage_vexxo_app.cmd shell
-.\scripts\run_manage_vexxo_app.cmd test finance.transactions.tests --verbosity 2 --keepdb
+.\scripts\run_stack.ps1 local up full -Performance -Build
+.\scripts\run_stack.ps1 local status full -Performance
+.\scripts\run_stack.ps1 local logs full -Performance -Follow
+.\scripts\run_stack.ps1 local down -Performance
 ```
 
-### Que resuelve
+Los defaults son 2 workers por 4 threads, reciclado en 10.000 solicitudes mas
+jitter de hasta 1.000, `CONN_MAX_AGE=0`, 8 conexiones API, 12 para procesos de
+fondo y 20 de reserva operativa. El runner ejecuta
+`db_connection_budget --strict`; si la suma declarada supera la capacidad util
+de PostgreSQL, el arranque falla de forma visible. Los valores se ajustan con
+`VEXXO_LOCAL_*` en `.env.local`, no dentro del dominio.
 
-Este flujo resuelve cuatro problemas practicos:
+## Coleccion Postman
 
-- evita editar el `.env` cada vez que quieres salir de Cloud SQL
-- deja `ENV=local` solo para la corrida actual
-- reduce errores manuales al repetir `migrate` y `test`
-- permite validar el backend sobre PostgreSQL real antes de mover cambios a GCP
+La coleccion local se mantiene como codigo para que nuevos endpoints no exijan
+editar manualmente varios artefactos:
 
-## Relacion Con Otros Modulos
+```powershell
+py -3 .\scripts\generate_postman_collection.py
+```
 
-- `common` e `identity.eventing`
-  candidatos naturales para backfills.
-- `reports`
-  generacion extraordinaria de reportes.
-- `finance` y `payments`
-  migraciones o normalizacion de datos historicos.
+El comando regenera `postman/Vexxo_local.postman_collection.json` y su guia.
+Despues se importa el JSON reemplazando la coleccion `Vexxo_API` en Postman.
+No se versionan tokens, passwords ni claves de proveedores; los valores
+sensibles deben permanecer vacios y configurarse localmente o en Postman Vault.
 
-## Encaje Con GCP
+## Slices
 
-Cuando estas piezas se formalizan en cloud, suelen migrar a:
+- `core`: PostgreSQL y API.
+- `auth`: core y outbox de identidad.
+- `accounts`: core, outbox y workers de cuentas.
+- `alerts`: core, outbox y worker de IA para alertas.
+- `transactions`: core, outbox y worker de inferencia de voz.
+- `payments`: core, outbox de pagos y scheduler local.
+- `debts`: core, outbox compartido de deudas/metas y scheduler local.
+- `planning`: core, outbox compartido de deudas/metas y scheduler local.
+- `documents`: core, ClamAV, worker OCR y outbox documental.
+- `full`: todos los procesos locales.
 
-- Cloud Run jobs
-- scripts internos de CI/CD
-- tareas ad-hoc operadas desde pipelines
+`up` levanta PostgreSQL, ejecuta migraciones y arranca el slice. El equipo no
+debe ejecutar manualmente cada worker.
 
-Los wrappers locales no reemplazan ese camino cloud. Su funcion es acelerar
-desarrollo, debugging y validacion local con un flujo consistente.
+El wrapper `publish_outbox` es propietario del polling continuo. Los comandos
+de cada bounded context procesan un lote y no necesitan implementar opciones
+operativas comunes para poder ejecutarse en Docker.
 
-## Estado Actual
+`domain-outbox` ejecuta `publish_outbox debts,goals,documents --loop`. Los nuevos
+bounded contexts compatibles se agregan al catalogo central
+`tasks/outbox_registry.py`, no a ramas de configuracion por entorno.
 
-Directorio util y bien ubicado, pero sus scripts no deben asumirse como
-herramientas listas de produccion sin revisar su contenido concreto.
+`scheduler-local` ejecuta `run_scheduler --loop`. Sus jobs viven en
+`tasks/scheduled/registry.py`, usan un advisory lock de PostgreSQL y persisten
+salud en `task_scheduled_scheduledjobstate`. Agregar un job requiere una entrada
+en ese catalogo, no otro contenedor ni cambios por entorno.
 
-Hoy, la parte operativa mas util y validada del directorio es el runner local
-de `manage.py` sobre `Vexxo`.
+`local test` descubre los modulos de prueba automaticamente. Agregar un modulo
+nuevo no requiere editar este script para incorporarlo a la suite completa. La
+base `test_vexxo` se reutiliza con `--keepdb --noinput`, por lo que la ejecucion
+es repetible dentro de Docker y nunca queda esperando confirmacion interactiva.
+`local verify` ejecuta en una sola compuerta los checks de Django y migraciones,
+runtime, activacion de seguridad, gobierno JSON, filtros API y certificacion de
+Open Banking. No sustituye `local test`; esta pensado para validacion rapida del
+stack ya levantado.
+
+## Datos locales
+
+```powershell
+.\scripts\backup_local_db.ps1
+.\scripts\restore_local_db.ps1 -BackupPath .runtime\backups\vexxo-local-YYYYMMDD-HHMMSS.dump -ConfirmRestore
+py -3 .\scripts\load_test_local.py --requests 1000 --concurrency 25
+docker compose -f docker-compose.local.yml exec -T api python manage.py prune_operational_data
+```
+
+## Seguridad
+
+La operacion sensible tambien usa el entrypoint unico:
+
+```powershell
+.\scripts\run_stack.cmd local security-status
+.\scripts\run_stack.cmd local key-rotation-status
+.\scripts\run_stack.cmd local rotate-keys full --limit 25
+docker compose --env-file .env.local -f docker-compose.local.yml exec -T api python manage.py open_banking_certification_status --strict
+```
+
+`rotate-keys` procesa credenciales por lotes hasta que no queden envelopes con
+una version distinta de la activa. No se levanta otro servicio permanente.
+
+El keyring local se genera y respalda sin imprimir llaves. El respaldo usa
+DPAPI `CurrentUser`, vive bajo `.runtime/` y solo puede recuperarlo el mismo
+usuario de Windows:
+
+```powershell
+.\scripts\manage_local_keyring.ps1 -Action Initialize
+.\scripts\manage_local_keyring.ps1 -Action Rotate
+.\scripts\run_stack.cmd local rotate-keys full --limit 25
+.\scripts\manage_local_keyring.ps1 -Action Status
+```
+
+`Rotate` conserva las versiones anteriores para lectura. Solo se retira una
+version despues de `key_retirement_check` y de verificar el respaldo.
+La certificacion Open Banking informa credenciales y vectores oficiales sin
+mostrar sus valores. `local_mock` debe estar listo; Belvo/Salt Edge pueden
+seguir bloqueados hasta completar su sandbox real.
+
+La suite Artillery reproducible vive en `tests/load/`:
+
+```powershell
+$env:NODE_OPTIONS = "--use-system-ca"
+npm install --prefix tests/load --no-audit --no-fund
+.\scripts\run_artillery.ps1 -Profile smoke
+.\scripts\run_artillery.ps1 -Profile baseline
+```
+
+Los perfiles autenticados requieren `ARTILLERY_ACCESS_TOKEN`; ningún token se
+guarda en archivos. `authenticated-stress` busca el punto de ruptura y puede
+fallar intencionalmente. Consulta `tests/load/README.md` para alcance y limites.
+
+El costo SQL del BFF mobile se valida sin persistir fixtures:
+
+```powershell
+docker compose --env-file .env.local -f docker-compose.local.yml `
+  -f docker-compose.performance.yml exec -T api `
+  python manage.py benchmark_mobile_queries --max-query-growth 0
+```
+
+El comando aplica presupuestos absolutos de 80 consultas para bootstrap y 25
+para sync-state, ademas de exigir crecimiento cero entre small y large.
+
+`prune_operational_data` es dry-run por defecto. Solo elimina outboxes ya
+publicados y notificaciones leidas cuando se agrega `--apply`; nunca elimina
+ledger, pagos, deudas, metas ni auditoria financiera.
+
+### Reglas de secretos
+
+- `.env.local` nunca se versiona.
+- `.env.local.example` solo contiene defaults no sensibles.
+- Claves de proveedores externos permanecen fuera del Compose.
+- Las CA locales se entregan al build como secretos y `.runtime/` no se versiona.
+- Un secreto que aparezca en Git debe rotarse, aunque luego se elimine.
+
+Los antiguos scripts Python vacios fueron eliminados. Un backfill futuro debe
+tener objetivo, idempotencia, dry-run y pruebas.

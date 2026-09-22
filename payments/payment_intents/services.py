@@ -60,6 +60,48 @@ def _assert_owned_by_user(user, obj, field_name: str):
         raise serializers.ValidationError({field_name: "No pertenece al usuario autenticado."})
 
 
+def _assert_idempotent_replay_matches(
+    payment_intent: PaymentIntent,
+    *,
+    amount,
+    currency: str,
+    provider: str,
+    external_reference: str,
+    payment_type: str,
+    rail: str,
+    account,
+    category,
+    vendor,
+    beneficiary_name: str,
+    beneficiary_document: str,
+    beneficiary_account_ref: str,
+    invoice_reference: str,
+    source: str,
+) -> None:
+    expected = {
+        "amount": Decimal(str(amount)),
+        "currency": str(currency or "").strip().upper() or "COP",
+        "provider": str(provider or "").strip(),
+        "payment_type": str(payment_type or "").strip(),
+        "rail": str(rail or "").strip(),
+        "account_id": getattr(account, "pk", None),
+        "category_id": getattr(category, "pk", None),
+        "vendor_id": getattr(vendor, "pk", None),
+        "beneficiary_name": str(beneficiary_name or "").strip(),
+        "beneficiary_document": str(beneficiary_document or "").strip(),
+        "beneficiary_account_ref": str(beneficiary_account_ref or "").strip(),
+        "invoice_reference": str(invoice_reference or "").strip(),
+        "source": str(source or "payments.payment_intents.create").strip()[:64],
+    }
+    if str(external_reference or "").strip():
+        expected["external_reference"] = str(external_reference).strip()
+    mismatches = [field for field, value in expected.items() if getattr(payment_intent, field) != value]
+    if mismatches:
+        raise serializers.ValidationError(
+            {"idempotency_key": "La clave ya fue usada por este usuario con otros datos."}
+        )
+
+
 def _counts_for_usage(status: str) -> bool:
     return str(status or "").strip() in {
         PaymentIntent.Status.CREATED,
@@ -249,6 +291,30 @@ def create_payment_intent(
         )
     if not normalized_key:
         normalized_key = uuid.uuid4().hex
+    existing = PaymentIntent.objects.filter(
+        owner=user,
+        idempotency_key=normalized_key,
+    ).first()
+    if existing is not None:
+        _assert_idempotent_replay_matches(
+            existing,
+            amount=amount,
+            currency=currency,
+            provider=provider,
+            external_reference=external_reference,
+            payment_type=payment_type,
+            rail=rail,
+            account=account,
+            category=category,
+            vendor=vendor,
+            beneficiary_name=beneficiary_name,
+            beneficiary_document=beneficiary_document,
+            beneficiary_account_ref=beneficiary_account_ref,
+            invoice_reference=invoice_reference,
+            source=normalized_source,
+        )
+        existing._idempotent_replay = True
+        return existing
     command = build_payment_intent_command(
         user=user,
         amount=amount,
@@ -275,9 +341,9 @@ def create_payment_intent(
         provider_pricing=provider_pricing,
     )
     payment_intent, _created = PaymentIntent.objects.get_or_create(
+        owner=user,
         idempotency_key=normalized_key,
         defaults={
-            "owner": user,
             "account": account,
             "category": category,
             "vendor": vendor,
@@ -308,6 +374,25 @@ def create_payment_intent(
             },
         },
     )
+    if not _created:
+        _assert_idempotent_replay_matches(
+            payment_intent,
+            amount=amount,
+            currency=currency,
+            provider=provider,
+            external_reference=external_reference,
+            payment_type=payment_type,
+            rail=rail,
+            account=account,
+            category=category,
+            vendor=vendor,
+            beneficiary_name=beneficiary_name,
+            beneficiary_document=beneficiary_document,
+            beneficiary_account_ref=beneficiary_account_ref,
+            invoice_reference=invoice_reference,
+            source=normalized_source,
+        )
+    payment_intent._idempotent_replay = not _created
     if _created:
         publish_payment_event_after_commit(
             event_type=PaymentDomainEventTypes.PAYMENT_ORDER_REQUESTED,

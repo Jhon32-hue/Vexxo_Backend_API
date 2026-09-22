@@ -16,9 +16,12 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from observability.views import liveness_view, readiness_view
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("healthz/", liveness_view, name="healthz"),
+    path("readyz/", readiness_view, name="readyz"),
 
     # API entrypoint
     path("api/", include("api.v1.routers")),

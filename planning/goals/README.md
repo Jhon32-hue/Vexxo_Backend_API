@@ -1,52 +1,100 @@
 # planning.goals
 
-## Que hace
+## Responsabilidad
 
-`planning.goals` modela metas financieras del usuario.
+`planning.goals` modela metas financieras y conserva el ledger de aportes que
+explica su progreso. El frontend muestra y captura decisiones; no escribe
+`progress` directamente.
 
-Su responsabilidad actual es:
+Entidades principales:
 
-- CRUD de metas (`Goal`)
+- `Goal`: objetivo, fecha, cuenta opcional, estado y progreso materializado
+- `GoalContribution`: aporte inmutable o revertido con evidencia
+- `GoalMilestone`: umbral auditable que se alcanza o reabre con el progreso
+- `GoalDomainEventOutbox`: eventos durables del bounded context
 
-## Rol En El Producto
+## Flujo Del Usuario
 
-Este contexto sostiene la parte aspiracional del producto:
+1. crea una meta con objetivo mayor que cero
+2. opcionalmente la vincula a una cuenta propia
+3. registra aportes usando `Idempotency-Key`
+4. el servicio bloquea la meta, persiste el aporte y recalcula `progress`
+5. al alcanzar el objetivo, la meta pasa a `completed`
+6. un aporte incorrecto se revierte; no se elimina
+7. si el progreso vuelve a quedar bajo el objetivo, la meta se reabre
 
-- ahorrar para una meta
-- seguir progreso hacia un objetivo
-- conectar decisiones diarias con resultados futuros
+Estados:
 
-## Flujo Principal
+- `active`: admite aportes
+- `paused`: conserva progreso pero no admite aportes
+- `completed`: alcanzo el objetivo
+- `canceled`: cierre explicito con motivo
 
-1. el usuario crea una meta
-2. la app consulta metas ordenadas por `target_date`
-3. otros contextos pueden usar esa informacion para alertas, reportes o
-   recomendaciones futuras
+Transiciones HTTP:
 
-## Relacion Con Otros Modulos
+- `POST /api/planning/goals/metas/<id>/pause/`
+- `POST /api/planning/goals/metas/<id>/resume/`
+- `POST /api/planning/goals/metas/<id>/cancel/`
 
-- `finance.transactions`
-  puede contribuir al progreso de la meta
-- `finance.accounts`
-  aporta saldos y superficie financiera relevante
-- `alerts`
-  puede avisar desviaciones o hitos
+## Aportes
 
-## Encaje Con GCP
+- `POST /api/planning/goals/aportes/`
+- `GET /api/planning/goals/aportes/?goal=<id>`
+- `POST /api/planning/goals/aportes/<id>/reverse/`
 
-Hoy es un modulo CRUD liviano sobre Cloud SQL.
+El alta exige `Idempotency-Key` de 8 a 160 caracteres. Repetir la misma clave
+con el mismo payload devuelve el aporte existente. Reutilizarla con datos
+distintos devuelve error.
 
-La evolucion natural es sumar:
+Un aporte puede referenciar una cuenta o transaccion propia. Si la meta ya
+tiene cuenta, el aporte debe usar esa misma cuenta.
 
-- proyecciones
-- reglas de avance
-- eventos de progreso
+## Seguridad
 
-sin cambiar su naturaleza de planning.
+- todos los querysets se filtran por `request.user`
+- owner, progreso, estado y timestamps son de solo lectura
+- cuentas y transacciones relacionadas se limitan al propietario
+- no existe DELETE de metas con historia; se usa cancelacion
+- los aportes se revierten y conservan monto, origen y motivo
 
-## Estado Actual
+## Eventos Y Runtime
 
-Hoy expone `MetaViewSet` sobre `Goal`.
+Cada escritura relevante crea un evento en `goals_goaldomaineventoutbox` dentro
+de la misma transaccion. El proceso local `domain-outbox` publica los eventos
+de debts y goals sin introducir Celery, Redis o una cola adicional.
 
-Es una superficie sencilla, pero es un dominio importante para producto aunque
-todavia no tenga automatizacion fuerte alrededor.
+Eventos actuales:
+
+- `goals.created.v1`
+- `goals.updated.v1`
+- `goals.status.changed.v1`
+- `goals.contribution.recorded.v1`
+- `goals.contribution.reversed.v1`
+- `goals.progress.updated.v1`
+- `goals.milestone.achieved.v1`
+- `goals.milestone.reopened.v1`
+
+## Migracion De Datos
+
+El `progress` historico se preserva como un aporte `opening_balance`. Desde esa
+migracion, `GoalContribution` es la fuente explicable y `Goal.progress` es una
+proyeccion materializada.
+
+## Soporte Y Administracion
+
+La vista 360 solo muestra conteos. Django Admin permite consultar metas,
+aportes y outbox, pero los aportes y eventos son read-only. Una correccion se
+hace mediante reversion, nunca editando el ledger manualmente.
+
+## Hitos, proyecciones y metas compartidas
+
+- `POST /api/planning/goals/milestones/` administra hitos del owner.
+- `GET /api/planning/goals/metas/<id>/projection/` calcula una proyeccion
+  reproducible desde el historial; no escribe verdad contable.
+- `planning.shared_goals` autoriza aportes de equipos activos sin transferir la
+  propiedad de la meta ni de la cuenta.
+- Toda contribucion conserva actor, cuenta, idempotencia y evidencia de
+  reversion.
+
+La vinculacion automatica a transacciones sigue pendiente de una regla
+explicita y confirmable; una inferencia nunca crea un aporte silencioso.

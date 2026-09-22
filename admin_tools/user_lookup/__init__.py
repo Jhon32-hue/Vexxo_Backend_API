@@ -1,3 +1,1 @@
-from django.shortcuts import render
-
-# Create your views here.
+"""Internal staff-only user lookup support surface."""

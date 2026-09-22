@@ -34,6 +34,12 @@ Importante:
 2. `transactions` y otros contextos pueden referenciarla
 3. reportes y analitica agrupan resultados usando esa semantica
 
+## Seguridad Y Aislamiento
+
+La API requiere autenticacion y solo expone categorias cuyo `owner` es el
+usuario autenticado. En escrituras, `owner` es read-only y se asigna en el
+servidor; un cliente no puede consultar ni crear categorias para otro usuario.
+
 ## Relacion Con Otros Modulos
 
 - `finance.transactions`
@@ -55,7 +61,8 @@ los datos que luego llegan a BigQuery y reportes.
 
 ## Estado Actual
 
-Hoy expone un `ModelViewSet` basico (`CategoriaViewSet`) sobre `Category`.
+Hoy expone un `ModelViewSet` (`CategoriaViewSet`) sobre `Category`, acotado al
+propietario autenticado.
 
 Es una capa CRUD sencilla, pero funcionalmente importante porque aporta
 semantica al resto del producto.

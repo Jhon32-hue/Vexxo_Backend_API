@@ -81,12 +81,40 @@ class PaymentIntentCreateSerializer(serializers.Serializer):
     invoice_reference = serializers.CharField(max_length=128, required=False, allow_blank=True, default="")
     idempotency_key = serializers.CharField(max_length=160, required=False, allow_blank=True, default="")
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get("request")
+        if request and request.user.is_authenticated:
+            self.fields["account"].queryset = Account.objects.filter(owner=request.user)
+            self.fields["category"].queryset = Category.objects.filter(owner=request.user)
+            self.fields["vendor"].queryset = Vendor.objects.filter(owner=request.user)
+
 class PaymentPricingPreviewSerializer(serializers.Serializer):
     amount = serializers.DecimalField(max_digits=20, decimal_places=2)
     provider = serializers.CharField(max_length=64)
     rail = serializers.CharField(max_length=24)
     country = serializers.CharField(max_length=4, required=False, default="CO")
     payment_type = serializers.CharField(max_length=24, required=False, default=PaymentIntent.PaymentType.OTHER)
+
+
+class PaymentDispatchSerializer(serializers.Serializer):
+    confirm = serializers.BooleanField()
+    customer_email = serializers.EmailField()
+    acceptance_token = serializers.CharField(write_only=True, max_length=512)
+    payment_method = serializers.DictField(write_only=True)
+
+    def validate_confirm(self, value):
+        if value is not True:
+            raise serializers.ValidationError("El dispatch financiero requiere confirmacion explicita.")
+        return value
+
+    def validate_payment_method(self, value):
+        forbidden = {"card_number", "pan", "cvv", "cvc", "security_code"}
+        if forbidden.intersection(str(key).lower() for key in value):
+            raise serializers.ValidationError("No envies PAN ni CVV; usa tokens del proveedor.")
+        if not str(value.get("type") or "").strip():
+            raise serializers.ValidationError("payment_method.type es requerido.")
+        return value
 
 
 class PaymentProviderCallbackSerializer(serializers.Serializer):

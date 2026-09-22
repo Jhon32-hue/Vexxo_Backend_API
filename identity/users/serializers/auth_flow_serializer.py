@@ -23,6 +23,7 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
     token = serializers.CharField()
     password = serializers.CharField(write_only=True, validators=[validate_password])
     password2 = serializers.CharField(write_only=True)
+    mfa_code = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=32)
 
     def validate(self, attrs):
         if attrs["password"] != attrs["password2"]:
@@ -32,6 +33,12 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
             raise serializers.ValidationError({"uid": "Solicitud invalida o expirada."})
         if not PasswordResetTokenGenerator().check_token(user, attrs["token"]):
             raise serializers.ValidationError({"token": "Solicitud invalida o expirada."})
+        from identity.users.services.mfa_service import get_active_mfa_method, verify_mfa_code
+
+        if get_active_mfa_method(user) is not None:
+            verified, _method = verify_mfa_code(user=user, code=attrs.get("mfa_code", ""))
+            if not verified:
+                raise serializers.ValidationError({"mfa_code": "Se requiere un segundo factor valido."})
         attrs["user"] = user
         return attrs
 
@@ -63,6 +70,7 @@ class PasswordRecoveryCodeConfirmSerializer(serializers.Serializer):
     code = serializers.CharField(max_length=12)
     password = serializers.CharField(write_only=True, validators=[validate_password])
     password2 = serializers.CharField(write_only=True)
+    mfa_code = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=32)
 
     def validate(self, attrs):
         if attrs["password"] != attrs["password2"]:
@@ -77,3 +85,16 @@ class StepUpCodeRequestSerializer(serializers.Serializer):
 class StepUpCodeConfirmSerializer(serializers.Serializer):
     session_id = serializers.IntegerField(required=False, allow_null=True)
     code = serializers.CharField(max_length=12)
+
+
+class MfaTotpEnrollSerializer(serializers.Serializer):
+    current_password = serializers.CharField(write_only=True, max_length=256)
+
+
+class MfaCodeSerializer(serializers.Serializer):
+    code = serializers.CharField(write_only=True, min_length=6, max_length=32)
+    session_id = serializers.IntegerField(required=False, allow_null=True)
+
+
+class MfaDisableSerializer(serializers.Serializer):
+    current_password = serializers.CharField(write_only=True, max_length=256)

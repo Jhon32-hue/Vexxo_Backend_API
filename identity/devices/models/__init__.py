@@ -11,6 +11,20 @@ Analisis detallado:
   seguir importando desde `identity.devices.models`
 """
 
-from .device import DeviceTrustLevel, DeviceType, UserDevice
+from .device import (
+    DeviceAttestationStatus,
+    DevicePlatformAttestationChallenge,
+    DeviceSignatureChallenge,
+    DeviceTrustLevel,
+    DeviceType,
+    UserDevice,
+)
 
-__all__ = ["DeviceTrustLevel", "DeviceType", "UserDevice"]
+__all__ = [
+    "DeviceAttestationStatus",
+    "DevicePlatformAttestationChallenge",
+    "DeviceSignatureChallenge",
+    "DeviceTrustLevel",
+    "DeviceType",
+    "UserDevice",
+]

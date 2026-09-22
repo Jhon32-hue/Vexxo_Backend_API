@@ -1,0 +1,15 @@
+stages:
+  - security
+
+secret_detection:
+  stage: security
+  image: python:3.13-slim
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends git
+  script:
+    - python scripts/check_secrets.py --history
+  variables:
+    GIT_DEPTH: "0"
+  rules:
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_MERGE_REQUEST_IID

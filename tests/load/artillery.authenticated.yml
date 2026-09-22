@@ -1,0 +1,75 @@
+config:
+  target: "http://127.0.0.1:8000"
+  phases:
+    - duration: 10
+      arrivalRate: 1
+  environments:
+    baseline:
+      phases:
+        - duration: 15
+          arrivalRate: 1
+          name: warm-up
+        - duration: 30
+          arrivalRate: 1
+          rampTo: 3
+          name: authenticated-ramp
+        - duration: 15
+          arrivalRate: 3
+          name: sustained
+    stress:
+      phases:
+        - duration: 15
+          arrivalRate: 1
+          name: warm-up
+        - duration: 30
+          arrivalRate: 3
+          rampTo: 10
+          name: authenticated-ramp
+        - duration: 15
+          arrivalRate: 10
+          name: sustained
+  plugins:
+    expect: {}
+    metrics-by-endpoint: {}
+    ensure:
+      thresholds:
+        - http.response_time.p95: 1200
+        - http.response_time.p99: 2500
+      conditions:
+        - expression: "http.codes.200 == http.requests"
+  http:
+    timeout: 15
+    defaults:
+      headers:
+        Authorization: "Bearer {{ $env.ARTILLERY_ACCESS_TOKEN }}"
+        X-Device-Type: mobile
+        X-Platform: artillery
+        X-App-Version: load-local
+        X-Load-Test: artillery-local
+scenarios:
+  - name: mobile read journey
+    flow:
+      - get:
+          url: "/api/mobile/sync-state/"
+          expect:
+            - statusCode: 200
+      - get:
+          url: "/api/mobile/bootstrap/"
+          expect:
+            - statusCode: 200
+      - get:
+          url: "/api/notifications/deliveries/entregas-notificacion/"
+          expect:
+            - statusCode: 200
+      - get:
+          url: "/api/finance/debts/deudas/"
+          expect:
+            - statusCode: 200
+      - get:
+          url: "/api/planning/goals/metas/"
+          expect:
+            - statusCode: 200
+      - get:
+          url: "/api/payments/scheduled/templates/"
+          expect:
+            - statusCode: 200

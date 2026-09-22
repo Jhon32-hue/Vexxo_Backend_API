@@ -68,17 +68,27 @@ class CategoryBudgetViewSet(
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        payload = create_category_budget(owner=request.user, source="finance.budgets.api.category.create", **serializer.validated_data)
+        validated_data = dict(serializer.validated_data)
+        category_id = validated_data.pop("category", None)
+        payload = create_category_budget(
+            owner=request.user,
+            category_id=category_id,
+            source="finance.budgets.api.category.create",
+            **validated_data,
+        )
         return Response(payload, status=status.HTTP_201_CREATED)
 
     def update(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data, partial=kwargs.get("partial", False))
         serializer.is_valid(raise_exception=True)
+        validated_data = dict(serializer.validated_data)
+        category_id = validated_data.pop("category", None)
         payload = update_category_budget(
             owner=request.user,
             budget_id=int(kwargs["pk"]),
+            category_id=category_id,
             source="finance.budgets.api.category.update",
-            **serializer.validated_data,
+            **validated_data,
         )
         return Response(payload)
 

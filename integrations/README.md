@@ -1,43 +1,35 @@
-﻿# integrations
+# integrations
 
-## Objetivo
+## Responsabilidad
 
-Esta carpeta contiene la capa documental de mapeo por proveedor.
-
-No es el runtime temporal.
-
-No es el stub.
-
-No es la API del backend.
-
-Su trabajo es dejar trazable, por proveedor, como cada fuente externa se mapea
-al contrato canonico correcto.
+Esta carpeta es la frontera canonica de integraciones externas. Contiene los
+mapeos contractuales por proveedor y los runtimes que ya tienen estado y
+lifecycle propios. No contiene reglas contables ni credenciales.
 
 ## Estructura
 
-- `provider_mappings/bank_data/`
-- `provider_mappings/payment_execution/`
-- `provider_mappings/market_data/`
-- `provider_mappings/message_sources/`
-  - `sms_bank_template.md`
-  - `voice_ai.md`
+- `open_banking/`: consentimiento, conexiones, enlaces a cuentas, webhooks y
+  catalogo seguro de proveedores bancarios.
+- `credentials/`: envelopes cifrados y lifecycle de tokens/secretos externos.
+- `provider_mappings/bank_data/`: normalizacion de datos bancarios.
+- `provider_mappings/payment_execution/`: contratos de ejecucion de pagos.
+- `provider_mappings/market_data/`: fuentes de mercado.
+- `provider_mappings/message_sources/`: SMS, voz y otras entradas.
 
-## Regla de documentacion
+`integrations_stub` sigue existiendo como receptor local temporal para jobs
+que aun no tienen adapter real. No es fuente de verdad ni un segundo dominio.
 
-Cada proveedor debe tener un documento propio con:
+## Regla para nuevos proveedores
 
-- categoria primaria
-- categoria secundaria si aplica
-- bounded context dueno
-- contrato canonico
-- destino de persistencia
-- idempotencia
-- consentimiento
-- eventos emitidos
-- observabilidad minima
-- riesgos conocidos
+Cada adapter debe declarar proveedor, bounded context propietario, contrato
+canonico, consentimiento, idempotencia, firma de webhook, datos persistidos,
+eventos, observabilidad y estrategia de revocacion. Los secretos bootstrap se
+inyectan por variables de entorno y nunca se versionan. Los tokens dinamicos
+emitidos por proveedores viven en `IntegrationCredential`, nunca en metadata,
+eventos o respuestas mobile.
 
-## Documentos relacionados
+Documentos relacionados:
 
-- [INTEGRATION_SOURCE_CATALOG.md](/D:/Vexxo_Backend_API/INTEGRATION_SOURCE_CATALOG.md)
-- [payments/payment_intents/PAYMENT_EXECUTION_CONTRACTS.md](/D:/Vexxo_Backend_API/payments/payment_intents/PAYMENT_EXECUTION_CONTRACTS.md)
+- [Catalogo de fuentes](../INTEGRATION_SOURCE_CATALOG.md)
+- [Contratos de pagos](../payments/payment_intents/PAYMENT_EXECUTION_CONTRACTS.md)
+- [Open Banking](open_banking/README.md)

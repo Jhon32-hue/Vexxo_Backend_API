@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import models
 from django.db.models import Q
@@ -396,6 +397,10 @@ class TransactionExternalDetails(models.Model):
     received_at = models.DateTimeField(null=True, blank=True)
     parsed_text = models.TextField(blank=True, default="")
     parser_version = models.CharField(max_length=64, blank=True, default="")
+    classifier_name = models.CharField(max_length=64, blank=True, default="")
+    classifier_version = models.CharField(max_length=64, blank=True, default="")
+    feature_schema_version = models.CharField(max_length=64, blank=True, default="")
+    classification_source = models.CharField(max_length=32, blank=True, default="")
     needs_user_confirmation = models.BooleanField(default=False)
     inference_status = models.CharField(
         max_length=32,
@@ -431,6 +436,8 @@ class TransactionSourceLink(models.Model):
     external_id = models.CharField(max_length=128, blank=True, default="")
     canonical_fingerprint = models.CharField(max_length=128, blank=True, default="")
     provider_status = models.CharField(max_length=64, blank=True, default="")
+    schema_version = models.CharField(max_length=64, blank=True, default="")
+    mapper_version = models.CharField(max_length=64, blank=True, default="")
     first_seen_at = models.DateTimeField(default=timezone.now)
     last_seen_at = models.DateTimeField(default=timezone.now)
     last_normalized_payload = models.JSONField(default=dict, blank=True)
@@ -458,3 +465,42 @@ class TransactionSourceLink(models.Model):
 
     def __str__(self) -> str:
         return f"{self.provider}:{self.external_id or self.canonical_fingerprint} -> tx={self.transaction_id}"
+
+
+class TransactionFieldProvenance(models.Model):
+    class Source(models.TextChoices):
+        USER = "user", _("usuario")
+        PROVIDER = "provider", _("proveedor")
+        RULE = "rule", _("regla")
+        MODEL = "model", _("modelo")
+        SYSTEM = "system", _("sistema")
+
+    transaction = models.ForeignKey("transactions.Transaction", on_delete=models.CASCADE, related_name="field_provenance")
+    field_name = models.CharField(max_length=64, db_index=True)
+    source = models.CharField(max_length=16, choices=Source.choices, db_index=True)
+    source_reference = models.CharField(max_length=128, blank=True, default="")
+    source_version = models.CharField(max_length=64, blank=True, default="")
+    confidence_score = models.PositiveSmallIntegerField(null=True, blank=True)
+    previous_value = models.JSONField(null=True, blank=True)
+    current_value = models.JSONField(null=True, blank=True)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="transaction_field_changes")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["transaction", "field_name", "created_at"])]
+
+
+class TransactionClassificationRevision(models.Model):
+    transaction = models.ForeignKey("transactions.Transaction", on_delete=models.CASCADE, related_name="classification_revisions")
+    previous_category = models.ForeignKey("categories.Category", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    category = models.ForeignKey("categories.Category", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    source = models.CharField(max_length=16, choices=TransactionFieldProvenance.Source.choices)
+    classifier_version = models.CharField(max_length=64, blank=True, default="")
+    confidence_score = models.PositiveSmallIntegerField(null=True, blank=True)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="transaction_classification_changes")
+    reason = models.CharField(max_length=255, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]

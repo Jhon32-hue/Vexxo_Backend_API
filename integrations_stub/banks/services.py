@@ -25,6 +25,8 @@ from finance.accounts.services.account_sync_service import (
 )
 from finance.accounts.services.intelligence_service import refresh_account_intelligence_for_user
 from finance.accounts.services.user_integration_service import revoke_provider_integration_access_for_user
+from integrations.open_banking.local_mock import build_local_mock_snapshot, record_local_mock_sync
+from integrations_stub.banks.transaction_bridge import process_stub_transactions_sync_batch
 
 
 @transaction.atomic
@@ -65,17 +67,52 @@ def process_stub_account_sync(
     )
 
     if mode == "success":
+        effective_cursor = sync_cursor
+        effective_provider_metadata = dict(provider_metadata or {})
+        local_mock_result = None
+        if account.provider == "local_mock":
+            snapshot = build_local_mock_snapshot(account=account)
+            sync_run_id = str(upstream_metadata.get("sync_run_id") or "manual")[:64]
+            local_mock_result = process_stub_transactions_sync_batch(
+                provider=snapshot["provider"],
+                source=snapshot["source"],
+                provider_account_id=snapshot["provider_account_id"],
+                request_id=f"local-mock-{account.pk}-{sync_run_id}"[:64],
+                idempotency_key=f"local-mock-sync:{account.pk}:{sync_run_id}:{snapshot['fixture_version']}",
+                rows=snapshot["rows"],
+                cursor=snapshot["cursor"],
+                raw_summary={
+                    "mode": "local_mock_fixture",
+                    "fixture_version": snapshot["fixture_version"],
+                    "row_count": len(snapshot["rows"]),
+                },
+            )
+            effective_cursor = snapshot["cursor"]
+            effective_provider_metadata.update(
+                {
+                    "local_mock_fixture_version": snapshot["fixture_version"],
+                    "last_intake_batch_id": local_mock_result["batch_id"],
+                    "last_intake_counts": local_mock_result["counts"],
+                }
+            )
         mark_account_sync_success(
             account=account,
             data={
-                "sync_cursor": sync_cursor,
+                "sync_cursor": effective_cursor,
                 "next_sync_at": next_sync_at,
                 "duration_ms": duration_ms,
-                "provider_metadata": provider_metadata or {},
+                "provider_metadata": effective_provider_metadata,
                 "sync_run_id": upstream_payload.get("sync_run_id") or upstream_event.get("sync_run_id"),
             },
             metadata=upstream_metadata,
         )
+        if local_mock_result is not None:
+            record_local_mock_sync(
+                account=account,
+                cursor=effective_cursor,
+                intake_result=local_mock_result,
+                next_sync_at=next_sync_at,
+            )
         return account
 
     if mode == "stale":
@@ -118,6 +155,13 @@ def process_stub_consent_revocation(*, user_id: str | int, provider: str = "", c
     if user is None:
         raise ValueError("No se encontro el usuario para revocar integraciones.")
 
+    from integrations.open_banking.services import teardown_open_banking_connections_for_consent_revocation
+
+    open_banking_result = teardown_open_banking_connections_for_consent_revocation(
+        user=user,
+        provider=provider,
+        reason=consent_type or "consent_revoked",
+    )
     result = revoke_provider_integration_access_for_user(
         user=user,
         provider=provider,
@@ -125,4 +169,5 @@ def process_stub_consent_revocation(*, user_id: str | int, provider: str = "", c
     )
     result["trigger_event_type"] = upstream_event.get("type", "")
     result["consent_type"] = consent_type
+    result.update(open_banking_result)
     return result

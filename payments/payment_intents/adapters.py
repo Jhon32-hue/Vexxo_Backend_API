@@ -15,6 +15,7 @@ from decimal import Decimal
 from typing import Any
 
 from django.conf import settings
+import requests
 
 from payments.payment_intents.provider_contracts import (
     build_public_provider_contract,
@@ -31,6 +32,11 @@ class PaymentProviderContractError(ValueError):
     def __init__(self, message: str, *, code: str = "invalid_provider_contract"):
         super().__init__(message)
         self.code = code
+
+
+class PaymentProviderUnavailable(PaymentProviderContractError):
+    def __init__(self, message: str = "El proveedor no esta configurado para dispatch."):
+        super().__init__(message, code="provider_unavailable")
 
 
 def _get_header_value(headers: dict | None, header_name: str) -> str:
@@ -104,6 +110,9 @@ class BasePaymentProviderAdapter:
             },
         }
 
+    def dispatch(self, payment_intent, *, ephemeral_payload: dict[str, Any]) -> dict[str, Any]:
+        raise PaymentProviderUnavailable()
+
     def verify_callback(self, payload: dict, headers: dict | None = None) -> bool:
         callback_signature = dict(self.provider_contract().get("callback_contract", {}).get("signature") or {})
         strategy = str(callback_signature.get("strategy") or "hmac_sha256_body").strip().lower()
@@ -115,7 +124,7 @@ class BasePaymentProviderAdapter:
         if not secret and isinstance(provider_settings.get("callback_auth"), dict):
             secret = str(provider_settings.get("callback_auth", {}).get("secret") or "").strip()
         if not secret:
-            return bool(callback_signature.get("allow_unsigned_when_secret_missing", True))
+            return bool(callback_signature.get("allow_unsigned_when_secret_missing", False))
         header_name = str(callback_signature.get("header") or "X-Vexxo-Provider-Signature").strip()
         provided = _get_header_value(headers, header_name)
         body = json.dumps(payload or {}, sort_keys=True, default=str).encode("utf-8")
@@ -177,10 +186,114 @@ class WompiPaymentProviderAdapter(BasePaymentProviderAdapter):
             "metadata": payload["metadata"],
         }
 
+    def dispatch(self, payment_intent, *, ephemeral_payload: dict[str, Any]) -> dict[str, Any]:
+        provider_settings = self.provider_settings()
+        private_key = str(provider_settings.get("private_key") or "").strip()
+        integrity_secret = str(provider_settings.get("integrity_secret") or "").strip()
+        base_url = str(provider_settings.get("base_url") or "").strip().rstrip("/")
+        if not private_key or not integrity_secret or not base_url:
+            raise PaymentProviderUnavailable()
+        provider_payload = self.build_provider_payload(payment_intent)
+        reference = provider_payload["reference"]
+        amount_in_cents = provider_payload["amount_in_cents"]
+        currency = provider_payload["currency"]
+        payment_method = dict(ephemeral_payload.get("payment_method") or {})
+        customer_email = str(ephemeral_payload.get("customer_email") or "").strip()
+        acceptance_token = str(ephemeral_payload.get("acceptance_token") or "").strip()
+        if not payment_method or not customer_email or not acceptance_token:
+            raise PaymentProviderContractError(
+                "Wompi requiere payment_method, customer_email y acceptance_token.",
+                code="missing_dispatch_fields",
+            )
+        integrity_signature = hashlib.sha256(
+            f"{reference}{amount_in_cents}{currency}{integrity_secret}".encode("utf-8")
+        ).hexdigest()
+        body = {
+            **provider_payload,
+            "customer_email": customer_email,
+            "acceptance_token": acceptance_token,
+            "payment_method": payment_method,
+            "signature": integrity_signature,
+        }
+        try:
+            response = requests.post(
+                f"{base_url}/transactions",
+                json=body,
+                headers={"Authorization": f"Bearer {private_key}", "Content-Type": "application/json"},
+                timeout=15,
+            )
+            response_data = response.json() if response.content else {}
+        except (requests.RequestException, ValueError) as exc:
+            raise PaymentProviderContractError(
+                "Wompi no respondio con un contrato valido.", code="provider_transport_error"
+            ) from exc
+        if not response.ok:
+            error_type = str((response_data.get("error") or {}).get("type") or f"http_{response.status_code}")
+            raise PaymentProviderContractError("Wompi rechazo el dispatch.", code=error_type[:64])
+        transaction = dict(response_data.get("data") or {})
+        status = str(transaction.get("status") or "PENDING").strip().lower()
+        return {
+            "provider_intent_id": str(transaction.get("id") or "")[:128],
+            "provider_reference": str(transaction.get("reference") or reference)[:128],
+            "status": status,
+            "metadata": {
+                "provider_status": status,
+                "redirect_url": str(transaction.get("redirect_url") or "")[:1000],
+                "payment_method_type": str(payment_method.get("type") or "")[:64],
+            },
+        }
+
+    def verify_callback(self, payload: dict, headers: dict | None = None) -> bool:
+        secret = str(self.provider_settings().get("events_secret") or "").strip()
+        signature = dict((payload or {}).get("signature") or {})
+        properties = signature.get("properties") or []
+        timestamp = signature.get("timestamp")
+        provided = str(signature.get("checksum") or _get_header_value(headers, "X-Event-Checksum") or "").strip()
+        if not secret or not properties or timestamp in (None, "") or not provided:
+            return False
+        values: list[str] = []
+        for path in properties:
+            current: Any = payload
+            for part in str(path).split("."):
+                if not isinstance(current, dict) or part not in current:
+                    return False
+                current = current[part]
+            values.append(str(current))
+        expected = hashlib.sha256(("".join(values) + str(timestamp) + secret).encode("utf-8")).hexdigest()
+        return hmac.compare_digest(expected, provided)
+
+
+class LocalFakePaymentProviderAdapter(BasePaymentProviderAdapter):
+    """Deterministic local PSP. It never performs network or stores payment secrets."""
+
+    provider_code = "local_fake"
+
+    def dispatch(self, payment_intent, *, ephemeral_payload: dict[str, Any]) -> dict[str, Any]:
+        if not bool(getattr(settings, "PAYMENTS_LOCAL_FAKE_ENABLED", False)):
+            raise PaymentProviderUnavailable("El proveedor local_fake solo esta habilitado explicitamente en local.")
+        scenario = str((ephemeral_payload or {}).get("scenario") or "processing").strip().lower()
+        allowed = {"processing", "succeeded", "failed", "requires_action", "timeout"}
+        if scenario not in allowed:
+            raise PaymentProviderContractError("Escenario local_fake no soportado.", code="invalid_fake_scenario")
+        if scenario == "timeout":
+            raise PaymentProviderContractError("Timeout determinista de local_fake.", code="provider_timeout")
+        digest = hashlib.sha256(f"local_fake:{payment_intent.pk}".encode("utf-8")).hexdigest()[:24]
+        metadata = {"scenario": scenario, "deterministic": True}
+        if scenario == "requires_action":
+            metadata["redirect_url"] = f"vexxo-local://payments/{payment_intent.pk}/confirm"
+        return {
+            "provider_intent_id": f"lf_{digest}",
+            "provider_reference": f"local-{digest}",
+            "status": scenario,
+            "metadata": metadata,
+        }
+
 
 ADAPTERS = {
     "generic": GenericPaymentProviderAdapter,
     "wompi": WompiPaymentProviderAdapter,
+    "local_fake": LocalFakePaymentProviderAdapter,
+    "local-stub": LocalFakePaymentProviderAdapter,
 }
 
 

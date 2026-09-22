@@ -4,8 +4,8 @@ Flujos de recovery mobile-first por codigo temporal.
 
 from __future__ import annotations
 
-from django.core.cache import cache
 import hashlib
+import hmac
 import logging
 import secrets
 from datetime import timedelta
@@ -23,6 +23,7 @@ from identity.users.models import (
 )
 from identity.sessions.services import complete_session_step_up, revoke_risky_sessions_for_user
 from integrations_stub.messaging.services import dispatch_identity_message
+from security.rate_limits import check_cooldown, consume_rate_limit
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -77,8 +78,9 @@ def _generate_numeric_code(*, purpose: str) -> str:
 
 
 def _hash_code(*, challenge_id: int, code: str) -> str:
-    raw = f"{settings.SECRET_KEY}:{challenge_id}:{code}".encode("utf-8")
-    return hashlib.sha256(raw).hexdigest()
+    key = str(getattr(settings, "IDENTITY_RECOVERY_HASH_KEY", "") or settings.SECRET_KEY).encode("utf-8")
+    raw = f"{challenge_id}:{code}".encode("utf-8")
+    return hmac.new(key, raw, hashlib.sha256).hexdigest()
 
 
 def _resolve_active_user_by_phone(phone_number: str):
@@ -110,36 +112,23 @@ def _supersede_pending_challenges(*, user, purpose: str) -> int:
     return total
 
 
-def _rate_limit_key(scope: str, value: str) -> str:
-    normalized = hashlib.sha256(str(value or "").encode("utf-8")).hexdigest()[:24]
-    return f"identity:{scope}:{normalized}"
-
-
 def _hit_rate_limit(*, scope: str, value: str, window_seconds: int, max_requests: int) -> tuple[bool, int]:
-    if not value:
-        return False, 0
-    key = _rate_limit_key(scope, value)
-    current = cache.get(key)
-    if current is None:
-        cache.set(key, 1, timeout=window_seconds)
-        return False, 0
-    current = int(current) + 1
-    cache.set(key, current, timeout=window_seconds)
-    if current > max_requests:
-        return True, window_seconds
-    return False, 0
+    result = consume_rate_limit(
+        scope=f"identity:{scope}",
+        subject=value,
+        limit=max_requests,
+        window_seconds=window_seconds,
+    )
+    return not result.allowed, result.retry_after_seconds
 
 
 def _cooldown_remaining(*, scope: str, value: str, cooldown_seconds: int) -> int:
-    if not value:
-        return 0
-    key = _rate_limit_key(f"{scope}:cooldown", value)
-    until = cache.get(key)
-    now_ts = int(timezone.now().timestamp())
-    if until and int(until) > now_ts:
-        return int(until) - now_ts
-    cache.set(key, now_ts + cooldown_seconds, timeout=max(cooldown_seconds, 1))
-    return 0
+    result = check_cooldown(
+        scope=f"identity:{scope}",
+        subject=value,
+        cooldown_seconds=max(cooldown_seconds, 1),
+    )
+    return result.retry_after_seconds if not result.allowed else 0
 
 
 def _issue_challenge(
@@ -270,10 +259,10 @@ def request_password_recovery_code(*, phone_number: str, request=None) -> dict:
     return generic_response
 
 
-def confirm_password_recovery_code(*, phone_number: str, code: str):
+def confirm_password_recovery_code(*, phone_number: str, code: str, mfa_code: str = ""):
     user = _resolve_active_user_by_phone(phone_number)
     if user is None:
-        return None, "invalid_or_expired"
+        return None, "invalid_or_expired", None
 
     challenge = (
         UserAuthChallenge.objects.filter(
@@ -286,16 +275,23 @@ def confirm_password_recovery_code(*, phone_number: str, code: str):
         .first()
     )
     if challenge is None:
-        return None, "invalid_or_expired"
+        return None, "invalid_or_expired", None
 
     challenge.mark_expired_if_needed()
     if not challenge.can_verify():
-        return None, "invalid_or_expired"
+        return None, "invalid_or_expired", challenge
 
     hashed = _hash_code(challenge_id=challenge.pk, code=str(code or "").strip())
     if not secrets.compare_digest(challenge.code_hash, hashed):
         challenge.register_failed_attempt()
-        return None, "invalid_or_expired"
+        return None, "invalid_or_expired", challenge
+
+    from identity.users.services.mfa_service import get_active_mfa_method, verify_mfa_code
+
+    if get_active_mfa_method(user) is not None:
+        verified, _method = verify_mfa_code(user=user, code=mfa_code)
+        if not verified:
+            return None, "additional_verification_required", challenge
 
     challenge.mark_consumed()
     return user, "", challenge

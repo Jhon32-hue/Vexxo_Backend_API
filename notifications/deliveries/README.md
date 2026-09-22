@@ -14,7 +14,7 @@ Su responsabilidad es:
 
 Este README es derivado del documento canonico del modulo:
 
-- [notifications/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/notifications/README.md)
+- [notifications/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/notifications/README.md)
 
 Su foco es solo `NotificationDelivery` y la semantica del inbox durable.
 

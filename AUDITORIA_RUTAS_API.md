@@ -1,4 +1,4 @@
-﻿# Auditoria de rutas API
+# Auditoria de rutas API
 
 ## Objetivo
 
@@ -29,7 +29,7 @@ La deuda que sigue abierta ya no es de exposicion directa, sino de transicion:
 
 ### Resuelto: `payments/worker-report` ya no queda abierto si falta el token interno
 
-En [payments/payment_intents/views.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/payments/payment_intents/views.py), `PaymentWorkerReportView` ahora usa validacion comun de token interno y falla cerrado si `PAYMENTS_INTERNAL_TOKEN` no esta configurado.
+En [payments/payment_intents/views.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/payments/payment_intents/views.py), `PaymentWorkerReportView` ahora usa validacion comun de token interno y falla cerrado si `PAYMENTS_INTERNAL_TOKEN` no esta configurado.
 
 Rutas actuales:
 
@@ -44,7 +44,7 @@ Estado:
 
 ### Resuelto: `alerts/internal/ai-worker` ya no queda abierto si falta el token interno
 
-En [alerts/alerts/views/alert_views.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/alerts/alerts/views/alert_views.py), `AlertAiWorkerView` ahora usa la misma validacion comun de token interno y falla cerrado.
+En [alerts/alerts/views/alert_views.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/alerts/alerts/views/alert_views.py), `AlertAiWorkerView` ahora usa la misma validacion comun de token interno y falla cerrado.
 
 Rutas actuales:
 
@@ -66,7 +66,7 @@ Las acciones:
 - `mark_sync_error`
 - `mark_sync_stale`
 
-siguen existiendo en [finance/accounts/views/account_action_handlers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/views/account_action_handlers.py), pero ahora requieren token interno. Ademas existe una ruta canonica nueva en [finance/accounts/internal_urls.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/internal_urls.py).
+siguen existiendo en [finance/accounts/views/account_action_handlers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/views/account_action_handlers.py), pero ahora requieren token interno. Ademas existe una ruta canonica nueva en [finance/accounts/internal_urls.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/internal_urls.py).
 
 Rutas actuales:
 
@@ -98,12 +98,12 @@ Hoy existe una familia canonica bajo `/api/internal/...`, aunque siguen vivas al
 
 Referencias:
 
-- [api/v1/routers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/api/v1/routers.py)
-- [backend/urls.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/backend/urls.py)
-- [finance/accounts/internal_urls.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/internal_urls.py)
-- [finance/transactions/internal_urls.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/transactions/internal_urls.py)
-- [payments/payment_intents/internal_urls.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/payments/payment_intents/internal_urls.py)
-- [alerts/alerts/internal_urls.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/alerts/alerts/internal_urls.py)
+- [api/v1/routers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/api/v1/routers.py)
+- [backend/urls.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/backend/urls.py)
+- [finance/accounts/internal_urls.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/internal_urls.py)
+- [finance/transactions/internal_urls.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/transactions/internal_urls.py)
+- [payments/payment_intents/internal_urls.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/payments/payment_intents/internal_urls.py)
+- [alerts/alerts/internal_urls.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/alerts/alerts/internal_urls.py)
 
 Estado:
 
@@ -112,7 +112,7 @@ Estado:
 
 ### Resuelto: `support.audit` ahora soporta lectura global para staff
 
-En [support/audit/views/audit_views.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/support/audit/views/audit_views.py), `AuditoriaViewSet` sigue usando `IsAuthenticated`, pero ahora:
+En [support/audit/views/audit_views.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/support/audit/views/audit_views.py), `AuditoriaViewSet` sigue usando `IsAuthenticated`, pero ahora:
 
 - si el usuario es staff, puede consultar globalmente
 - si no lo es, sigue viendo solo su propia auditoria
@@ -128,7 +128,7 @@ Estado:
 
 ### Resuelto: habia inconsistencias reales entre la documentacion y el codigo
 
-Quedaron corregidas en [RUTAS_API.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/RUTAS_API.md):
+Quedaron corregidas en [RUTAS_API.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/RUTAS_API.md):
 
 - `auth/social/{provider}/callback/` ahora figura solo como `GET`
 - `auth/social/{provider}/unlink/` ahora figura como `DELETE`
@@ -141,7 +141,7 @@ Quedaron corregidas en [RUTAS_API.md](/c:/Users/Alamb/Documents/Vexxo_Backend_AP
 - `api/v1/routers.py` centraliza bien la composicion principal
 - `transactions` sigue con frontera interna clara bajo `/api/internal/transactions/`
 - los routers por bounded context son legibles y relativamente estables
-- [RUTAS_API.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/RUTAS_API.md) ya sirve como mapa canonico de superficie HTTP
+- [RUTAS_API.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/RUTAS_API.md) ya sirve como mapa canonico de superficie HTTP
 
 ## Prioridades recomendadas
 

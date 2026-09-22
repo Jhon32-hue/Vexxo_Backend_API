@@ -310,6 +310,24 @@ sin volver a meter lecturas OLTP pesadas en el request path.
 
 ## Relacion con notificaciones y correo
 
+## Seguridad operativa
+
+- Login y recovery consumen buckets durables en PostgreSQL; no dependen de la
+  memoria de un proceso Gunicorn.
+- El reset por correo acepta solo hosts de
+  `IDENTITY_PASSWORD_RESET_ALLOWED_HOSTS`; un redirect no permitido cae al URL
+  configurado por backend sin revelar si el usuario existe.
+- JWT usa `JWT_SIGNING_KEY`, separada de `DJANGO_SECRET_KEY` cuando se configura.
+- Un access token emitido por login queda ligado al JTI de `UserSession`; rotar
+  refresh, revocar dispositivo, cambiar password o cerrar la familia invalida
+  el token anterior aunque su `exp` no haya vencido.
+- Recovery usa `IDENTITY_RECOVERY_HASH_KEY` y conserva codigo, expiracion,
+  intentos, supersession y respuesta anti-enumeracion.
+- PIN y biometria son controles locales de Flutter, no factores enviados al
+  backend.
+
+## Relacion con notificaciones y correo
+
 - el correo de bienvenida se dispara desde `users.registered.v1`, no desde el request de registro
 - el request de recovery responde siempre 200 para no filtrar si el correo o telefono existen
 - el registro no exige email verification para activar la cuenta; el email de bienvenida permanece informativo
@@ -335,3 +353,15 @@ sin volver a meter lecturas OLTP pesadas en el request path.
 - no se cableo aun a invitaciones de `finance.accounts` o `social.teams`
 - esa integracion debe hacerse desde el bounded context dueno de la invitacion,
   no desde auth puro, para no mezclar sharing con login
+
+## MFA
+
+`/api/identity/users/auth/mfa/` ofrece estado, enrolamiento/confirmacion TOTP,
+step-up y desactivacion. La semilla solo se muestra al enrolar; los codigos de
+recuperacion se muestran una vez y cada uno se consume una sola vez.
+
+Cuando MFA esta activo, recovery exige ademas TOTP o un recovery code. Cambio
+de password, reset completado, revocacion de dispositivo, suspension y riesgo
+critico invalidan inmediatamente las familias de sesion correspondientes. La
+politica por operacion esta centralizada en `security_policy.py` y documentada
+en [Garantias de identidad](../../docs/IDENTITY_SECURITY_ASSURANCE.md).

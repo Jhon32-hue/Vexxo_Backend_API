@@ -6,7 +6,7 @@
 
 Documento complementario recomendado:
 
-- [Catalogo de fuentes e integraciones](/c:/Users/Alamb/Documents/Vexxo_Backend_API/INTEGRATION_SOURCE_CATALOG.md)
+- [Catalogo de fuentes e integraciones](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/INTEGRATION_SOURCE_CATALOG.md)
 
 Su responsabilidad actual es:
 

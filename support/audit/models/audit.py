@@ -14,6 +14,7 @@ class AuditLog(models.Model):
         AUTOMATION = "AUTOMATION", "Automation"
 
     class Action(models.TextChoices):
+        READ = "READ", "Read"
         CREATE = "CREATE", "Create"
         UPDATE = "UPDATE", "Update"
         DELETE = "DELETE", "Delete"

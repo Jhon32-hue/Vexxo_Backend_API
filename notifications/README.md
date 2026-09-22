@@ -19,13 +19,13 @@ Este README es el documento canonico del bounded context `notifications`.
 
 Subdocumentos derivados:
 
-- [deliveries/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/notifications/deliveries/README.md)
+- [deliveries/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/notifications/deliveries/README.md)
   inbox persistente y semantica de `NotificationDelivery`
-- [listeners/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/notifications/listeners/README.md)
+- [listeners/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/notifications/listeners/README.md)
   materializacion de inbox desde eventos del dominio
-- [preferences/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/notifications/preferences/README.md)
+- [preferences/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/notifications/preferences/README.md)
   configuracion activa por canal y marketing/newsletter
-- [templates/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/notifications/templates/README.md)
+- [templates/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/notifications/templates/README.md)
   renderizado y mensajes reutilizables
 
 Regla editorial:
@@ -140,3 +140,7 @@ La arquitectura sigue dejando abierto el camino para:
 - push provider real
 - templates mas ricos
 - reglas mas finas por evento
+
+La API acepta `created_after=<ISO-8601>` para polling incremental. Flutter solo
+consulta mientras el inbox esta visible y mantiene el inbox persistente como
+fuente de verdad; no se requieren WebSockets para la escala local inicial.

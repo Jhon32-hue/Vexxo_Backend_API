@@ -56,9 +56,9 @@ def create_payout_batch(*, user, provider: str, rail: str, currency: str = "COP"
             source="payments.payment_intents.payout_service.create_payout_batch",
         )
     batch, created = PayoutBatch.objects.get_or_create(
+        owner=user,
         idempotency_key=_payout_batch_key(user=user, provider=provider, currency=currency, instructions=normalized_instructions),
         defaults={
-            "owner": user,
             "provider": provider,
             "rail": rail,
             "currency": str(currency or "COP").upper(),

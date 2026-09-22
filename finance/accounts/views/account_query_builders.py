@@ -144,7 +144,9 @@ def _apply_account_filters(*, qs, user, query_params):
     }
     qs = qs.distinct()
     if order_by in allowed_order:
-        return qs.order_by(order_by)
+        from security.query_safety import safe_order_by
+
+        return safe_order_by(qs, order_by, allowed_fields=set(allowed_order))
     return qs.order_by("-created_at")
 
 

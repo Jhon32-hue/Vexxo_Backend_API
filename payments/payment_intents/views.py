@@ -10,8 +10,9 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from common.internal_auth import assert_internal_token
-from payments.payment_intents.adapters import ADAPTERS, get_payment_provider_adapter
+from payments.payment_intents.adapters import ADAPTERS, PaymentProviderContractError, get_payment_provider_adapter
 from payments.payment_intents.callback_service import process_payment_provider_callback
+from payments.payment_intents.dispatch_service import dispatch_payment_intent
 from payments.payment_intents.models import (
     PaymentDomainEventOutbox,
     PaymentIntent,
@@ -24,6 +25,7 @@ from payments.payment_intents.pricing_service import calculate_embedded_payment_
 from payments.payment_intents.payout_service import create_payout_batch
 from payments.payment_intents.serializers import (
     PaymentDomainEventOutboxSerializer,
+    PaymentDispatchSerializer,
     PaymentIntentCreateSerializer,
     PaymentIntentSerializer,
     PaymentOperationalCaseSerializer,
@@ -70,7 +72,12 @@ class PaymentIntentViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixin
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         payment_intent = create_payment_intent(user=request.user, **serializer.validated_data)
-        return Response(PaymentIntentSerializer(payment_intent).data, status=status.HTTP_201_CREATED)
+        response_status = (
+            status.HTTP_200_OK
+            if getattr(payment_intent, "_idempotent_replay", False)
+            else status.HTTP_201_CREATED
+        )
+        return Response(PaymentIntentSerializer(payment_intent).data, status=response_status)
 
     @action(detail=False, methods=["post"], url_path="pricing-preview")
     def pricing_preview(self, request):
@@ -85,6 +92,27 @@ class PaymentIntentViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixin
             payment_type=serializer.validated_data.get("payment_type", PaymentIntent.PaymentType.OTHER),
         )
         return Response(payload, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], url_path="dispatch", url_name="dispatch")
+    def dispatch_payment(self, request, pk=None):
+        payment_intent = self.get_object()
+        serializer = PaymentDispatchSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            payment_intent = dispatch_payment_intent(
+                payment_intent=payment_intent,
+                ephemeral_payload={
+                    "customer_email": serializer.validated_data["customer_email"],
+                    "acceptance_token": serializer.validated_data["acceptance_token"],
+                    "payment_method": serializer.validated_data["payment_method"],
+                },
+            )
+        except PaymentProviderContractError as exc:
+            return Response(
+                {"detail": str(exc), "code": exc.code},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE if exc.code == "provider_unavailable" else status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+        return Response(PaymentIntentSerializer(payment_intent).data, status=status.HTTP_200_OK)
 
 
 class PayoutBatchViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):

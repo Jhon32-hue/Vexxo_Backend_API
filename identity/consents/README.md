@@ -78,9 +78,8 @@ classDiagram
 2. `revoke_consent()` actualiza el estado
 3. se emite `users.consent.revoked.v1`
 4. `event_handlers` dispara teardown operativo
-5. `tasks.async_backends` decide si el teardown va por `Cloud Tasks`,
-   `sync_inline_for_tests` o `disabled`
-6. si corresponde, se deshabilita auto-sync o acceso de proveedor
+5. en local, `tasks.async_backends` ejecuta el teardown por el adapter inline
+6. se revocan conexiones open banking, enlaces y auto-sync idempotentemente
 
 ## Relacion Con Otros Modulos
 
@@ -92,14 +91,11 @@ classDiagram
   hoy ejecuta el teardown operativo temporal cuando el backend efectivo resuelve
   `sync_inline_for_tests`
 
-## Encaje Con GCP
+## Frontera operativa
 
-Este modulo esta preparado para:
-
-- Cloud Run BFF recibiendo grants/revokes
-- outbox de identidad publicando eventos
-- Cloud Tasks o handlers internos para teardown
-- un futuro `integrations_service` dedicado recibiendo esas ordenes
+El dominio no depende de infraestructura cloud. En desarrollo local el outbox
+de identidad entrega el evento y el teardown usa el adapter inline. Un
+transporte futuro puede cambiar sin modificar el contrato de consentimiento.
 
 La revocacion no debe quedarse en estado administrativo; debe producir efecto
 real sobre integraciones y permisos.
@@ -122,9 +118,12 @@ real sobre integraciones y permisos.
 Hoy ya persiste grants/revokes, emite eventos y despacha el teardown por la
 frontera comun `tasks.async_backends` con `job_type=identity.consents`.
 
-En local/dev:
+En local:
 
 - el camino oficial es `ASYNC_EXECUTION_MODE_IDENTITY_CONSENTS=sync_inline_for_tests`
 - hoy no existe `manage.py run_worker identity.consents`
 - eso es deliberado: el flujo ya usa la frontera comun, pero no requiere aun un
   worker durable separado
+
+Para las reglas de open finance, consulta
+[`docs/OPEN_FINANCE_CONSENT_AND_REVOCATION.md`](../../docs/OPEN_FINANCE_CONSENT_AND_REVOCATION.md).

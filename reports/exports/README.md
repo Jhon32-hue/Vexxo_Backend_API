@@ -10,10 +10,8 @@
 
 ## Estado Del Codigo
 
-Hoy el modulo esta en scaffold:
-
-- `models.py` vacio
-- `views.py` vacio
+El modulo esta operativo con jobs durables, cifrado obligatorio, expiracion,
+descarga de un solo uso y purga criptografica del artefacto.
 
 ## Relacion Con Otros Modulos
 
@@ -36,5 +34,15 @@ Cuando madure, este modulo tiene una relacion muy clara con:
 
 ## Estado Actual
 
-No hay flujo publico o persistente visible hoy. Debe leerse como contexto
-reservado.
+Los exports se crean desde snapshots inmutables, se procesan mediante
+`scheduler-local`, se cifran y expiran 24 horas despues de quedar listos. El
+token de descarga se entrega una vez y solo se persiste su hash.
+
+`reports.process_exports` genera los artefactos y `reports.purge_exports`
+elimina ciphertext, nonce y DEK envuelto una vez vencida la retencion. Un
+`legal_hold` impide la purga y el registro restante funciona como tombstone de
+auditoria.
+
+API: `POST /api/reports/exports/` y `GET
+/api/reports/exports/{uuid}/download/` con `X-Download-Token`. El keyring es
+obligatorio: nunca se produce un export sensible sin cifrar.

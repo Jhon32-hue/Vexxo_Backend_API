@@ -139,45 +139,45 @@ como superficie nueva para integraciones.
 Representa una cuenta financiera del owner. Soporta lifecycle, metadata FX, configuracion de riesgo y objetivos, integracion externa y estados operativos derivados.
 
 Entrada publica:
-- [account.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/models/account.py)
+- [account.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/models/account.py)
 
 Piezas internas:
-- [account_enums.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/models/account_enums.py)
+- [account_enums.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/models/account_enums.py)
   Vocabulario estable del agregado.
-- [account_mixins.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/models/account_mixins.py)
+- [account_mixins.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/models/account_mixins.py)
   Validacion, lifecycle, sync, balance, memberships y health.
-- [account_access.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/models/account_access.py)
+- [account_access.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/models/account_access.py)
   Modelo legacy aislado para migracion o inspeccion historica; ya no participa en la operacion canonica del modulo.
 
 ### AccountMembership
 Sistema moderno de colaboracion sobre cuentas. Modela rol, modo de acceso, permisos efectivos, invitaciones, aceptacion y revocacion.
 
 Archivo:
-- [membership.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/models/membership.py)
+- [membership.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/models/membership.py)
 
 ### AccountInvitation
 Representa un intento de invitacion versionado. Permite expiracion, reenvio, apertura, aceptacion y revocacion sin mezclar ese ciclo social dentro de la membresia estable.
 
 Archivo:
-- [invitation.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/models/invitation.py)
+- [invitation.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/models/invitation.py)
 
 ### BalanceSnapshot
 Foto entre balance cacheado y balance recomputado desde ledger para medir drift y consistencia.
 
 Archivo:
-- [balance_snapshot.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/models/balance_snapshot.py)
+- [balance_snapshot.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/models/balance_snapshot.py)
 
 ### DomainEventOutbox
 Persistencia confiable de eventos del dominio para publicacion fuera de la transaccion local. El request solo encola; un worker publica. La publicacion se ejecuta en dos fases: listeners locales requeridos o best-effort, y despues dispatchers externos. Si falla una fase externa, el retry no reejecuta la fase local ya completada. Tambien concentra trazabilidad operativa (`request_id`, `correlation_id`, `causation_id`, duracion y resultado de publicacion), backoff exponencial (`next_attempt_at`, `last_backoff_seconds`) y dead-letter formal para eventos agotados.
 
 Archivo:
-- [outbox.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/models/outbox.py)
+- [outbox.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/models/outbox.py)
 
 ### AccountBalanceFallback
 Registro persistente de degradaciones del flujo incremental de balance cuando el sistema tuvo que recalcular desde ledger. Tiene API operativa propia para soporte y observabilidad.
 
 Archivo:
-- [fallback.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/models/fallback.py)
+- [fallback.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/models/fallback.py)
 
 ### Inteligencia Derivada
 Read models por owner para producto, soporte y analytics operativo:
@@ -190,136 +190,136 @@ Read models por owner para producto, soporte y analytics operativo:
 - `AccountIntelligenceDispatchState`
 
 Archivo:
-- [intelligence.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/models/intelligence.py)
+- [intelligence.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/models/intelligence.py)
 
 ## Estructura Interna
 
 ### Domain
-- [domain/events.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/domain/events.py)
+- [domain/events.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/domain/events.py)
   Contrato de eventos `accounts.*`, builders de payload y catalogo.
-- [domain/guards.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/domain/guards.py)
+- [domain/guards.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/domain/guards.py)
   Limites por plan, uso actual y reglas previas a create/set_primary.
-- [domain/enums.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/domain/enums.py)
+- [domain/enums.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/domain/enums.py)
   Enums de memberships y balance reasons usados fuera del agregado principal.
 
 ### Models
-- [models/account.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/models/account.py)
+- [models/account.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/models/account.py)
   Fachada publica del agregado.
-- [models/membership.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/models/membership.py)
+- [models/membership.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/models/membership.py)
   Sharing canonico.
-- [models/invitation.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/models/invitation.py)
+- [models/invitation.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/models/invitation.py)
   Ciclo social versionado de invitaciones.
-- [models/balance_snapshot.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/models/balance_snapshot.py)
+- [models/balance_snapshot.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/models/balance_snapshot.py)
   Reconciliacion y drift.
-- [models/fallback.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/models/fallback.py)
+- [models/fallback.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/models/fallback.py)
   Fallbacks del balance incremental.
-- [models/outbox.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/models/outbox.py)
+- [models/outbox.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/models/outbox.py)
   Publicacion confiable de eventos.
-- [models/intelligence.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/models/intelligence.py)
+- [models/intelligence.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/models/intelligence.py)
   Proyecciones y snapshots derivados.
 
 ### Serializers
 La capa REST de `Account` se separa por vertical para que cada contrato evolucione sin volver a concentrarse en un archivo unico.
 
-- [account_serializers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/serializers/account_serializers.py)
+- [account_serializers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/serializers/account_serializers.py)
   Fachada publica y reexports.
-- [account_read_serializers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/serializers/account_read_serializers.py)
+- [account_read_serializers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/serializers/account_read_serializers.py)
   Listado, detalle y summary.
-- [account_write_serializers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/serializers/account_write_serializers.py)
+- [account_write_serializers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/serializers/account_write_serializers.py)
   Create/update con reglas de negocio.
-- [account_lifecycle_serializers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/serializers/account_lifecycle_serializers.py)
+- [account_lifecycle_serializers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/serializers/account_lifecycle_serializers.py)
   Inputs de comandos de lifecycle.
-- [account_sync_serializers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/serializers/account_sync_serializers.py)
+- [account_sync_serializers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/serializers/account_sync_serializers.py)
   Inputs de schedule/running/success/error, con `sync_run_id` opcional.
-- [account_external_link_serializers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/serializers/account_external_link_serializers.py)
+- [account_external_link_serializers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/serializers/account_external_link_serializers.py)
   Contrato de vinculo externo.
-- [account_plan_serializers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/serializers/account_plan_serializers.py)
+- [account_plan_serializers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/serializers/account_plan_serializers.py)
   Snapshot de plan y uso.
-- [account_membership_serializers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/serializers/account_membership_serializers.py)
+- [account_membership_serializers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/serializers/account_membership_serializers.py)
   REST de memberships e invitaciones estrictas.
-- [account_membership_support.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/serializers/account_membership_support.py)
+- [account_membership_support.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/serializers/account_membership_support.py)
   Helpers de validacion/create/update de memberships.
-- [fallback_serializers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/serializers/fallback_serializers.py)
+- [fallback_serializers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/serializers/fallback_serializers.py)
   Salida operativa de `AccountBalanceFallback`.
 
 ### Views
 La API de `cuentas` se reparte entre fachada, acciones, queries y recursos operativos. Los helpers demasiado pequenos se consolidan dentro de sus modulos vecinos para evitar fragmentacion artificial.
 
-- [account_views.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/views/account_views.py)
+- [account_views.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/views/account_views.py)
   Viewset publico con queryset por intencion (`list`, `detail`, `mutation`, `overview`).
-- [account_action_handlers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/views/account_action_handlers.py)
+- [account_action_handlers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/views/account_action_handlers.py)
   Acciones REST, auditoria y checks de permisos del agregado.
-- [account_query_builders.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/views/account_query_builders.py)
+- [account_query_builders.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/views/account_query_builders.py)
   Filtros, parsing booleano compartido, summaries, payloads operativos y querysets por intencion.
 
 Vistas adicionales:
-- [membership_views.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/views/membership_views.py)
+- [membership_views.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/views/membership_views.py)
   Gestion de colaboracion, queryset de memberships, permisos y auditoria del recurso.
-- [snapshot_views.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/views/snapshot_views.py)
+- [snapshot_views.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/views/snapshot_views.py)
   Observabilidad y reconciliacion.
-- [fallback_views.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/views/fallback_views.py)
+- [fallback_views.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/views/fallback_views.py)
   API operativa de degradaciones del balance incremental.
-- [outbox_views.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/views/outbox_views.py)
+- [outbox_views.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/views/outbox_views.py)
   Soporte operativo del outbox.
-- [intelligence_views.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/views/intelligence_views.py)
+- [intelligence_views.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/views/intelligence_views.py)
   Consulta y refresh de proyecciones derivadas.
 
 ### Services
-- [account_policy_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/services/account_policy_service.py)
+- [account_policy_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/services/account_policy_service.py)
   Politicas de negocio compartidas entre serializers, guards y views, incluyendo separacion `manual` vs `connected`, limites de membresias por cuenta y snapshot de plan para mobile.
-- [account_invitation_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/services/account_invitation_service.py)
+- [account_invitation_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/services/account_invitation_service.py)
   Ciclo de vida de invitaciones versionadas.
-- [account_lifecycle_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/services/account_lifecycle_service.py)
+- [account_lifecycle_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/services/account_lifecycle_service.py)
   Create/update/close/freeze/archive/primary/recalc.
-- [account_sync_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/services/account_sync_service.py)
+- [account_sync_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/services/account_sync_service.py)
   Vinculacion externa, estados de sync, idempotencia de comandos y maquina monotona por `sync_run_id`.
-- [account_balance_fallback_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/services/account_balance_fallback_service.py)
+- [account_balance_fallback_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/services/account_balance_fallback_service.py)
   Observabilidad persistente de fallbacks contables.
-- [account_access_migration_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/services/account_access_migration_service.py)
+- [account_access_migration_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/services/account_access_migration_service.py)
   Migracion de `AccountAccess` hacia memberships y retiro operativo del legacy.
-- [permission_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/services/permission_service.py)
+- [permission_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/services/permission_service.py)
   Scope de lectura y permisos efectivos.
-- [outbox_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/services/outbox_service.py)
+- [outbox_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/services/outbox_service.py)
   Builders canonicos de eventos y encolado al outbox.
-- [event_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/services/event_service.py)
+- [event_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/services/event_service.py)
   Integracion con bus local, trazabilidad y publicacion del outbox desde worker con fases local y external, incluyendo retry/backoff y dead-letter.
-- [reconcile_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/services/reconcile_service.py)
+- [reconcile_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/services/reconcile_service.py)
   Snapshots, drift y auto-repair.
-- [intelligence_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/services/intelligence_service.py)
+- [intelligence_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/services/intelligence_service.py)
   Recalculo de snapshots y signals.
-- [intelligence_dispatch_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/services/intelligence_dispatch_service.py)
+- [intelligence_dispatch_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/services/intelligence_dispatch_service.py)
   Cola, coalescing persistente por owner, estado operativo del refresh de inteligencia y callback explicito de workers externos.
-- [intelligence_health_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/services/intelligence_health_service.py)
+- [intelligence_health_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/services/intelligence_health_service.py)
   Salud operativa de las proyecciones.
-- [sync_dispatch_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/services/sync_dispatch_service.py)
+- [sync_dispatch_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/services/sync_dispatch_service.py)
   Dispatch de jobs de sync.
-- [snapshot_policy_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/services/snapshot_policy_service.py)
+- [snapshot_policy_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/services/snapshot_policy_service.py)
   Politica de retencion de snapshots.
-- [realtime_services.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/services/realtime_services.py)
+- [realtime_services.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/services/realtime_services.py)
   Senales ligeras para UI.
-- [user_integration_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/services/user_integration_service.py)
+- [user_integration_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/services/user_integration_service.py)
   Adaptacion entre lifecycle de usuario y cuentas.
 
 ### Signals, Event Handlers Y Use Cases
-- [signals.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/signals.py)
+- [signals.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/signals.py)
   Mantiene `Account.balance` sincronizado con `transactions`, emite eventos y registra fallbacks persistentes cuando debe recalcular.
-- [use_cases.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/use_cases.py)
+- [use_cases.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/use_cases.py)
   Aplica deltas incrementales de balance.
-- [event_handlers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/event_handlers.py)
+- [event_handlers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/event_handlers.py)
   Reacciona a `accounts.*` y `users.*` desde el worker del outbox, sin threads locales del request path.
 
 ### Management Commands
-- [accounts_publish_outbox.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/management/commands/accounts_publish_outbox.py)
+- [accounts_publish_outbox.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/management/commands/accounts_publish_outbox.py)
   Publica eventos pendientes del outbox.
-- [accounts_run_sync_worker.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/management/commands/accounts_run_sync_worker.py)
+- [accounts_run_sync_worker.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/management/commands/accounts_run_sync_worker.py)
   Worker local durable para sync externo cuando no se usa Cloud Tasks.
-- [accounts_run_intelligence_worker.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/management/commands/accounts_run_intelligence_worker.py)
+- [accounts_run_intelligence_worker.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/management/commands/accounts_run_intelligence_worker.py)
   Worker local durable para refresh de inteligencia derivada.
-- [accounts_reconcile_balances.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/management/commands/accounts_reconcile_balances.py)
+- [accounts_reconcile_balances.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/management/commands/accounts_reconcile_balances.py)
   Reconciliacion masiva y opcional auto-repair.
-- [accounts_cleanup_balance_snapshots.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/management/commands/accounts_cleanup_balance_snapshots.py)
+- [accounts_cleanup_balance_snapshots.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/management/commands/accounts_cleanup_balance_snapshots.py)
   Cleanup de snapshots por politica.
-- [accounts_migrate_account_access.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/management/commands/accounts_migrate_account_access.py)
+- [accounts_migrate_account_access.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/management/commands/accounts_migrate_account_access.py)
   Migracion operativa de `AccountAccess` hacia memberships.
 
 ## Flujos Principales
@@ -371,6 +371,10 @@ Lectura:
   dispatch; solo cambia el runtime efectivo
 
 ### Creacion De Cuenta
+`POST /api/finance/accounts/cuentas/` responde `201` con el `id` persistido en
+el payload. Ese identificador permite encadenar transacciones, presupuestos y
+pruebas E2E sin ejecutar un listado adicional.
+
 1. `AccountViewSet` valida input con `AccountWriteSerializer`.
 2. El serializer aplica unicidad funcional y limites por plan.
 3. Se persiste `Account`.

@@ -1,70 +1,45 @@
-# observability
+# Observability
 
-## Que hace
+La observabilidad local ofrece senales operativas sin depender de GCP.
 
-`observability` agrupa piezas pensadas para salud operativa, metricas, logs y
-tracing del sistema.
+## Superficie actual
 
-## Archivos Presentes
+- `GET /healthz/`: liveness del proceso.
+- `GET /readyz/`: readiness de PostgreSQL.
+- `GET /api/runtime/health/`: liveness bajo el namespace API.
+- `GET /api/runtime/readiness/`: readiness bajo el namespace API.
+- `manage.py runtime_status --strict`: configuracion y dependencias.
+- `manage.py outbox_status [context]`: pendientes, fallos y dead letters.
+- `manage.py worker_status [job_type]`: estado durable de workers y scheduler.
+- `manage.py db_connection_budget --strict`: capacidad, uso y presupuesto de
+  conexiones PostgreSQL para el perfil de rendimiento.
+- `manage.py profile_mobile_queries --email ...`: conteo y fingerprints SQL
+  repetidos de `mobile/bootstrap` o `mobile/sync-state`, sin exponer JWT.
+- `manage.py benchmark_mobile_queries --max-query-growth 0`: fixtures
+  transaccionales small/medium/large y guard contra crecimiento N+1.
+- `GET /api/internal/support/operations/`: snapshot agregado, staff-only y
+  auditado de outboxes, OCR, scheduler, notificaciones y pagos.
+- `manage.py prune_operational_data`: previsualiza retencion; solo elimina con
+  `--apply` y nunca toca ledger, pagos, deudas, metas o auditoria.
 
-Hoy el directorio contiene:
+La linea base SQL incremental vigente es constante: 90 consultas para el
+primer bootstrap completo, 18 para bootstrap con cache valida y 23 para
+sync-state. El escenario cached verifica que ningun builder de payload se
+ejecute cuando todas las versiones coinciden.
 
-- `dashboards.py`
-- `healthchecks.py`
-- `logging.py`
-- `metrics.py`
-- `tracing.py`
+`worker_status scheduler` muestra cada job, estado, ejecuciones, fallos,
+proxima corrida y ultimo error desde `ScheduledJobState`.
+`worker_status documents.ocr` muestra pendientes, procesamiento, locks stale y
+fallos del worker OCR durable.
 
-## Estado Del Codigo
+Los logs salen por stdout en JSON e incluyen `request_id`, ruta, estado y
+duracion. El middleware acepta `X-Request-ID` solo con caracteres seguros y
+siempre lo devuelve en la respuesta.
 
-En esta pasada no detecte implementacion funcional visible en esos archivos.
-Eso sugiere que el directorio esta preparado como frontera de operacion, pero no
-todavia materializado como modulo fuerte equivalente a los contextos de negocio.
+No se deben registrar JWT, passwords, PIN, tokens de proveedor, audio completo,
+payloads financieros crudos ni PII innecesaria.
 
-## Rol En El Sistema
-
-El nombre del bloque sigue siendo importante. Vexxo necesita observabilidad real
-para:
-
-- latencia de requests y workers
-- lag de outbox y consumidores
-- fallos de callback o integracion externa
-- tracing de sync, payments y alertas
-- soporte operativo y auditoria
-
-## Casos De Uso Naturales
-
-- healthchecks internos
-- metricas de lag o throughput
-- dashboards de operacion
-- correlacion de errores y latencias
-- trazas end-to-end entre request, worker y callback
-
-## Relacion Con Otros Modulos
-
-- `common`
-  eventos, helpers y contexto transversal.
-- `payments`
-  intents, callbacks, settlement y operacion por proveedor.
-- `finance.accounts`
-  outbox, sync, fallback e inteligencia.
-- `notifications` y `realtime`
-  calidad de entrega y feedback al usuario.
-- `support.audit`
-  visibilidad funcional complementaria.
-
-## Encaje Con GCP
-
-Este bloque esta pensado para integrarse con:
-
-- Cloud Logging
-- Cloud Monitoring
-- Cloud Trace
-- Error Reporting
-- OpenTelemetry si se profundiza tracing distribuido
-
-## Estado Actual
-
-La intencion arquitectonica esta clara, pero la implementacion observable hoy se
-encuentra repartida en logs, servicios y contextos especificos, no centralizada
-todavia aqui.
+Los scripts `backup_local_db.ps1`, `restore_local_db.ps1` y
+`load_test_local.py` cubren el circuito operativo inicial. Antes de usuarios
+reales deben medirse objetivos, ensayarse restauraciones en una base aislada y
+agregarse alertas por lag; que el comando exista no demuestra recuperabilidad.

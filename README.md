@@ -1,4 +1,108 @@
-﻿# Vexxo Backend API
+# Vexxo Backend API
+
+## Estado operativo actual
+
+El backend esta temporalmente en una etapa **local-first**. El desarrollo,
+pruebas de flujo, PostgreSQL, outboxes y workers se ejecutan localmente con
+Docker Compose. La preparacion GCP queda aplazada y sus adapters permanecen
+deshabilitados.
+
+```powershell
+Copy-Item .env.local.example .env.local
+.\scripts\run_stack.ps1 local up full -Build
+.\scripts\run_stack.ps1 local status full
+```
+
+El PostgreSQL de Docker es la unica base local del proyecto. pgAdmin se usa
+solo como cliente y se conecta a `127.0.0.1:54329` con la base y credenciales
+de `.env.local`.
+
+Deudas y metas ya operan con servicios explicitos y outboxes durables. Los
+slices financieros levantan `domain-outbox` y un `scheduler-local` singleton
+para vencimientos y pagos programados, por lo que no se necesitan Celery,
+Redis ni comandos manuales adicionales en esta escala.
+
+El slice `documents` incorpora almacenamiento privado local, checksum SHA-256,
+OCR durable, vinculos owner-scoped con transacciones y outbox contextual. El
+dashboard operativo staff-only consolida outboxes, workers, scheduler,
+notificaciones y pagos en `/api/internal/support/operations/`.
+
+Documentos tambien incluye retencion configurable, purga fisica con
+`legal_hold`, lineage por campo y correcciones OCR versionadas. ClamAV esta
+activo en la topologia local y su contrato se valida con la firma EICAR
+estandar; si el daemon no esta disponible, el upload falla cerrado.
+
+La primera frontera Open Banking vive en `integrations.open_banking`: registra
+consentimiento, conexiones, instituciones, enlaces a cuentas, cuarentena
+temporal y recibos de webhook. `local_mock` permite desarrollar sin nube;
+Belvo y Salt Edge tienen adapters contractuales, pero permanecen deshabilitados
+hasta cargar credenciales y certificar un vector oficial fuera de Git mediante
+checksum. Cargar tokens por si solo no vuelve disponible un proveedor.
+
+Pagos dispone de `local_fake`, un PSP determinista habilitado solo en local,
+y rechaza callbacks atrasados que intenten degradar estados terminales. Los
+reversos y chargebacks abren casos operativos sin convertir al proveedor en
+fuente del ledger.
+
+Los cierres mensuales son snapshots inmutables y versionados por moneda y zona
+horaria; incluyen cashflow y presupuesto del periodo. Deudas conservan historial
+al reestructurar calendarios y metas soportan milestones, proyeccion explicable
+y colaboracion por membresia con aportes atribuibles a cada usuario.
+
+La fundacion transversal de seguridad ya es operativa: throttling sensible en
+PostgreSQL, auditoria de seguridad, redaccion de logs, politica de metadata,
+JWT ligado a sesiones y credenciales externas con envelope encryption
+AES-256-GCM. Las llaves permanecen vacias en los ejemplos y se cargan solo en
+`.env.local`. `security_status` muestra configuracion incompleta sin revelar
+valores.
+El keyring local se administra con `scripts/manage_local_keyring.ps1`; el drill
+real `v1 -> v2 -> rewrap -> retiro de v1` quedo validado sin versionar llaves.
+Las invitaciones de grupos viven en `social.invitations` y requieren aceptacion
+explicita antes de crear una membresia.
+
+`local_mock` cubre el recorrido bancario local: descubre productos simulados,
+los materializa como cuentas owner-scoped, agenda `accounts.sync`, genera movimientos
+deterministas y los materializa mediante el intake de `finance.transactions`.
+
+Documentos canonicos para esta etapa:
+
+- [Desarrollo local](docs/LOCAL_DEVELOPMENT.md)
+- [Arquitectura local-first](docs/ARCHITECTURE_LOCAL_FIRST.md)
+- [Evaluacion modular y roadmap](docs/MODULE_PRODUCT_ROADMAP.md)
+- [Operacion y scripts](scripts/README.md)
+- [Pruebas de carga Artillery](tests/load/README.md)
+- [Coleccion Postman](postman/Vexxo_local.postman_collection.md)
+- [Observabilidad](observability/README.md)
+- [BFF mobile](api/mobile/README.md)
+- [Documentos y OCR](documents/README.md)
+- [Open Banking](integrations/open_banking/README.md)
+- [Consentimiento y revocacion Open Finance](docs/OPEN_FINANCE_CONSENT_AND_REVOCATION.md)
+- [Invitaciones de grupos](social/invitations/README.md)
+- [Arquitectura de proveedores y colaboracion](docs/PROVIDER_AND_COLLABORATION_ARCHITECTURE.md)
+- [Security foundation](security/README.md)
+- [Cierre de los siete frentes](docs/SEVEN_FRONT_CLOSURE.md)
+
+Las secciones cloud historicas describen una direccion futura, no el
+procedimiento operativo vigente.
+
+La suite Artillery separa health/readiness, baseline autenticado y pruebas de
+ruptura. Para carga autenticada se usa `local up full -Performance`: mantiene
+la topologia local, reemplaza `runserver` por Gunicorn con 2 workers y 4 threads
+y valida un presupuesto de 40 conexiones declaradas sobre las 97 utilizables
+de PostgreSQL. Las metricas por endpoint y `profile_mobile_queries` permiten
+distinguir capacidad WSGI, costo de `mobile/bootstrap` y consultas repetidas.
+Las dos lineas base autenticadas completan 2.160/2.160 solicitudes con p95
+global entre 407,5 y 450,4 ms; consulta el detalle y sus limites en
+`tests/load/README.md`.
+El guard `benchmark_mobile_queries --max-query-growth 0` verifica que el costo
+SQL no crezca con fixtures small, medium y large.
+
+El BFF mobile usa sincronizacion incremental real. `sync-state` compara las
+versiones persistidas por Flutter y `bootstrap` construye solo las secciones
+obsoletas. La linea base local es constante: 90 consultas para el primer
+snapshot completo, 18 para bootstrap con cache vigente y 23 para sync-state
+con salud de outboxes. Las secciones sin cambios responden `unchanged=true` y
+`data=null` sin ejecutar sus builders.
 
 ## Que es
 
@@ -33,7 +137,7 @@ es servir como documento de onboarding tecnico:
 La forma recomendada de leerlo es:
 
 1. entender el core del negocio
-2. entender la arquitectura logica y cloud
+2. entender la arquitectura logica y el runtime local
 3. entender como se relacionan los modulos
 4. profundizar en el README especifico del contexto que te interese
 
@@ -83,9 +187,10 @@ Si quieres seguir que pasa paso a paso cuando alguien usa el producto:
 - [external transaction intake](finance/transactions/README.md#secuencias-criticas)
 - [sms inferred transaction](finance/transactions/README.md#sms-inferido)
 
-### 4. Cloud
+### 4. Cloud (referencia aplazada)
 
-Si quieres entender despliegue, eventing e integraciones:
+Esta seccion conserva decisiones exploratorias. No forma parte del runtime
+activo ni del flujo de desarrollo local:
 
 - [Encaje con GCP](#encaje-con-gcp)
 - [Diagramas de despliegue e interaccion cloud](#7-diagramas-de-despliegue-e-interaccion-cloud)
@@ -105,6 +210,7 @@ debemos mantener:
 - [Matrices por proveedor](integrations/README.md)
 - [Contratos de ejecucion de pago](payments/payment_intents/PAYMENT_EXECUTION_CONTRACTS.md)
 - [Contratos canonicos por rail en transactions](finance/transactions/RAIL_NORMALIZATION_CONTRACTS.md)
+- [Flujos, madurez y prioridades por modulo](docs/MODULE_PRODUCT_ROADMAP.md)
 
 ## Core del negocio
 
@@ -1697,17 +1803,18 @@ Sostienen interpretacion, resumen y futuro del dinero.
 
 - `reports.reports`: agregaciones simples sobre el ledger
 - `reports.summaries`: resumenes reservados o en evolucion
-- `reports.exports`, `monthly_reports`, `snapshots`: contextos preparados para
-  reporting persistido
-- `planning.goals`: metas financieras
-- `planning.milestones`, `projections`, `shared_goals`: capa futura de planning
-  mas rica
+- `reports.exports`, `monthly_reports`, `snapshots`: snapshots inmutables,
+  cierres versionados y exports cifrados de un solo uso
+- `planning.goals`: metas, aportes, milestones y proyeccion determinista
+- `planning.shared_goals`: colaboracion por equipo sin transferir ownership
+- `planning.milestones` y `planning.projections`: nombres reservados; la
+  capacidad activa vive hoy dentro del aggregate `planning.goals`
 
 ### `documents`, `contacts` y `social`
 
 Son bloques complementarios al core financiero.
 
-- `documents`: documentos, metadata, OCR y storage, hoy mayormente reservados
+- `documents`: storage privado, cifrado, grants, OCR durable, lineage y retencion
 - `contacts`: contactos financieros reutilizables y balance neto por contraparte
 - `social`: colaboracion general; hoy `teams` es la pieza mas concreta
 
@@ -2336,7 +2443,22 @@ Que resuelve:
 - step-up en rutas sensibles
 - separacion entre plan, capability y permiso efectivo
 
-### Seguridad de borde y plataforma
+### Seguridad transversal
+
+`security` implementa clasificacion, masking, validacion de metadata, throttle
+durable, eventos auditables y cifrado de credenciales. `integrations.credentials`
+separa tokens OAuth/API de metadata y permite reenvolver llaves por lotes.
+
+El reset de password solo acepta origins allowlisted. JWT usa una llave distinta
+de Django cuando se configura y cada access token emitido por login queda ligado
+al estado persistido de su sesion.
+
+```powershell
+.\scripts\run_stack.cmd local security-status
+.\scripts\run_stack.cmd local key-rotation-status
+```
+
+### Seguridad de borde y plataforma futura
 
 Pensada para convivir con:
 
@@ -2366,6 +2488,8 @@ Casos tipicos:
 - masking de PII
 - soporte auditado
 - separacion entre API publica e interfaces internas
+- firma HMAC con timestamp y proteccion de replay para webhooks
+- secretos de proveedor cifrados, revocables y fuera de Flutter
 
 ## Idempotencia
 
@@ -2538,163 +2662,164 @@ documentar su estado actual, flujos, casos de uso y relaciones.
 
 Documentos principales:
 
-- [Flujo de dtos.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/Flujo%20de%20dtos.md)
+- [Flujo de dtos.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/Flujo%20de%20dtos.md)
   Estructura de datos, inventario actual de tablas, relaciones por bounded
   context, dependencias, endpoints y ciclo de vida del dato dentro de Vexxo.
-- [RUTAS_API.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/RUTAS_API.md)
+- [RUTAS_API.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/RUTAS_API.md)
   Mapa raiz de rutas HTTP, CRUDs, acciones custom y endpoints internos por
   modulo.
-- [AUDITORIA_RUTAS_API.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/AUDITORIA_RUTAS_API.md)
+- [AUDITORIA_RUTAS_API.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/AUDITORIA_RUTAS_API.md)
   Auditoria de consistencia, permisos y separacion entre rutas publicas e
   internas.
-- [Auditoria_eventos_locales.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/Auditoria_eventos_locales.md)
+- [Auditoria_eventos_locales.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/Auditoria_eventos_locales.md)
   Matriz exacta de consumo local de eventos, listeners y side effects visibles
   e internos.
-  - [AUDITORIA_EVENTING_CLOUD.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/AUDITORIA_EVENTING_CLOUD.md)
+  - [AUDITORIA_EVENTING_CLOUD.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/AUDITORIA_EVENTING_CLOUD.md)
     Estado actual de homogeneidad del eventing, cloud-readiness y deuda
     pendiente despues de la ultima pasada de endurecimiento.
-  - [CONVENCION_DOCUMENTAL.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/CONVENCION_DOCUMENTAL.md)
+  - [CONVENCION_DOCUMENTAL.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/CONVENCION_DOCUMENTAL.md)
     Convencion de README, mapa canonico y reglas para evitar redundancia
     documental.
-- [backend/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/backend/README.md)
+- [backend/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/backend/README.md)
   Configuracion global de Django, settings, URLs y entrypoints del proyecto.
-- [common/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/common/README.md)
+- [common/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/common/README.md)
   Infraestructura transversal, bus de eventos y encaje con Pub/Sub.
-- [api/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/api/README.md)
+- [api/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/api/README.md)
   Superficie HTTP, versionado y rol del BFF.
-- [api/v1/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/api/v1/README.md)
+- [api/v1/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/api/v1/README.md)
   Capa versionada principal de routers y endpoints HTTP.
-- [api/throttling/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/api/throttling/README.md)
+- [api/throttling/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/api/throttling/README.md)
   Frontera tecnica para rate limiting y proteccion de consumo.
-- [finance/accounts/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/README.md)
+- [finance/accounts/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/README.md)
   Dominio de cuentas, sharing, balances, outbox, sync e inteligencia derivada.
-- [identity/users/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/README.md)
+- [identity/users/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/README.md)
   Usuario, planes, capabilities, usage projection y politica de producto.
-- [identity/eventing/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/eventing/README.md)
+- [identity/eventing/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/eventing/README.md)
   Outbox y read models de identidad.
-- [identity/permissions/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/permissions/README.md)
+- [identity/permissions/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/permissions/README.md)
   Entitlements, grants efectivos y resolucion de permisos.
-- [identity/consents/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/consents/README.md)
+- [identity/consents/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/consents/README.md)
   Consentimientos legales, operativos y teardown de integraciones.
-- [identity/devices/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/devices/README.md)
+- [identity/devices/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/devices/README.md)
   Registro, confianza y revocacion de dispositivos.
-- [identity/sessions/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/sessions/README.md)
+- [identity/sessions/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/sessions/README.md)
   Operacion de sesiones y controles de seguridad del usuario.
-- [identity/social_identities/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/social_identities/README.md)
+- [identity/social_identities/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/social_identities/README.md)
   Identidades sociales vinculadas y handoffs de autenticacion externa.
-- [alerts/alerts/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/alerts/alerts/README.md)
+- [alerts/alerts/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/alerts/alerts/README.md)
   Alertas, enriquecimiento y frontera con IA.
-- [alerts/rules/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/alerts/rules/README.md)
+- [alerts/rules/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/alerts/rules/README.md)
   Reglas de alerta y gating de automatizacion por plan.
-- [alerts/triggers/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/alerts/triggers/README.md)
+- [alerts/triggers/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/alerts/triggers/README.md)
   Contexto reservado para disparadores de alertas.
-- [alerts/listeners/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/alerts/listeners/README.md)
+- [alerts/listeners/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/alerts/listeners/README.md)
   Contexto reservado para listeners especializados de alertas.
-- [alerts/ai_stub/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/alerts/ai_stub/README.md)
+- [alerts/ai_stub/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/alerts/ai_stub/README.md)
   Frontera temporal o placeholder para integracion IA stub.
-- [notifications/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/notifications/README.md)
+- [notifications/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/notifications/README.md)
   Inbox persistente y listeners de entrega.
-- [notifications/deliveries/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/notifications/deliveries/README.md)
+- [notifications/deliveries/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/notifications/deliveries/README.md)
   Materializacion durable del inbox de usuario.
-- [notifications/preferences/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/notifications/preferences/README.md)
+- [notifications/preferences/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/notifications/preferences/README.md)
   Preferencias de entrega y control por canal del usuario.
-- [notifications/templates/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/notifications/templates/README.md)
+- [notifications/templates/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/notifications/templates/README.md)
   Contexto reservado para plantillas de notificacion.
-- [notifications/listeners/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/notifications/listeners/README.md)
+- [notifications/listeners/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/notifications/listeners/README.md)
   Listeners que convierten eventos de dominio en inbox durable.
-- [realtime/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/realtime/README.md)
+- [realtime/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/realtime/README.md)
   Senales livianas para polling y futura capa realtime viva.
-- [realtime/consumers/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/realtime/consumers/README.md)
+- [realtime/consumers/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/realtime/consumers/README.md)
   Persistencia y API de `RealtimeSignal`.
-- [payments/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/payments/README.md)
+- [payments/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/payments/README.md)
   Vision general de pagos, scheduling y relacion con ledger.
-- [payments/payment_intents/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/payments/payment_intents/README.md)
+- [payments/payment_intents/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/payments/payment_intents/README.md)
   Intents, callbacks, settlement, contratos por proveedor y payout.
-- [payments/scheduled_payments/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/payments/scheduled_payments/README.md)
+- [payments/scheduled_payments/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/payments/scheduled_payments/README.md)
   Planificacion recurrente o programada.
-- [payments/reminders/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/payments/reminders/README.md)
+- [payments/reminders/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/payments/reminders/README.md)
   Contexto reservado para recordatorios de pago.
-- [payments/calendar/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/payments/calendar/README.md)
+- [payments/calendar/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/payments/calendar/README.md)
   Contexto reservado para organizacion temporal o calendario de pagos.
-- [finance/transactions/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/transactions/README.md)
+- [finance/transactions/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/transactions/README.md)
   Ledger, materializacion contable y relacion con pagos externos.
-- [finance/categories/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/categories/README.md)
+- [finance/categories/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/categories/README.md)
   Catalogo de categorias y semantica de gasto/ingreso.
-- [finance/vendors/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/vendors/README.md)
+- [finance/vendors/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/vendors/README.md)
   Contrapartes y comercios reutilizables en ledger y pagos.
-- [finance/debts/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/debts/README.md)
+- [finance/debts/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/debts/README.md)
   Deudas y cuotas como obligaciones financieras.
-- [finance/fx/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/fx/README.md)
+- [finance/fx/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/fx/README.md)
   Snapshots de tasas de cambio y soporte multicurrency.
-- [finance/budgets/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/budgets/README.md)
+- [finance/budgets/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/budgets/README.md)
   Presupuestos mensuales personales por categoria y compartidos por equipo, con
   metricas `planned/actual/committed` contra el ledger y resumen mensual
   reutilizable desde `reports`.
-- [payments/scheduled_payments/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/payments/scheduled_payments/README.md)
+- [payments/scheduled_payments/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/payments/scheduled_payments/README.md)
   Templates y corridas de pagos programados, ahora con attribution de budget
   separada de categoria para alimentar `committed`.
-- [finance/investments/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/investments/README.md)
+- [finance/investments/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/investments/README.md)
   Contexto reservado para posiciones y producto de inversion.
-- [finance/limits/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/limits/README.md)
+- [finance/limits/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/limits/README.md)
   Contexto reservado para limites financieros transversales.
-- [planning/goals/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/planning/goals/README.md)
+- [planning/goals/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/planning/goals/README.md)
   Metas financieras y capa de planning.
-- [planning/milestones/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/planning/milestones/README.md)
+- [planning/milestones/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/planning/milestones/README.md)
   Contexto reservado para hitos de planning.
-- [planning/projections/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/planning/projections/README.md)
+- [planning/projections/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/planning/projections/README.md)
   Contexto reservado para escenarios y proyecciones futuras.
-- [planning/shared_goals/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/planning/shared_goals/README.md)
-  Contexto reservado para metas compartidas.
-- [contacts/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/contacts/README.md)
+- [planning/shared_goals/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/planning/shared_goals/README.md)
+  Metas compartidas, membresias, aportes y proyecciones con autorizacion por
+  equipo.
+- [contacts/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/contacts/README.md)
   Contactos financieros reutilizables y balance neto por contraparte.
-- [documents/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/documents/README.md)
+- [documents/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/documents/README.md)
   Vision general del bounded context documental.
-- [social/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/social/README.md)
+- [social/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/social/README.md)
   Panorama del bloque social y su nivel de madurez actual.
-- [social/teams/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/social/teams/README.md)
+- [social/teams/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/social/teams/README.md)
   Equipos y membresias sociales generales.
-- [reports/reports/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/reports/reports/README.md)
+- [reports/reports/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/reports/reports/README.md)
   Reportes agregados simples sobre el ledger.
-- [reports/summaries/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/reports/summaries/README.md)
+- [reports/summaries/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/reports/summaries/README.md)
   Espacio reservado para resumenes agregados y snapshots de reporting.
-- [reports/exports/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/reports/exports/README.md)
-  Contexto reservado para exportaciones y artefactos de reportes.
-- [reports/monthly_reports/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/reports/monthly_reports/README.md)
-  Contexto reservado para cierres o reportes mensuales persistidos.
-- [reports/snapshots/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/reports/snapshots/README.md)
-  Contexto reservado para snapshots de reporting.
-- [integrations_stub/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/integrations_stub/README.md)
+- [reports/exports/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/reports/exports/README.md)
+  Exportaciones durables cifradas, expirables y de descarga unica.
+- [reports/monthly_reports/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/reports/monthly_reports/README.md)
+  Cierres mensuales reproducibles y regeneracion controlada.
+- [reports/snapshots/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/reports/snapshots/README.md)
+  Snapshots inmutables, versionados y verificables por hash.
+- [integrations_stub/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/integrations_stub/README.md)
   Fronteras temporales para workers e integraciones aun no separadas.
-- [integrations_stub/banks/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/integrations_stub/banks/README.md)
+- [integrations_stub/banks/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/integrations_stub/banks/README.md)
   Sync e integraciones bancarias temporales.
-- [AUDITORIA_EVENTING_CLOUD.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/AUDITORIA_EVENTING_CLOUD.md)
+- [AUDITORIA_EVENTING_CLOUD.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/AUDITORIA_EVENTING_CLOUD.md)
   Estado actual de homogeneidad del eventing, cloud-readiness y deuda
   pendiente despues de la ultima pasada de endurecimiento.
-- [tasks/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/tasks/README.md)
+- [tasks/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/tasks/README.md)
   Estructura general de ejecucion asincrona, scheduling y workers.
-- [tasks/dispatchers/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/tasks/dispatchers/README.md)
+- [tasks/dispatchers/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/tasks/dispatchers/README.md)
   Frontera preparada para dispatch a Cloud Tasks, Pub/Sub o Scheduler.
-- [tasks/scheduled/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/tasks/scheduled/README.md)
-  Contexto reservado para jobs programados y periodicos.
-- [tasks/listeners/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/tasks/listeners/README.md)
+- [tasks/scheduled/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/tasks/scheduled/README.md)
+  Scheduler local durable con catalogo unico y advisory locks PostgreSQL.
+- [tasks/listeners/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/tasks/listeners/README.md)
   App reservada para listeners tecnicos o de trabajo asincrono.
-- [tasks/workers/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/tasks/workers/README.md)
-  App reservada para workers genericos del sistema.
-- [security/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/security/README.md)
+- [tasks/workers/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/tasks/workers/README.md)
+  Runner comun y catalogo declarativo de workers durables.
+- [security/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/security/README.md)
   Frontera transversal para politicas de seguridad, fraude y proteccion de datos.
-- [observability/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/observability/README.md)
+- [observability/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/observability/README.md)
   Frontera para salud, metricas, logging y tracing del sistema.
-- [scripts/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/scripts/README.md)
+- [scripts/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/scripts/README.md)
   Utilidades operativas, bootstrap y backfills fuera del request path.
-- [admin_tools/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/admin_tools/README.md)
+- [admin_tools/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/admin_tools/README.md)
   Herramientas internas de operacion, soporte y revision manual.
-- [support/audit/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/support/audit/README.md)
+- [support/audit/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/support/audit/README.md)
   Auditoria funcional y trazabilidad de negocio.
-- [support/access_history/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/support/access_history/README.md)
+- [support/access_history/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/support/access_history/README.md)
   Contexto reservado para historial de acceso y soporte operativo.
-- [support/consent_audit/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/support/consent_audit/README.md)
+- [support/consent_audit/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/support/consent_audit/README.md)
   Contexto reservado para trazabilidad de consentimientos.
-- [support/support_views/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/support/support_views/README.md)
+- [support/support_views/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/support/support_views/README.md)
   Contexto reservado para vistas o endpoints internos de soporte.
 
 ## Como leer el sistema
@@ -2740,3 +2865,29 @@ La documentacion canonica de Vexxo sigue estas reglas:
 - conecta cada modulo con el resto del sistema y con la topologia GCP
 - sigue la convencion descrita en `CONVENCION_DOCUMENTAL.md`
 
+## Seguridad Local Actual
+
+La base incluye JWT multi-key, MFA TOTP, challenges Ed25519, throttling durable,
+credenciales externas cifradas, documentos cifrables y exports de un solo uso.
+Las llaves permanecen vacias en `.env.local.example`; se cargan manualmente y
+nunca se versionan. Usa `security_status` y `key_rotation_status` para verificar
+configuracion sin revelar material secreto.
+
+La activacion fintech se valida con `python manage.py security_activation_check`.
+El comando no muestra secretos y mantiene cada integracion externa
+deshabilitada mientras falte cualquier valor obligatorio. ClamAV local ya fue
+validado con firmas actualizadas y vector EICAR; Belvo, Salt Edge, Wompi, Play
+Integrity y App Attest siguen requiriendo valores o certificacion externos. El
+keyring local fue ejercitado con rotacion real `v1 -> v2`, rewrap y retiro de
+`v1`; el material permanece exclusivamente en `.env.local` y en el respaldo
+DPAPI ignorado por Git.
+`json_field_audit` inventaria JSON historicos sin mutarlos.
+
+La politica cubre los 110 `JSONField` actuales y `api_filter_audit --strict`
+revisa las 117 vistas API. Retencion y expiracion corren en el scheduler local;
+la rotacion cuenta tanto credenciales como documentos. Procedimientos:
+
+- [Politica de datos y retencion](docs/DATA_SECURITY_POLICY.md)
+- [Gestion, rotacion y recuperacion de llaves](docs/KEY_MANAGEMENT_RUNBOOK.md)
+- [MFA, sesiones y attestation](docs/IDENTITY_SECURITY_ASSURANCE.md)
+- [Cierre verificable de los siete frentes](docs/SEVEN_FRONT_CLOSURE.md)

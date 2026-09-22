@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import json
 import os #Maneja rutas del sistema
 from pathlib import Path #Construye rutas usando objetos
 from dotenv import load_dotenv #Carga las variables del archivo .env
@@ -21,9 +22,9 @@ from datetime import timedelta
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 #Generar la ruta global del archivo .env
-dot_env_path = os.path.join(BASE_DIR, '.env') 
+dot_env_path = os.path.join(BASE_DIR, '.env')
 
-load_dotenv(dot_env_path) #lee el archivo .env y carga todas las variables como parte del sistema 
+load_dotenv(dot_env_path) #lee el archivo .env y carga todas las variables como parte del sistema
 
 
 # Quick-start development settings - unsuitable for production
@@ -95,9 +96,12 @@ INSTALLED_APPS = [
 
     # CORE PLATFORM
     "common.apps.CommonConfig",
+    "observability.apps.ObservabilityConfig",
     "contacts.apps.ContactConfig",
     "api.v1.apps.V1Config",
+    "api.mobile.apps.MobileConfig",
     "api.throttling.apps.ThrottlingConfig",
+    "security.apps.SecurityConfig",
 
     # REALTIME
     "realtime.consumers.apps.ConsumersConfig",
@@ -195,6 +199,8 @@ INSTALLED_APPS = [
     "integrations_stub.ocr.apps.OcrConfig",
     "integrations_stub.ml.apps.MlConfig",
     "integrations_stub.llm.apps.LlmConfig",
+    "integrations.open_banking.apps.OpenBankingConfig",
+    "integrations.credentials.apps.CredentialsConfig",
 ]
 
 SITE_ID = 1
@@ -217,12 +223,13 @@ REST_AUTH_REGISTER_SERIALIZERS = {
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'common.request_context.RequestContextMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'crum.CurrentRequestUserMiddleware',   
+    'crum.CurrentRequestUserMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'allauth.account.middleware.AccountMiddleware',
@@ -232,19 +239,63 @@ MIDDLEWARE = [
 CORS_ALLOW_CREDENTIALS = True
 
 
-#Diccionario JWT Autenticación   
+#Diccionario JWT Autenticación
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES' : [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'identity.sessions.authentication.SessionBoundJWTAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES' : [
-        'rest_framework.permissions.IsAuthenticatedOrReadOnly'
-    ]
+        'rest_framework.permissions.IsAuthenticated'
+    ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/hour',
+        'user': '2000/hour',
+    },
 }
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "vexxo-local",
+    }
+}
+
+LOG_LEVEL = config("LOG_LEVEL", default="INFO")
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "filters": {
+        "request_context": {"()": "observability.json_logging.RequestContextFilter"},
+        "sensitive_data": {"()": "security.logging.SensitiveDataFilter"},
+    },
+    "formatters": {
+        "json": {"()": "observability.json_logging.JsonFormatter"},
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "filters": ["request_context", "sensitive_data"],
+            "formatter": "json",
+        },
+    },
+    "root": {"handlers": ["console"], "level": LOG_LEVEL},
+}
+
+JWT_ACTIVE_KEY_VERSION = config("JWT_ACTIVE_KEY_VERSION", default="v1") or "v1"
+try:
+    JWT_SIGNING_KEYS = json.loads(config("JWT_SIGNING_KEYS_JSON", default="{}") or "{}")
+except json.JSONDecodeError as exc:
+    raise ValueError("JWT_SIGNING_KEYS_JSON must be valid JSON.") from exc
+if not JWT_SIGNING_KEYS:
+    JWT_SIGNING_KEYS = {JWT_ACTIVE_KEY_VERSION: config("JWT_SIGNING_KEY", default="") or SECRET_KEY}
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=int(config("ACCESS_TOKEN_LIFETIME", default=30))),
-    "SIGNING_KEY": config("DJANGO_SECRET_KEY"), #El usuario no necesita autenticarse constantemente
+    "SIGNING_KEY": JWT_SIGNING_KEYS[JWT_ACTIVE_KEY_VERSION],
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
@@ -317,6 +368,8 @@ if ENV == "cloud":
             "PASSWORD": config("DB_PASSWORD"),
             "HOST": f"/cloudsql/{config('INSTANCE_CONNECTION_NAME')}",
             "PORT": "5432",
+            "CONN_MAX_AGE": config("DB_CONN_MAX_AGE", default=0, cast=int),
+            "CONN_HEALTH_CHECKS": True,
         }
     }
 else:
@@ -328,6 +381,8 @@ else:
             "PASSWORD": config("DB_PASSWORD"),
             "HOST": config("DB_HOST"),
             "PORT": config("DB_PORT"),
+            "CONN_MAX_AGE": config("DB_CONN_MAX_AGE", default=0, cast=int),
+            "CONN_HEALTH_CHECKS": True,
         }
     }
 
@@ -376,6 +431,22 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+MEDIA_URL = config("MEDIA_URL", default="/media/")
+MEDIA_ROOT = config("MEDIA_ROOT", default=os.path.join(BASE_DIR, ".runtime", "media"))
+PAYMENTS_PROVIDER_SETTINGS = {
+    "generic": {"callback_secret": config("PAYMENT_CALLBACK_SECRET", default="")},
+    "wompi": {
+        "base_url": config("WOMPI_BASE_URL", default="https://sandbox.wompi.co/v1"),
+        "private_key": config("WOMPI_PRIVATE_KEY", default=""),
+        "integrity_secret": config("WOMPI_INTEGRITY_SECRET", default=""),
+        "events_secret": config("WOMPI_EVENTS_SECRET", default=""),
+    },
+}
+
+JWT_KEYRING = {
+    "ACTIVE_KEY_VERSION": JWT_ACTIVE_KEY_VERSION,
+    "SIGNING_KEYS": JWT_SIGNING_KEYS,
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -421,6 +492,12 @@ EMAIL_USE_TLS = config("EMAIL_USE_TLS", default=True, cast=bool)
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default=EMAIL_HOST_USER or "no-reply@vexxo.local")
 APP_FRONTEND_URL = config("APP_FRONTEND_URL", default="")
 IDENTITY_PASSWORD_RESET_FRONTEND_URL = config("IDENTITY_PASSWORD_RESET_FRONTEND_URL", default="")
+IDENTITY_PASSWORD_RESET_ALLOWED_HOSTS = config(
+    "IDENTITY_PASSWORD_RESET_ALLOWED_HOSTS",
+    default="localhost,127.0.0.1" if BOOT_ENV == "local" else "",
+    cast=lambda value: [item.strip().lower() for item in value.split(",") if item.strip()],
+)
+IDENTITY_RECOVERY_HASH_KEY = config("IDENTITY_RECOVERY_HASH_KEY", default="") or SECRET_KEY
 IDENTITY_RECOVERY_CODE_TTL_SECONDS = config("IDENTITY_RECOVERY_CODE_TTL_SECONDS", default=120, cast=int)
 IDENTITY_RECOVERY_MAX_ATTEMPTS = config("IDENTITY_RECOVERY_MAX_ATTEMPTS", default=5, cast=int)
 IDENTITY_RECOVERY_CODE_LENGTH = config("IDENTITY_RECOVERY_CODE_LENGTH", default=6, cast=int)
@@ -434,6 +511,61 @@ IDENTITY_STEP_UP_CODE_TTL_SECONDS = config("IDENTITY_STEP_UP_CODE_TTL_SECONDS", 
 IDENTITY_STEP_UP_MAX_ATTEMPTS = config("IDENTITY_STEP_UP_MAX_ATTEMPTS", default=5, cast=int)
 IDENTITY_STEP_UP_TRUST_DEVICE_ON_SUCCESS = config("IDENTITY_STEP_UP_TRUST_DEVICE_ON_SUCCESS", default=True, cast=bool)
 IDENTITY_STEP_UP_REVOKE_OTHER_RISKY_SESSIONS = config("IDENTITY_STEP_UP_REVOKE_OTHER_RISKY_SESSIONS", default=True, cast=bool)
+MFA_TOTP_ISSUER = config("MFA_TOTP_ISSUER", default="Vexxo")
+MFA_RECOVERY_HASH_KEY = config("MFA_RECOVERY_HASH_KEY", default="") or SECRET_KEY
+
+PLAY_INTEGRITY_CLOUD_PROJECT_NUMBER = config("PLAY_INTEGRITY_CLOUD_PROJECT_NUMBER", default="")
+PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON = config("PLAY_INTEGRITY_SERVICE_ACCOUNT_JSON", default="")
+PLAY_INTEGRITY_PACKAGE_NAMES = config(
+    "PLAY_INTEGRITY_PACKAGE_NAMES",
+    default="",
+    cast=lambda value: [item.strip() for item in value.split(",") if item.strip()],
+)
+PLAY_INTEGRITY_REQUIRED_DEVICE_VERDICT = config(
+    "PLAY_INTEGRITY_REQUIRED_DEVICE_VERDICT",
+    default="MEETS_DEVICE_INTEGRITY",
+)
+APPLE_APP_ATTEST_APP_ID = config("APPLE_APP_ATTEST_APP_ID", default="")
+APPLE_APP_ATTEST_ROOT_CA_PEM = config("APPLE_APP_ATTEST_ROOT_CA_PEM", default="").replace("\\n", "\n")
+APPLE_APP_ATTEST_ENVIRONMENT = config("APPLE_APP_ATTEST_ENVIRONMENT", default="development")
+DEVICE_ATTESTATION_VALIDITY_DAYS = config("DEVICE_ATTESTATION_VALIDITY_DAYS", default=30, cast=int)
+DEVICE_ATTESTATION_FAILURE_THRESHOLD = config("DEVICE_ATTESTATION_FAILURE_THRESHOLD", default=3, cast=int)
+
+DOCUMENTS_MAX_UPLOAD_BYTES = config("DOCUMENTS_MAX_UPLOAD_BYTES", default=10 * 1024 * 1024, cast=int)
+DOCUMENTS_SCANNER_BACKEND = config("DOCUMENTS_SCANNER_BACKEND", default="basic")
+DOCUMENTS_CLAMAV_HOST = config("DOCUMENTS_CLAMAV_HOST", default="")
+DOCUMENTS_CLAMAV_PORT = config("DOCUMENTS_CLAMAV_PORT", default=3310, cast=int)
+DOCUMENTS_DELETED_RETENTION_DAYS = config("DOCUMENTS_DELETED_RETENTION_DAYS", default=30, cast=int)
+
+SECURITY_THROTTLE_HASH_KEY = config("SECURITY_THROTTLE_HASH_KEY", default="") or SECRET_KEY
+SECURITY_AUDIT_INFO_RETENTION_DAYS = config("SECURITY_AUDIT_INFO_RETENTION_DAYS", default=365, cast=int)
+SECURITY_AUDIT_WARNING_RETENTION_DAYS = config("SECURITY_AUDIT_WARNING_RETENTION_DAYS", default=730, cast=int)
+SECURITY_AUDIT_CRITICAL_RETENTION_DAYS = config("SECURITY_AUDIT_CRITICAL_RETENTION_DAYS", default=2555, cast=int)
+SECURITY_THROTTLE_RETENTION_DAYS = config("SECURITY_THROTTLE_RETENTION_DAYS", default=30, cast=int)
+SECURITY_CHALLENGE_RETENTION_DAYS = config("SECURITY_CHALLENGE_RETENTION_DAYS", default=30, cast=int)
+SECURITY_ENCRYPTION_ACTIVE_KEY_VERSION = config("SECURITY_ENCRYPTION_ACTIVE_KEY_VERSION", default="")
+try:
+    SECURITY_ENCRYPTION_KEYS = json.loads(config("SECURITY_ENCRYPTION_KEYS_JSON", default="{}") or "{}")
+except json.JSONDecodeError as exc:
+    raise ValueError("SECURITY_ENCRYPTION_KEYS_JSON must be valid JSON.") from exc
+OPEN_BANKING_WEBHOOK_TOLERANCE_SECONDS = config("OPEN_BANKING_WEBHOOK_TOLERANCE_SECONDS", default=300, cast=int)
+OPEN_BANKING_EXTERNAL_PAYLOAD_TTL_DAYS = config("OPEN_BANKING_EXTERNAL_PAYLOAD_TTL_DAYS", default=30, cast=int)
+OPEN_BANKING_PAYLOAD_MAX_ATTEMPTS = config("OPEN_BANKING_PAYLOAD_MAX_ATTEMPTS", default=5, cast=int)
+OPEN_BANKING_SYNC_MAX_ATTEMPTS = config("OPEN_BANKING_SYNC_MAX_ATTEMPTS", default=5, cast=int)
+OPEN_BANKING_SYNC_MAX_PAGES = config("OPEN_BANKING_SYNC_MAX_PAGES", default=100, cast=int)
+OPEN_BANKING_RETRY_BASE_SECONDS = config("OPEN_BANKING_RETRY_BASE_SECONDS", default=30, cast=int)
+OPEN_BANKING_RETRY_MAX_SECONDS = config("OPEN_BANKING_RETRY_MAX_SECONDS", default=3600, cast=int)
+REPORT_EXPORT_DOWNLOADED_RETENTION_HOURS = config(
+    "REPORT_EXPORT_DOWNLOADED_RETENTION_HOURS",
+    default=24,
+    cast=int,
+)
+PAYMENTS_LOCAL_FAKE_ENABLED = config("PAYMENTS_LOCAL_FAKE_ENABLED", default=False, cast=bool)
+OPEN_BANKING_ALLOW_LEGACY_WEBHOOK_SIGNATURES = config(
+    "OPEN_BANKING_ALLOW_LEGACY_WEBHOOK_SIGNATURES",
+    default=BOOT_ENV == "local",
+    cast=bool,
+)
 
 
 # ========= EVENTING / GCP INTEGRATION =========

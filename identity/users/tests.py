@@ -141,6 +141,62 @@ class IdentityUsersTests(TestCase):
         user.refresh_from_db()
         self.assertTrue(user.check_password("NuevaClave2026!"))
 
+    def test_password_change_revokes_every_active_session_family(self):
+        user = User.objects.create_user(
+            username="password-family-user",
+            email="password-family@example.com",
+            password="VexxoPass2026!",
+        )
+        sessions = [
+            register_user_session(user=user, session_key="family-a", family_id="family-a"),
+            register_user_session(user=user, session_key="family-b", family_id="family-b"),
+        ]
+        self.client.force_authenticate(user)
+        response = self.client.post(
+            "/api/identity/users/auth/set-password/",
+            {"new_password": "NuevaClave2026!", "new_password2": "NuevaClave2026!"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        for session in sessions:
+            session.refresh_from_db()
+            self.assertEqual(session.status, "revoked")
+            self.assertEqual(session.revocation_reason, "password_changed")
+
+    def test_admin_suspension_requires_reason_and_revokes_every_session(self):
+        admin = User.objects.create_superuser(
+            username="security-admin",
+            email="security-admin@example.com",
+            password="VexxoPass2026!",
+        )
+        target = User.objects.create_user(
+            username="suspend-target",
+            email="suspend-target@example.com",
+            password="VexxoPass2026!",
+        )
+        sessions = [
+            register_user_session(user=target, session_key="suspend-a", family_id="suspend-a"),
+            register_user_session(user=target, session_key="suspend-b", family_id="suspend-b"),
+        ]
+        self.client.force_authenticate(admin)
+        url = f"/api/identity/users/admin/users/{target.pk}/suspend/"
+        missing_reason = self.client.post(url, {}, format="json")
+        self.assertEqual(missing_reason.status_code, 400, missing_reason.data)
+        response = self.client.post(
+            url,
+            {},
+            format="json",
+            HTTP_X_SUPPORT_REASON="Cuenta comprometida confirmada",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        target.refresh_from_db()
+        self.assertFalse(target.is_active)
+        self.assertEqual(target.status, "suspended")
+        for session in sessions:
+            session.refresh_from_db()
+            self.assertEqual(session.status, "revoked")
+            self.assertEqual(session.revocation_reason, "user_suspended")
+
     @override_settings(
         IDENTITY_RECOVERY_DEBUG_REVEAL_CODE=True,
         IDENTITY_RECOVERY_CODE_TTL_SECONDS=120,

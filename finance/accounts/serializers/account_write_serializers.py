@@ -39,6 +39,7 @@ class AccountWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Account
         fields = [
+            "id",
             "name",
             "type",
             "role",
@@ -72,6 +73,7 @@ class AccountWriteSerializer(serializers.ModelSerializer):
             "auto_contribute_amount",
             "auto_contribute_percent",
         ]
+        read_only_fields = ["id"]
 
     def validate_name(self, value: str):
         value = (value or "").strip()

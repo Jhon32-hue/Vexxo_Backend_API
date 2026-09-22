@@ -36,6 +36,8 @@ Su objetivo es servir como mapa rapido para:
 | `/api/` | varios | API principal versionada |
 | `/api/internal/integrations/banks/` | varios | prefijo canonico interno del stub de integraciones |
 | `/api/internal/integrations/llm/` | varios | prefijo canonico interno del stub LLM |
+| `/api/integrations/open-banking/` | varios | conexiones bancarias canonicas y catalogo de proveedores |
+| `/api/social/invitations/` | varios | lifecycle de invitaciones de equipos |
 | `/internal/integrations/banks/` | varios | Puente interno temporal para integraciones |
 | `/internal/integrations/llm/` | varios | Puente interno temporal para inferencia LLM |
 
@@ -495,10 +497,33 @@ Base: `/api/planning/goals/metas/`
 | `/api/social/teams/equipos/{id}/` | `PUT`, `PATCH` | `Bearer` | actualizar equipo |
 | `/api/social/teams/equipos/{id}/` | `DELETE` | `Bearer` | eliminar equipo |
 | `/api/social/teams/miembros/` | `GET` | `Bearer` | listar miembros |
-| `/api/social/teams/miembros/` | `POST` | `Bearer` | crear membresia de equipo |
 | `/api/social/teams/miembros/{id}/` | `GET` | `Bearer` | detalle de miembro |
-| `/api/social/teams/miembros/{id}/` | `PUT`, `PATCH` | `Bearer` | actualizar miembro |
-| `/api/social/teams/miembros/{id}/` | `DELETE` | `Bearer` | eliminar miembro |
+| `/api/social/teams/miembros/{id}/` | `PATCH` | `Bearer` | actualizar rol o estado; owner protegido |
+
+El alta de membresias no admite `POST`: se materializa al aceptar una
+invitacion.
+
+### team invitations
+
+| Ruta | Metodos | Auth | Uso |
+|---|---|---|---|
+| `/api/social/invitations/team-invitations/` | `GET`, `POST` | `Bearer` | listar o emitir invitaciones visibles para el usuario |
+| `/api/social/invitations/team-invitations/{public_id}/` | `GET` | `Bearer` | detalle owner/invitee scoped |
+| `/api/social/invitations/team-invitations/{public_id}/opened/` | `POST` | `Bearer` | registrar apertura sin conceder permisos |
+| `/api/social/invitations/team-invitations/{public_id}/accept/` | `POST` | `Bearer` | aceptar y crear/reactivar membresia |
+| `/api/social/invitations/team-invitations/{public_id}/revoke/` | `POST` | `Bearer` | revocar invitacion pendiente |
+
+### open banking
+
+| Ruta | Metodos | Auth | Uso |
+|---|---|---|---|
+| `/api/integrations/open-banking/providers/` | `GET` | `Bearer` | catalogo seguro, configuracion y disponibilidad |
+| `/api/integrations/open-banking/connections/` | `GET`, `POST` | `Bearer` | listar o iniciar conexiones owner-scoped |
+| `/api/integrations/open-banking/connections/{public_id}/available-accounts/` | `GET` | `Bearer` | cuentas externas simuladas disponibles para local mock |
+| `/api/integrations/open-banking/connections/{public_id}/link-account/` | `POST` | `Bearer` | enlazar una cuenta propia; manual solo para local mock |
+| `/api/integrations/open-banking/connections/{public_id}/request-sync/` | `POST` | `Bearer` | agendar sincronizacion durable |
+| `/api/integrations/open-banking/connections/{public_id}/revoke/` | `POST` | `Bearer` | revocar conexion y consentimiento |
+| `/api/integrations/open-banking/webhooks/{provider}/` | `POST` | HMAC | recibir evento deduplicado sin guardar payload completo |
 
 ## Payments
 

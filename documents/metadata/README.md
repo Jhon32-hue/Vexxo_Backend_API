@@ -1,35 +1,12 @@
 # documents.metadata
 
-## Que hace
+`DocumentMetadata` conserva metadata auxiliar de un comprobante: origen de
+captura, pistas de comercio, monto, moneda y atributos adicionales.
 
-`documents.metadata` existe para guardar metadata estructurada de documentos:
+La relacion con `DocumentFile` es uno-a-uno. Estos campos son pistas no
+autoritativas: no modifican el ledger ni crean pagos. Cualquier efecto
+financiero requiere una accion visible y una API canonica de dominio.
 
-- etiquetas
-- clasificacion
-- entidad relacionada
-- estado de procesamiento
-
-## Estado Del Codigo
-
-Hoy esta en scaffold:
-
-- `models.py` vacio
-- `views.py` vacio
-
-## Relacion Con Otros Modulos
-
-- `documents.files`
-  archivo base.
-- `documents.ocr_requests`
-  fuente natural de metadata extraida.
-- `finance.transactions`
-  posible destino de relaciones contables.
-
-## Encaje Con GCP
-
-Es natural que este contexto persista metadata en Cloud SQL mientras los
-binarios viven en Cloud Storage y los resultados de OCR llegan por jobs.
-
-## Estado Actual
-
-No hay superficie funcional visible hoy.
+El siguiente cierre es una API versionada de correccion humana que conserve la
+procedencia de cada campo y no sobrescriba silenciosamente la extraccion
+original.

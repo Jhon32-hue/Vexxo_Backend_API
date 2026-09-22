@@ -41,4 +41,16 @@ Cuando madure, puede servir como capa comun para workers desplegados en:
 
 ## Estado Actual
 
-Contexto reservado, no pieza operativa central hoy.
+El wrapper `run_worker` unifica estos job types:
+
+- `accounts.sync`
+- `accounts.intelligence`
+- `alerts.ai`
+- `transactions.voice`
+- `documents.ocr`
+- `security.key_rotation`
+
+Los modelos y la logica de cada worker siguen perteneciendo a su bounded
+context. `security.key_rotation` es finito/on-demand: reenvuelve DEKs por lotes
+y termina cuando ya no hay credenciales pendientes; no requiere un contenedor
+permanente.

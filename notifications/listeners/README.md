@@ -12,7 +12,7 @@ durable.
 
 Este README es derivado del documento canonico del modulo:
 
-- [notifications/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/notifications/README.md)
+- [notifications/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/notifications/README.md)
 
 Su foco es la materializacion de inbox desde eventos; no explica todo el
 bounded context `notifications`.

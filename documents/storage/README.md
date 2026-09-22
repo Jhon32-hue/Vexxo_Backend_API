@@ -1,34 +1,13 @@
 # documents.storage
 
-## Que hace
+Esta frontera define donde viven los binarios privados. En el runtime local el
+backend efectivo es Django `FileSystemStorage` bajo `.runtime/media`; la ruta no
+se expone como URL publica y el nombre fisico se aleatoriza por UUID.
 
-`documents.storage` existe para abstraer el almacenamiento fisico de documentos.
+La integridad se verifica en `documents.files` mediante SHA-256. No se agrega
+un adapter abstracto hasta que exista un segundo backend real: anticiparlo ahora
+solo duplicaria la interfaz de Django sin aportar aislamiento.
 
-## Estado Del Codigo
-
-Hoy esta en scaffold:
-
-- `models.py` vacio
-- `views.py` vacio
-
-## Relacion Con Otros Modulos
-
-- `documents.files`
-  identidad del archivo.
-- `reports.exports`
-  artefactos descargables.
-- `payments`
-  posibles comprobantes o soportes operativos.
-
-## Encaje Con GCP
-
-Este es uno de los contextos con encaje mas directo en la nube:
-
-- Cloud Storage como backend natural
-- Cloud KMS si aparece cifrado adicional
-- Signed URLs o servicios internos para acceso controlado
-
-## Estado Actual
-
-No hay implementacion funcional visible hoy. Debe leerse como una frontera
-planeada para almacenamiento documental.
+Antes de crecer se requiere definir retencion, borrado fisico diferido,
+autorizacion temporal de descarga y backup de media independiente del backup de
+PostgreSQL.

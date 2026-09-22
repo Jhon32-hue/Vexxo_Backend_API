@@ -1,4 +1,4 @@
-﻿# integrations_stub
+# integrations_stub
 
 ## Que hace
 
@@ -20,15 +20,15 @@ Este README es el documento canonico del modulo `integrations_stub`.
 
 Subdocumento derivado:
 
-- [banks/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/integrations_stub/banks/README.md)
+- [banks/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/integrations_stub/banks/README.md)
   frontera temporal para sync bancario, refresh de inteligencia y puente hacia
   intake/reconciliacion de `transactions`
-- [llm/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/integrations_stub/llm/README.md)
+- [llm/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/integrations_stub/llm/README.md)
   runtime temporal para inferencia de voz transaccional antes de extraer
   `llm_gateway`
-- [messaging/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/integrations_stub/messaging/README.md)
+- [messaging/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/integrations_stub/messaging/README.md)
   adapter temporal para SMS/WhatsApp embebido en recovery y step-up
-- [Catalogo de fuentes e integraciones](/c:/Users/Alamb/Documents/Vexxo_Backend_API/INTEGRATION_SOURCE_CATALOG.md)
+- [Catalogo de fuentes e integraciones](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/INTEGRATION_SOURCE_CATALOG.md)
   clasificacion transversal de proveedores, source types y bounded contexts
 
 ## Rol En La Arquitectura

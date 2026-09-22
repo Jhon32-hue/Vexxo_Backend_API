@@ -96,6 +96,36 @@ class PaymentTemplateBudgetAttributionTests(TestCase):
         self.assertEqual(event.payload["budget_scope"], "personal")
         self.assertEqual(event.payload["shared_budget_id"], "")
 
+    def test_template_creation_is_idempotent_per_owner(self):
+        first = create_payment_template(
+            owner=self.user,
+            account=self.account,
+            name="Internet",
+            default_amount="120.00",
+            currency="COP",
+            idempotency_key="mobile-scheduled-1",
+        )
+        replay = create_payment_template(
+            owner=self.user,
+            account=self.account,
+            name="Internet",
+            default_amount="120.00",
+            currency="COP",
+            idempotency_key="mobile-scheduled-1",
+        )
+        self.assertEqual(first.pk, replay.pk)
+        self.assertTrue(replay._idempotent_replay)
+
+        with self.assertRaisesMessage(ValueError, "Idempotency-Key"):
+            create_payment_template(
+                owner=self.user,
+                account=self.account,
+                name="Internet alterado",
+                default_amount="130.00",
+                currency="COP",
+                idempotency_key="mobile-scheduled-1",
+            )
+
     def test_public_template_execution_defaults_reject_reserved_keys(self):
         serializer = PaymentTemplateSerializer(
             data={

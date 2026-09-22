@@ -7,10 +7,8 @@ reporting.
 
 ## Estado Del Codigo
 
-Hoy el modulo esta en scaffold:
-
-- `models.py` vacio
-- `views.py` vacio
+El modulo esta operativo. Persiste snapshots inmutables con periodo, moneda,
+zona horaria, `as_of`, version, hash canonico y lineage de regeneracion.
 
 ## Por Que Existe
 
@@ -41,4 +39,7 @@ Cuando se materialice:
 
 ## Estado Actual
 
-Contexto reservado; aun no hay proyeccion o snapshot formal visible aqui.
+`POST /api/reports/snapshots/` exige `Idempotency-Key`. Los tipos activos son
+`cashflow`, `expenses_by_category` y `monthly_close`, siempre sobre ledger
+autorizado. Una regeneracion nunca modifica el snapshot anterior: crea una
+nueva version y conserva `supersedes` y el motivo.

@@ -1,0 +1,9 @@
+{
+  "name": "vexxo-local-load-tests",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Artillery load tests for the Vexxo local runtime",
+  "devDependencies": {
+    "artillery": "2.0.34"
+  }
+}

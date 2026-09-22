@@ -54,7 +54,7 @@ class PaymentTemplateSerializer(serializers.ModelSerializer):
     class Meta:
         model = PaymentTemplate
         fields = "__all__"
-        read_only_fields = ["owner", "created_at", "updated_at", "budget_attribution_source"]
+        read_only_fields = ["owner", "idempotency_key", "created_at", "updated_at", "budget_attribution_source"]
 
     def validate_execution_defaults(self, value):
         return _validate_public_json_object(field_name="execution_defaults", value=value, max_keys=8)

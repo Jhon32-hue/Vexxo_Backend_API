@@ -22,26 +22,26 @@ En lenguaje simple:
 - desde aqui se disparan las acciones que crean su espacio financiero
 
 ## 2. Mapa De Carpetas
-- [identity/users/models](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/models)
+- [identity/users/models](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/models)
   Contiene el modelo `User`.
-- [identity/users/domain](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/domain)
+- [identity/users/domain](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/domain)
   Contiene matriz de planes y contrato de eventos.
-- [identity/users/services](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/services)
+- [identity/users/services](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/services)
   Contiene publicacion de eventos, bootstrap interno y preparacion OAuth.
-- [identity/users/signals.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/signals.py)
+- [identity/users/signals.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/signals.py)
   Detecta cambios relevantes del usuario y publica eventos.
-- [identity/users/event_handlers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/event_handlers.py)
+- [identity/users/event_handlers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/event_handlers.py)
   Escucha eventos de usuario y materializa defaults internos.
-- [identity/users/serializers](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/serializers)
+- [identity/users/serializers](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/serializers)
   Define registro, perfil y admin.
-- [identity/users/views](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/views)
+- [identity/users/views](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/views)
   Expone auth, onboarding, dashboard y admin.
-- [identity/users/urls.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/urls.py)
+- [identity/users/urls.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/urls.py)
   Publica las rutas del contexto.
 
 ## 3. Modelo `User`
 Archivo:
-- [identity/users/models/user.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/models/user.py)
+- [identity/users/models/user.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/models/user.py)
 
 Responsabilidades actuales del modelo:
 - identidad base: `username`, `email`, `first_name`, `last_name`
@@ -64,7 +64,7 @@ Helpers importantes:
 
 ## 4. Politica Canonica De Planes
 Archivo:
-- [identity/users/domain/plan_matrix.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/domain/plan_matrix.py)
+- [identity/users/domain/plan_matrix.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/domain/plan_matrix.py)
 
 Decision arquitectonica:
 - `User.plan` es la fuente oficial del plan del usuario
@@ -96,8 +96,8 @@ En lenguaje simple:
 
 ## 5. Registro, Login Y Perfil
 Archivos:
-- [identity/users/serializers/user_serializer.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/serializers/user_serializer.py)
-- [identity/users/views/auth.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/views/auth.py)
+- [identity/users/serializers/user_serializer.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/serializers/user_serializer.py)
+- [identity/users/views/auth.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/views/auth.py)
 
 ### 5.1. Registro
 Endpoint:
@@ -174,7 +174,7 @@ Que hace:
 
 ## 6. OAuth2 Social Operativo Con Handoff Seguro
 Archivo:
-- [identity/users/services/oauth_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/services/oauth_service.py)
+- [identity/users/services/oauth_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/services/oauth_service.py)
 
 Endpoints:
 - `GET /api/identity/users/auth/social/providers/`
@@ -198,8 +198,8 @@ En lenguaje simple:
 
 ## 7. Eventos De `identity.users`
 Archivos:
-- [identity/users/domain/events.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/domain/events.py)
-- [common/domain_events.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/common/domain_events.py)
+- [identity/users/domain/events.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/domain/events.py)
+- [common/domain_events.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/common/domain_events.py)
 
 Eventos actuales:
 - `users.registered.v1`
@@ -235,8 +235,8 @@ Que escucha que:
 
 ## 8. Relacion Con `finance.accounts`
 Archivos importantes:
-- [finance/accounts/event_handlers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/event_handlers.py)
-- [finance/accounts/services/user_integration_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/services/user_integration_service.py)
+- [finance/accounts/event_handlers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/event_handlers.py)
+- [finance/accounts/services/user_integration_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/services/user_integration_service.py)
 
 Relaciones activas:
 - `users.registered.v1` -> crea la cuenta base del usuario
@@ -255,7 +255,7 @@ Ejemplo entendible:
 
 ## 9. Bootstrap Del Usuario
 Archivo:
-- [identity/users/services/bootstrap_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/services/bootstrap_service.py)
+- [identity/users/services/bootstrap_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/services/bootstrap_service.py)
 
 Bootstrap actual:
 - categorias base
@@ -269,7 +269,7 @@ Eso ahora pertenece a `accounts`.
 
 ## 10. Dashboard
 Archivo:
-- [identity/users/views/dashboard.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/views/dashboard.py)
+- [identity/users/views/dashboard.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/views/dashboard.py)
 
 Cambio importante:
 - ya no se apoya solo en queries planas y supuestos viejos
@@ -285,8 +285,8 @@ Eso alinea el dashboard con el bounded context `accounts`.
 
 ## 11. Configuracion GCP Y OAuth
 Archivos:
-- [.env](/c:/Users/Alamb/Documents/Vexxo_Backend_API/.env)
-- [backend/settings.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/backend/settings.py)
+- [.env.local.example](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/.env.local.example)
+- [backend/settings.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/backend/settings.py)
 
 Variables nuevas:
 - `GCP_IDENTITY_PLATFORM_ENABLED`
@@ -374,13 +374,13 @@ En conjunto sirven para:
 
 ### 14.2. Dispositivos
 Archivos:
-- [identity/devices/models](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/devices/models)
-- [identity/devices/models/device.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/devices/models/device.py)
-- [identity/devices/serializers](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/devices/serializers)
-- [identity/devices/serializers/device_serializers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/devices/serializers/device_serializers.py)
-- [identity/devices/services.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/devices/services.py)
-- [identity/devices/views](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/devices/views)
-- [identity/devices/views/device_views.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/devices/views/device_views.py)
+- [identity/devices/models](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/devices/models)
+- [identity/devices/models/device.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/devices/models/device.py)
+- [identity/devices/serializers](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/devices/serializers)
+- [identity/devices/serializers/device_serializers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/devices/serializers/device_serializers.py)
+- [identity/devices/services.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/devices/services.py)
+- [identity/devices/views](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/devices/views)
+- [identity/devices/views/device_views.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/devices/views/device_views.py)
 
 Entidad principal:
 - `UserDevice`
@@ -418,14 +418,14 @@ Observabilidad agregada:
 
 ### 14.3. Sesiones
 Archivos:
-- [identity/sessions/models](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/sessions/models)
-- [identity/sessions/models/session.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/sessions/models/session.py)
-- [identity/sessions/serializers](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/sessions/serializers)
-- [identity/sessions/serializers/session_serializers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/sessions/serializers/session_serializers.py)
-- [identity/sessions/services.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/sessions/services.py)
-- [identity/sessions/views](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/sessions/views)
-- [identity/sessions/views/session_views.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/sessions/views/session_views.py)
-- [identity/sessions/event_handlers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/sessions/event_handlers.py)
+- [identity/sessions/models](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/sessions/models)
+- [identity/sessions/models/session.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/sessions/models/session.py)
+- [identity/sessions/serializers](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/sessions/serializers)
+- [identity/sessions/serializers/session_serializers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/sessions/serializers/session_serializers.py)
+- [identity/sessions/services.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/sessions/services.py)
+- [identity/sessions/views](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/sessions/views)
+- [identity/sessions/views/session_views.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/sessions/views/session_views.py)
+- [identity/sessions/event_handlers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/sessions/event_handlers.py)
 
 Entidad principal:
 - `UserSession`
@@ -467,14 +467,14 @@ Valor operativo:
 
 ### 14.4. Consentimientos
 Archivos:
-- [identity/consents/models](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/consents/models)
-- [identity/consents/models/consent.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/consents/models/consent.py)
-- [identity/consents/serializers](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/consents/serializers)
-- [identity/consents/serializers/consent_serializers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/consents/serializers/consent_serializers.py)
-- [identity/consents/services.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/consents/services.py)
-- [identity/consents/views](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/consents/views)
-- [identity/consents/views/consent_views.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/consents/views/consent_views.py)
-- [identity/consents/event_handlers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/consents/event_handlers.py)
+- [identity/consents/models](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/consents/models)
+- [identity/consents/models/consent.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/consents/models/consent.py)
+- [identity/consents/serializers](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/consents/serializers)
+- [identity/consents/serializers/consent_serializers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/consents/serializers/consent_serializers.py)
+- [identity/consents/services.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/consents/services.py)
+- [identity/consents/views](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/consents/views)
+- [identity/consents/views/consent_views.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/consents/views/consent_views.py)
+- [identity/consents/event_handlers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/consents/event_handlers.py)
 
 Entidad principal:
 - `UserConsent`
@@ -533,14 +533,14 @@ En lenguaje simple:
 
 ### 14.5. Grants De Permisos
 Archivos:
-- [identity/permissions/models](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/permissions/models)
-- [identity/permissions/models/permission_grant.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/permissions/models/permission_grant.py)
-- [identity/permissions/serializers](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/permissions/serializers)
-- [identity/permissions/serializers/permission_serializers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/permissions/serializers/permission_serializers.py)
-- [identity/permissions/services.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/permissions/services.py)
-- [identity/permissions/views](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/permissions/views)
-- [identity/permissions/views/permission_views.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/permissions/views/permission_views.py)
-- [identity/permissions/event_handlers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/permissions/event_handlers.py)
+- [identity/permissions/models](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/permissions/models)
+- [identity/permissions/models/permission_grant.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/permissions/models/permission_grant.py)
+- [identity/permissions/serializers](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/permissions/serializers)
+- [identity/permissions/serializers/permission_serializers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/permissions/serializers/permission_serializers.py)
+- [identity/permissions/services.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/permissions/services.py)
+- [identity/permissions/views](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/permissions/views)
+- [identity/permissions/views/permission_views.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/permissions/views/permission_views.py)
+- [identity/permissions/event_handlers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/permissions/event_handlers.py)
 
 Entidad principal:
 - `UserPermissionGrant`
@@ -609,7 +609,7 @@ Flujo tecnico resumido:
 1. una vista o servicio de `devices`, `sessions`, `consents` o `permissions`
    ejecuta una accion
 2. se usa `publish_user_event_after_commit()`
-3. el evento entra al bus de [common/domain_events.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/common/domain_events.py)
+3. el evento entra al bus de [common/domain_events.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/common/domain_events.py)
 4. listeners locales reaccionan
 5. si el bootstrap global esta activo, el mismo evento tambien puede salir por
    Pub/Sub mediante la infraestructura ya preparada
@@ -647,9 +647,9 @@ Lo complementan.
 
 ### 15.1. Outbox Persistente Del Contexto
 Archivos:
-- [identity/eventing/models.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/eventing/models.py)
-- [identity/eventing/services.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/eventing/services.py)
-- [identity/users/services/event_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/services/event_service.py)
+- [identity/eventing/models.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/eventing/models.py)
+- [identity/eventing/services.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/eventing/services.py)
+- [identity/users/services/event_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/services/event_service.py)
 
 Actualizacion importante:
 - antes `identity` publicaba eventos solo con `transaction.on_commit`
@@ -673,10 +673,10 @@ En lenguaje simple:
 
 ### 15.2. OAuth Social Ya Operativo
 Archivos:
-- [identity/social_identities/models.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/social_identities/models.py)
-- [identity/users/services/oauth_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/services/oauth_service.py)
-- [identity/users/views/auth.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/views/auth.py)
-- [identity/users/urls.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/urls.py)
+- [identity/social_identities/models.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/social_identities/models.py)
+- [identity/users/services/oauth_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/services/oauth_service.py)
+- [identity/users/views/auth.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/views/auth.py)
+- [identity/users/urls.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/urls.py)
 
 Endpoints nuevos o ampliados:
 - `GET /api/identity/users/auth/social/providers/`
@@ -709,10 +709,10 @@ Regla de seguridad importante:
 
 ### 15.3. Endurecimiento De Sesiones
 Archivos:
-- [identity/sessions/models/session.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/sessions/models/session.py)
-- [identity/sessions/services.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/sessions/services.py)
-- [identity/sessions/views/session_views.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/sessions/views/session_views.py)
-- [identity/sessions/serializers/session_serializers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/sessions/serializers/session_serializers.py)
+- [identity/sessions/models/session.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/sessions/models/session.py)
+- [identity/sessions/services.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/sessions/services.py)
+- [identity/sessions/views/session_views.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/sessions/views/session_views.py)
+- [identity/sessions/serializers/session_serializers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/sessions/serializers/session_serializers.py)
 
 Campos nuevos de `UserSession`:
 - `family_id`
@@ -742,10 +742,10 @@ Ejemplo simple:
 
 ### 15.4. Consentimientos Y Ciclo De Integracion
 Archivos:
-- [identity/consents/event_handlers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/consents/event_handlers.py)
-- [finance/accounts/services/user_integration_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/services/user_integration_service.py)
-- [integrations_stub/banks/services.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/integrations_stub/banks/services.py)
-- [integrations_stub/banks/views.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/integrations_stub/banks/views.py)
+- [identity/consents/event_handlers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/consents/event_handlers.py)
+- [finance/accounts/services/user_integration_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/services/user_integration_service.py)
+- [integrations_stub/banks/services.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/integrations_stub/banks/services.py)
+- [integrations_stub/banks/views.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/integrations_stub/banks/views.py)
 
 Mejora principal:
 - revocar open banking ya no solo desactiva `allow_auto_sync`
@@ -766,8 +766,8 @@ Esto prepara el camino para que el futuro `integrations_service` haga:
 
 ### 15.5. Permisos: Grants Manuales Vs Entitlements
 Archivos:
-- [identity/permissions/models/permission_grant.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/permissions/models/permission_grant.py)
-- [identity/permissions/services.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/permissions/services.py)
+- [identity/permissions/models/permission_grant.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/permissions/models/permission_grant.py)
+- [identity/permissions/services.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/permissions/services.py)
 
 Campo nuevo:
 - `grant_kind`
@@ -783,7 +783,7 @@ Decision de diseno:
 - el modelo sigue siendo uno solo, pero la semantica ya esta separada
 
 ### 15.6. Configuracion GCP Y Variables Nuevas
-Variables nuevas en [.env](/c:/Users/Alamb/Documents/Vexxo_Backend_API/.env):
+Variables locales documentadas en [.env.local.example](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/.env.local.example):
 - `IDENTITY_SOCIAL_STATE_SALT`
 - `IDENTITY_SOCIAL_STATE_MAX_AGE_SECONDS`
 - `IDENTITY_SOCIAL_AUTO_LINK_BY_EMAIL`
@@ -808,7 +808,7 @@ Que debes rellenar para activar social login real:
 
 ### 15.7. Validacion Operativa
 Se agrego:
-- workflow CI en [backend-validation.yml](/c:/Users/Alamb/Documents/Vexxo_Backend_API/.github/workflows/backend-validation.yml)
+- workflow CI en [backend-validation.yml](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/.github/workflows/backend-validation.yml)
 
 Que valida:
 - compilacion de codigo Python
@@ -823,9 +823,9 @@ Pendiente en entorno real:
 
 ### 16.1. Outbox Persistente De `identity` Corregido
 Archivos:
-- [identity/eventing/models.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/eventing/models.py)
-- [identity/eventing/services.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/eventing/services.py)
-- [identity/users/services/event_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/services/event_service.py)
+- [identity/eventing/models.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/eventing/models.py)
+- [identity/eventing/services.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/eventing/services.py)
+- [identity/users/services/event_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/services/event_service.py)
 
 Correccion aplicada:
 - `publish_user_event_after_commit()` ya no llama una firma incompatible
@@ -862,10 +862,10 @@ publish_user_event_after_commit(
 
 ### 16.2. OAuth Social Con Handoff Seguro
 Archivos:
-- [identity/users/views/auth.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/views/auth.py)
-- [identity/users/services/oauth_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/services/oauth_service.py)
-- [identity/social_identities/models.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/social_identities/models.py)
-- [identity/users/urls.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/urls.py)
+- [identity/users/views/auth.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/views/auth.py)
+- [identity/users/services/oauth_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/services/oauth_service.py)
+- [identity/social_identities/models.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/social_identities/models.py)
+- [identity/users/urls.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/urls.py)
 
 Decision de seguridad:
 - `GET /auth/social/{provider}/callback/` ya no crea sesion ni emite tokens
@@ -935,8 +935,8 @@ Protecciones adicionales:
 
 ### 16.3. Permisos: Coexistencia Real Entre Grant Manual Y Entitlement
 Archivos:
-- [identity/permissions/models/permission_grant.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/permissions/models/permission_grant.py)
-- [identity/permissions/services.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/permissions/services.py)
+- [identity/permissions/models/permission_grant.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/permissions/models/permission_grant.py)
+- [identity/permissions/services.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/permissions/services.py)
 
 Correccion aplicada:
 - la unicidad ya no es solo `user + permission_code + scope`
@@ -960,10 +960,10 @@ Ahora:
 
 ### 16.4. Proyecciones Solo Async En Produccion
 Archivos:
-- [finance/accounts/services/intelligence_dispatch_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/services/intelligence_dispatch_service.py)
-- [finance/accounts/views/intelligence_views.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/views/intelligence_views.py)
-- [identity/users/views/dashboard.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/views/dashboard.py)
-- [finance/accounts/services/user_integration_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/services/user_integration_service.py)
+- [finance/accounts/services/intelligence_dispatch_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/services/intelligence_dispatch_service.py)
+- [finance/accounts/views/intelligence_views.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/views/intelligence_views.py)
+- [identity/users/views/dashboard.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/views/dashboard.py)
+- [finance/accounts/services/user_integration_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/services/user_integration_service.py)
 
 Decision aplicada:
 - en produccion o cloud, las proyecciones de inteligencia no deben recalcularse en el path del request
@@ -993,9 +993,9 @@ Esto sirve para:
 
 ### 16.5. Consentimientos Desacoplados Del Stub Local
 Archivos:
-- [identity/consents/services.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/consents/services.py)
-- [identity/consents/event_handlers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/consents/event_handlers.py)
-- [integrations_stub/banks/views.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/integrations_stub/banks/views.py)
+- [identity/consents/services.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/consents/services.py)
+- [identity/consents/event_handlers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/consents/event_handlers.py)
+- [integrations_stub/banks/views.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/integrations_stub/banks/views.py)
 
 Correccion aplicada:
 - `identity.consents` ya no llama directamente al stub como dependencia primaria
@@ -1048,9 +1048,9 @@ Ejemplo de payload interno:
 ```
 
 ### 16.6. Migraciones Nuevas De Este Ajuste
-- [identity/eventing/migrations/0002_outbox_transport_fields.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/eventing/migrations/0002_outbox_transport_fields.py)
-- [identity/social_identities/migrations/0002_social_auth_handoff.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/social_identities/migrations/0002_social_auth_handoff.py)
-- [identity/permissions/migrations/0003_permission_scope_source_kind_constraint.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/permissions/migrations/0003_permission_scope_source_kind_constraint.py)
+- [identity/eventing/migrations/0002_outbox_transport_fields.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/eventing/migrations/0002_outbox_transport_fields.py)
+- [identity/social_identities/migrations/0002_social_auth_handoff.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/social_identities/migrations/0002_social_auth_handoff.py)
+- [identity/permissions/migrations/0003_permission_scope_source_kind_constraint.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/permissions/migrations/0003_permission_scope_source_kind_constraint.py)
 
 ### 16.7. Validacion Hecha
 Validado en este entorno:
@@ -1075,10 +1075,10 @@ Decision de arquitectura aplicada:
 - el backend hace el exchange real, crea o vincula usuario, registra dispositivo/sesion y emite eventos
 
 Archivos:
-- [identity/users/services/oauth_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/services/oauth_service.py)
-- [identity/users/views/auth.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/views/auth.py)
-- [backend/settings.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/backend/settings.py)
-- [.env](/c:/Users/Alamb/Documents/Vexxo_Backend_API/.env)
+- [identity/users/services/oauth_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/services/oauth_service.py)
+- [identity/users/views/auth.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/views/auth.py)
+- [backend/settings.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/backend/settings.py)
+- [.env.local.example](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/.env.local.example)
 
 Cambio de contrato:
 - `GET /auth/social/{provider}/start/` ahora puede construir la URL con `redirect_uri` de frontend
@@ -1093,10 +1093,10 @@ Variables nuevas:
 
 ### 17.2. Outbox De Identity Ya Tiene Superficie Operativa
 Archivos:
-- [identity/eventing/views.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/eventing/views.py)
-- [identity/eventing/serializers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/eventing/serializers.py)
-- [identity/eventing/urls.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/eventing/urls.py)
-- [api/v1/routers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/api/v1/routers.py)
+- [identity/eventing/views.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/eventing/views.py)
+- [identity/eventing/serializers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/eventing/serializers.py)
+- [identity/eventing/urls.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/eventing/urls.py)
+- [api/v1/routers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/api/v1/routers.py)
 
 Endpoints nuevos:
 - `GET /api/identity/eventing/outbox-identidad/`
@@ -1122,8 +1122,8 @@ Esto obliga a una configuracion mas explicita, pero reduce blast radius entre:
 
 ### 17.4. Permisos Efectivos Con Precedencia
 Archivos:
-- [identity/permissions/services.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/permissions/services.py)
-- [identity/permissions/views/permission_views.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/permissions/views/permission_views.py)
+- [identity/permissions/services.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/permissions/services.py)
+- [identity/permissions/views/permission_views.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/permissions/views/permission_views.py)
 
 Cambio aplicado:
 - ya no solo se deduplican codigos
@@ -1141,8 +1141,8 @@ Eso permite ver de donde sale cada capacidad efectiva y cual grant esta dominand
 
 ### 17.5. Catalogo De Eventos Mas Honesto
 Archivos:
-- [finance/accounts/domain/events.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/domain/events.py)
-- [identity/users/domain/events.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/domain/events.py)
+- [finance/accounts/domain/events.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/domain/events.py)
+- [identity/users/domain/events.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/domain/events.py)
 
 Cambio aplicado:
 - `accounts` ahora expone `pattern_local_listeners` y `effective_local_listeners`
@@ -1155,10 +1155,10 @@ Resultado:
 
 ### 18.1. Permisos Con `denied` Explicito
 Archivos:
-- [identity/permissions/models/permission_grant.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/permissions/models/permission_grant.py)
-- [identity/permissions/services.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/permissions/services.py)
-- [identity/permissions/views/permission_views.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/permissions/views/permission_views.py)
-- [identity/permissions/serializers/permission_serializers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/permissions/serializers/permission_serializers.py)
+- [identity/permissions/models/permission_grant.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/permissions/models/permission_grant.py)
+- [identity/permissions/services.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/permissions/services.py)
+- [identity/permissions/views/permission_views.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/permissions/views/permission_views.py)
+- [identity/permissions/serializers/permission_serializers.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/permissions/serializers/permission_serializers.py)
 
 Cambio aplicado:
 - `PermissionStatus` ahora incluye `denied`
@@ -1195,11 +1195,11 @@ Que significa:
 
 ### 18.2. Salud Operativa De Proyecciones Async
 Archivos:
-- [finance/accounts/services/intelligence_health_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/services/intelligence_health_service.py)
-- [finance/accounts/views/intelligence_views.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/accounts/views/intelligence_views.py)
-- [identity/users/views/dashboard.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/users/views/dashboard.py)
-- [backend/settings.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/backend/settings.py)
-- [.env](/c:/Users/Alamb/Documents/Vexxo_Backend_API/.env)
+- [finance/accounts/services/intelligence_health_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/services/intelligence_health_service.py)
+- [finance/accounts/views/intelligence_views.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/accounts/views/intelligence_views.py)
+- [identity/users/views/dashboard.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/users/views/dashboard.py)
+- [backend/settings.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/backend/settings.py)
+- [.env.local.example](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/.env.local.example)
 
 Que agrega:
 - lectura de `projection_health`

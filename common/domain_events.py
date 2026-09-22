@@ -1,33 +1,15 @@
 # common/domain_events.py
 from __future__ import annotations
 
-import os
 import logging
 import threading
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, IntEnum
 from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
-_ASYNC_EVENT_WORKERS = max(2, int(os.getenv("DOMAIN_EVENTS_LOCAL_ASYNC_WORKERS", "8")))
-_ASYNC_EVENT_EXECUTOR = ThreadPoolExecutor(
-    max_workers=_ASYNC_EVENT_WORKERS,
-    thread_name_prefix="event-listener",
-)
-
-
-def _log_async_listener_result(future, *, listener_name: str, event_type: str) -> None:
-    try:
-        future.result()
-    except Exception:
-        logger.exception(
-            "[events] Error async en listener '%s' para evento '%s'",
-            listener_name,
-            event_type,
-        )
 
 # ========= CONTEXTOS Y NOMBRES DE EVENTO =========
 
@@ -50,6 +32,7 @@ class EventContext(str, Enum):
     FX = "fx"
     WEALTHFLOW = "wealthflow"
     INGEST = "ingest"
+    DOCUMENTS = "documents"
     SYSTEM = "system"
 
 
@@ -178,9 +161,22 @@ class EventNames:
     INSIGHT_GENERATED = "insight.generated.v1"
     ML_ANOMALY_DETECTED = "ml.anomaly.detected.v1"
     # --- DEBTS ---
-    # DEBT_CREATED = "debts.created.v1"
-    # DEBT_UPDATED = "debts.updated.v1" 
-    # DEBT_DELETED = "debts.deleted.v1"
+    DEBT_CREATED = "debts.created.v1"
+    DEBT_UPDATED = "debts.updated.v1"
+    DEBT_DELETED = "debts.deleted.v1"
+    DEBT_INSTALLMENTS_GENERATED = "debts.installments.generated.v1"
+    DEBT_INSTALLMENT_UPDATED = "debts.installment.updated.v1"
+    DEBT_PAYMENT_APPLIED = "debts.payment.applied.v1"
+    DEBT_STATUS_CHANGED = "debts.status.changed.v1"
+    DEBT_OVERDUE_REFRESHED = "debts.overdue.refreshed.v1"
+
+    # --- GOALS ---
+    GOAL_CREATED = "goals.created.v1"
+    GOAL_UPDATED = "goals.updated.v1"
+    GOAL_STATUS_CHANGED = "goals.status.changed.v1"
+    GOAL_CONTRIBUTION_RECORDED = "goals.contribution.recorded.v1"
+    GOAL_CONTRIBUTION_REVERSED = "goals.contribution.reversed.v1"
+    GOAL_PROGRESS_UPDATED = "goals.progress.updated.v1"
     # --- TRANSACTIONS ---
     # TRANSACTION_TAGGED = "transactions.tagged.v1"
     # TRANSACTION_UNTAGGED = "transactions.untagged.v1"
@@ -201,7 +197,7 @@ class EventNames:
     # REPORT_GENERATED = "reports.generated.v1"
     # REPORT_SCHEDULED = "reports.scheduled.v1"
     # REPORT_DELIVERED = "reports.delivered.v1"
-    # REPORT_FAILED = "reports.failed.v1"       
+    # REPORT_FAILED = "reports.failed.v1"
     # --- OTROS ---
     # (Más adelante: budgets, goals, fx, wealthflow, etc.)
     # GOAL_PROGRESS_UPDATED = "goals.progress.updated.v1"
@@ -305,11 +301,25 @@ KNOWN_EVENT_TYPES: Dict[str, str] = {
     EventNames.TRANSACTION_PARTICIPANT_DELETED: "Participante de transaccion eliminado",
     EventNames.TRANSACTION_PARTICIPANT_SETTLED: "Participante de transaccion liquidado",
     EventNames.ALERT_CREATED: "Alerta creada",
+    EventNames.DEBT_CREATED: "Deuda creada",
+    EventNames.DEBT_UPDATED: "Deuda actualizada",
+    EventNames.DEBT_DELETED: "Deuda eliminada",
+    EventNames.DEBT_INSTALLMENTS_GENERATED: "Cuotas de deuda generadas",
+    EventNames.DEBT_INSTALLMENT_UPDATED: "Cuota de deuda actualizada",
+    EventNames.DEBT_PAYMENT_APPLIED: "Pago aplicado a deuda",
+    EventNames.DEBT_STATUS_CHANGED: "Estado de deuda actualizado",
+    EventNames.DEBT_OVERDUE_REFRESHED: "Vencimientos de deuda recalculados",
+    EventNames.GOAL_CREATED: "Meta creada",
+    EventNames.GOAL_UPDATED: "Meta actualizada",
+    EventNames.GOAL_STATUS_CHANGED: "Estado de meta actualizado",
+    EventNames.GOAL_CONTRIBUTION_RECORDED: "Aporte a meta registrado",
+    EventNames.GOAL_CONTRIBUTION_REVERSED: "Aporte a meta revertido",
+    EventNames.GOAL_PROGRESS_UPDATED: "Progreso de meta actualizado",
     #Recientemente agregado
     EventNames.ALERT_AI_ENRICHED: "Alerta enriquecida con IA",
     EventNames.INSIGHT_GENERATED: "Insight financiero generado",
     EventNames.ML_ANOMALY_DETECTED: "Anomalía detectada por ML",
-    
+
 }
 
 
@@ -578,24 +588,18 @@ class DomainEventBus:
             required_listener_errors = []
             for cfg in listeners:
                 try:
-                    if cfg.run_async:
-                        future = _ASYNC_EVENT_EXECUTOR.submit(cfg.handler, event)
-                        future.add_done_callback(
-                            lambda future, listener_name=cfg.name, event_type=event.type: _log_async_listener_result(
-                                future,
-                                listener_name=listener_name,
-                                event_type=event_type,
-                            )
-                        )
-                    else:
-                        cfg.handler(event)
+                    # `run_async` permanece en el registro por compatibilidad.
+                    # La ejecucion ocurre en el caller actual, normalmente el
+                    # publicador durable del outbox. Los callers directos ven
+                    # el resultado en vez de perder trabajo en un thread.
+                    cfg.handler(event)
                 except Exception as exc:
                     logger.exception(
                         "[events] Error en listener '%s' para evento '%s'",
                         cfg.name,
                         event.type,
                     )
-                    if cfg.required and raise_required_listener_errors:
+                    if (cfg.required or cfg.run_async) and raise_required_listener_errors:
                         required_listener_errors.append(exc)
 
             if required_listener_errors:

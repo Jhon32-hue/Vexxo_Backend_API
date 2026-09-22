@@ -46,7 +46,7 @@ posible sin romper contratos existentes:
 
 ### 1. HTTP y seguridad base
 
-Se endurecio [backend/settings.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/backend/settings.py):
+Se endurecio [backend/settings.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/backend/settings.py):
 
 - `CORS_ALLOW_ALL_ORIGINS` ya no queda abierto siempre; por defecto solo en local
 - `SECURE_SSL_REDIRECT` queda gobernado por entorno
@@ -55,7 +55,7 @@ Se endurecio [backend/settings.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/b
 
 ### 2. Runtime async local del bus
 
-Se endurecio [common/domain_events.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/common/domain_events.py):
+Se endurecio [common/domain_events.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/common/domain_events.py):
 
 - `run_async=True` deja de crear un thread ad-hoc por listener
 - ahora usa `ThreadPoolExecutor` con limite configurable por proceso
@@ -68,18 +68,18 @@ en cola durable.
 
 Se agrego outbox propio para `alerts.created.v1`:
 
-- [alerts/alerts/models/outbox.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/alerts/alerts/models/outbox.py)
-- [alerts/alerts/event_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/alerts/alerts/event_service.py)
-- [alerts/alerts/management/commands/alerts_publish_outbox.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/alerts/alerts/management/commands/alerts_publish_outbox.py)
+- [alerts/alerts/models/outbox.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/alerts/alerts/models/outbox.py)
+- [alerts/alerts/event_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/alerts/alerts/event_service.py)
+- [alerts/alerts/management/commands/alerts_publish_outbox.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/alerts/alerts/management/commands/alerts_publish_outbox.py)
 
-Y [alerts/alerts/services.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/alerts/alerts/services.py) ya no publica `alerts.created.v1` directo; ahora persiste, encola y publica despues del commit en local o por worker en cloud.
+Y [alerts/alerts/services.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/alerts/alerts/services.py) ya no publica `alerts.created.v1` directo; ahora persiste, encola y publica despues del commit en local o por worker en cloud.
 
 ### 4. `payments` mejora su operacion de outbox
 
 Se endurecio el outbox de `payments` en:
 
-- [payments/payment_intents/models.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/payments/payment_intents/models.py)
-- [payments/payment_intents/management/commands/payments_publish_outbox.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/payments/payment_intents/management/commands/payments_publish_outbox.py)
+- [payments/payment_intents/models.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/payments/payment_intents/models.py)
+- [payments/payment_intents/management/commands/payments_publish_outbox.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/payments/payment_intents/management/commands/payments_publish_outbox.py)
 
 Cambios:
 
@@ -92,9 +92,9 @@ Cambios:
 
 Se endurecio `identity.eventing` en:
 
-- [identity/eventing/models.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/eventing/models.py)
-- [identity/eventing/services.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/eventing/services.py)
-- [identity/eventing/management/commands/identity_publish_outbox.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/identity/eventing/management/commands/identity_publish_outbox.py)
+- [identity/eventing/models.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/eventing/models.py)
+- [identity/eventing/services.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/eventing/services.py)
+- [identity/eventing/management/commands/identity_publish_outbox.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/identity/eventing/management/commands/identity_publish_outbox.py)
 
 Cambios:
 
@@ -109,7 +109,7 @@ Cambios:
 ### 6. Duplicados de transacciones externas
 
 Se endurecio la validacion de `transactions` en
-[finance/transactions/transaction_validation_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/transactions/transaction_validation_service.py):
+[finance/transactions/transaction_validation_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/transactions/transaction_validation_service.py):
 
 - si la fuente no es manual y llega `provider + external_id`, ya no se acepta
   crear otra transaccion igual en el mismo ledger owner
@@ -121,9 +121,9 @@ Se endurecio la validacion de `transactions` en
 
 Ahora existe una capa explicita de intake externo en:
 
-- [finance/transactions/Models/intake.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/transactions/Models/intake.py)
-- [finance/transactions/transaction_intake_service.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/transactions/transaction_intake_service.py)
-- [finance/transactions/Views/intake_views.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/transactions/Views/intake_views.py)
+- [finance/transactions/Models/intake.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/transactions/Models/intake.py)
+- [finance/transactions/transaction_intake_service.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/transactions/transaction_intake_service.py)
+- [finance/transactions/Views/intake_views.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/transactions/Views/intake_views.py)
 
 Con:
 

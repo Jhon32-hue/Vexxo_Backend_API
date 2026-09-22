@@ -16,7 +16,7 @@ Hoy cubre:
 
 Este README es derivado del documento canonico del modulo:
 
-- [integrations_stub/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/integrations_stub/README.md)
+- [integrations_stub/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/integrations_stub/README.md)
 
 Su foco es la frontera temporal bancaria; no documenta todo `integrations_stub`.
 
@@ -90,3 +90,14 @@ Regla importante:
 - el stub no escribe ledger directo
 - llama al servicio canonico de `transactions`
 - la identidad externa sigue gobernada por `TransactionSourceLink`
+
+## Local mock operativo
+
+Para cuentas cuyo `provider=local_mock`, `process_stub_account_sync` obtiene el
+snapshot versionado de `integrations.open_banking.local_mock`, crea un batch
+mediante `transaction_bridge` y lo aplica por el intake canonico. El stub no
+crea transacciones directamente ni mantiene el lifecycle de conexion.
+
+Reejecutar una corrida conserva IDs externos estables. Una corrida posterior
+puede crear otro batch auditable, pero el intake deduplica las filas contra
+`TransactionSourceLink` antes de afectar el ledger.

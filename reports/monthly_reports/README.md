@@ -1,38 +1,35 @@
 # reports.monthly_reports
 
-## Que hace
+## Responsabilidad
 
-`reports.monthly_reports` existe como contexto para cierres o reportes
-mensuales persistidos.
+Materializa un cierre mensual reproducible por `owner + month + currency`.
+Solo admite meses terminados en la zona horaria solicitada.
 
-## Estado Del Codigo
+## Contrato
 
-Hoy el modulo esta en scaffold:
+- `POST /api/reports/monthly-closes/`
+- `GET /api/reports/monthly-closes/`
+- el primer cierre crea version 1
+- repetir sin `regenerate` devuelve el cierre vigente
+- regenerar exige `reason` y crea una nueva version enlazada por `supersedes`
+- nunca se sobrescribe un snapshot anterior
 
-- `models.py` vacio
-- `views.py` vacio
+El snapshot incluye cashflow confirmado y el overview de presupuestos del mes.
+Las transacciones se filtran por moneda de la cuenta; no se hace conversion FX
+implicita.
 
-## Rol En El Producto
+```json
+{
+  "month": "2026-08",
+  "currency": "COP",
+  "timezone": "America/Bogota",
+  "regenerate": false,
+  "reason": ""
+}
+```
 
-Un reporte mensual puede servir para:
+## Limites
 
-- resumen de ingresos y gastos
-- comparativos mes a mes
-- sharing con el usuario o con soporte
-- base de insights mas estables
-
-## Relacion Con Otros Modulos
-
-- `reports.reports`
-  agregaciones en linea del ledger.
-- `reports.snapshots`
-  posible consumidor o publicador de snapshots.
-- `notifications`
-  entrega de resumen mensual.
-- `documents`
-  export o archivo del reporte.
-
-## Estado Actual
-
-No hay implementacion funcional visible hoy. El nombre del contexto es
-coherente, pero el reporte mensual aun no esta materializado aqui.
+- no existe cierre automatico: es una operacion explicita
+- no existe PDF todavia
+- la retencion legal definitiva depende de jurisdiccion y politica de negocio

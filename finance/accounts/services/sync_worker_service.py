@@ -15,6 +15,7 @@ from finance.accounts.services.account_sync_service import (
     schedule_account_sync,
 )
 from integrations_stub.banks.services import process_stub_account_sync
+from integrations.open_banking.sync_service import process_open_banking_account_sync
 from tasks.async_backends import AsyncExecutionMode, get_async_execution_fallback_mode, get_async_execution_mode
 
 logger = logging.getLogger(__name__)
@@ -258,7 +259,8 @@ def process_local_worker_accounts(*, worker_id: str, limit: int | None = None) -
         runtime = _runtime(account)
         sync_run_id = str(runtime.get("current_run_id") or "")[:64]
         try:
-            process_stub_account_sync(
+            processor = process_stub_account_sync if account.provider == "local_mock" else process_open_banking_account_sync
+            processor(
                 account=account,
                 event={
                     "type": "accounts.sync.scheduled.v1",
@@ -268,9 +270,7 @@ def process_local_worker_accounts(*, worker_id: str, limit: int | None = None) -
                         "sync_run_id": sync_run_id,
                     },
                 },
-                mode="success",
-                next_sync_at=timezone.now() + timedelta(minutes=30),
-                duration_ms=50,
+                **({"mode": "success", "next_sync_at": timezone.now() + timedelta(minutes=30), "duration_ms": 50} if account.provider == "local_mock" else {}),
             )
             refreshed = Account.objects.get(pk=account.pk)
             updated_runtime = _runtime(refreshed)

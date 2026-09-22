@@ -19,6 +19,7 @@ from .auth_challenge import (
     UserAuthChallenge,
 )
 from .user import PlanType, User, UserStatus
+from .mfa import UserMfaMethod
 
 __all__ = [
     "AuthChallengeChannel",
@@ -26,6 +27,7 @@ __all__ = [
     "AuthChallengeStatus",
     "PlanType",
     "User",
+    "UserMfaMethod",
     "UserAuthChallenge",
     "UserStatus",
 ]

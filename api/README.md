@@ -28,7 +28,7 @@ services, modelos y bounded contexts.
 
 ## Versionado y estructura
 
-El punto de entrada principal hoy es [api/v1/routers.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/api/v1/routers.py).
+El punto de entrada principal hoy es [api/v1/routers.py](v1/routers.py).
 
 La organizacion actual separa:
 
@@ -62,20 +62,16 @@ superficie uniforme para mobile/web.
 5. si hace falta trabajo pesado, se emite evento o se agenda worker
 6. la respuesta HTTP vuelve rapido al cliente
 
-## Encaje Con GCP
+## Runtime actual
 
-La topologia esperada es:
-
-- API Gateway como entrada B2C
-- Cloud Armor delante de la superficie publica
-- `api` en Cloud Run como BFF Django/DRF
-- Cloud Tasks, Pub/Sub y callbacks externos fuera del request principal
+La superficie corre localmente en Django/DRF sobre PostgreSQL. Los trabajos
+pesados salen del request mediante outbox y workers durables.
 
 Regla importante:
 
 - el API no debe depender de conexiones largas
 - el API ordena, valida y responde
-- el procesamiento fuerte vuelve por eventos, callbacks, polling o workers
+- el procesamiento fuerte vuelve por eventos, polling o workers locales
 
 ## Relacion Con Otros Modulos
 

@@ -89,7 +89,7 @@ Lectura:
 
 ## Eventos De Dominio
 
-El archivo clave es [domain_events.py](/c:/Users/Alamb/Documents/Vexxo_Backend_API/common/domain_events.py).
+El archivo clave es [domain_events.py](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/common/domain_events.py).
 
 Ahí se define:
 

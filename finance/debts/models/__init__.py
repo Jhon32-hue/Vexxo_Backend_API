@@ -1,4 +1,5 @@
 
-from .debts import Debt, DebtInstallment
+from .debts import Debt, DebtInstallment, DebtRestructuring
+from .outbox import DebtDomainEventOutbox
 
-__all__ = ["Debt", "DebtInstallment"]
+__all__ = ["Debt", "DebtInstallment", "DebtRestructuring", "DebtDomainEventOutbox"]

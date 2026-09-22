@@ -22,7 +22,12 @@ class MembershipSerializer(serializers.ModelSerializer):
             "is_active",
             "joined_at",
         ]
-        read_only_fields = ["joined_at"]
+        read_only_fields = ["team", "user", "joined_at"]
+
+    def validate_role(self, value):
+        if value == "owner":
+            raise serializers.ValidationError("El rol owner no se asigna desde membresias.")
+        return value
 
 class TeamSerializer(serializers.ModelSerializer):
     owner_username = serializers.CharField(source="owner.username", read_only=True)
@@ -34,7 +39,6 @@ class TeamSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "description",
-            "kind",
             "is_personal",
             "owner",
             "owner_username",
@@ -50,7 +54,4 @@ class TeamSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if request and request.user and request.user.is_authenticated:
             validated_data["owner"] = request.user
-            # Si no es personal, marcamos flag
-            if validated_data.get("kind") != "personal":
-                validated_data["is_personal"] = False
         return super().create(validated_data)

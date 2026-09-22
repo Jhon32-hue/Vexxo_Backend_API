@@ -4,10 +4,11 @@ Servicios simples de correo transaccional y preferencias de comunicacion.
 
 from __future__ import annotations
 
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 from django.conf import settings
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
+from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 from django.utils import timezone
 from django.utils.encoding import force_bytes
@@ -16,6 +17,7 @@ from django.utils.http import urlsafe_base64_encode
 from notifications.deliveries.models import NotificationChannel, NotificationStatus
 from notifications.deliveries.services import create_notification_delivery
 from notifications.preferences.services import get_or_create_notification_preferences
+from security.validators import validate_https_url
 
 
 def _resolve_from_email() -> str:
@@ -34,6 +36,33 @@ def _resolve_frontend_url(base_url: str, params: dict[str, str]) -> str:
         return normalized.format(**params)
     separator = "&" if "?" in normalized else "?"
     return f"{normalized}{separator}{urlencode(params)}"
+
+
+def _resolve_password_reset_base_url(requested_url: str) -> str:
+    configured = str(
+        getattr(settings, "IDENTITY_PASSWORD_RESET_FRONTEND_URL", "")
+        or getattr(settings, "APP_FRONTEND_URL", "")
+        or ""
+    ).strip()
+    candidate = str(requested_url or configured).strip()
+    if not candidate:
+        return ""
+    allowed_hosts = set(getattr(settings, "IDENTITY_PASSWORD_RESET_ALLOWED_HOSTS", []) or [])
+    configured_host = urlparse(configured).hostname
+    if configured_host:
+        allowed_hosts.add(configured_host.lower())
+    if requested_url and not allowed_hosts:
+        return ""
+    try:
+        return validate_https_url(
+            candidate,
+            allowed_hosts=allowed_hosts,
+            allow_http_local=getattr(settings, "BOOT_ENV", "local") == "local",
+        )
+    except ValidationError:
+        if requested_url and configured and requested_url != configured:
+            return _resolve_password_reset_base_url("")
+        return ""
 
 
 def _can_send_lifecycle_email(user) -> bool:
@@ -99,10 +128,7 @@ def send_transactional_email(
 def send_password_reset_email(*, user, redirect_url: str = ""):
     token = PasswordResetTokenGenerator().make_token(user)
     uid = urlsafe_base64_encode(force_bytes(user.pk))
-    reset_url = _resolve_frontend_url(
-        str(redirect_url or getattr(settings, "IDENTITY_PASSWORD_RESET_FRONTEND_URL", "") or getattr(settings, "APP_FRONTEND_URL", "")),
-        {"uid": uid, "token": token},
-    )
+    reset_url = _resolve_frontend_url(_resolve_password_reset_base_url(redirect_url), {"uid": uid, "token": token})
     message = (
         f"Hola {user.display_name},\n\n"
         "Recibimos una solicitud para restablecer tu contrasena en Vexxo.\n"

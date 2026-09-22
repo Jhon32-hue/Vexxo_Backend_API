@@ -1,4 +1,4 @@
-﻿# payments.payment_intents
+# payments.payment_intents
 
 ## Que hace
 
@@ -31,15 +31,15 @@ No es el ledger final. El ledger final vive en `finance.transactions`.
 
 Este README es derivado del documento canonico del bounded context:
 
-- [payments/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/payments/README.md)
+- [payments/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/payments/README.md)
 
 Su foco es el aggregate operativo `PaymentIntent`, callbacks, outbox,
 settlement, casos operativos y payouts.
 
 Documentos complementarios:
 
-- [Catalogo de fuentes e integraciones](/c:/Users/Alamb/Documents/Vexxo_Backend_API/INTEGRATION_SOURCE_CATALOG.md)
-- [Contratos canonicos por rail de transactions](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/transactions/RAIL_NORMALIZATION_CONTRACTS.md)
+- [Catalogo de fuentes e integraciones](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/INTEGRATION_SOURCE_CATALOG.md)
+- [Contratos canonicos por rail de transactions](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/transactions/RAIL_NORMALIZATION_CONTRACTS.md)
 
 ## Rol En El Producto
 
@@ -281,7 +281,7 @@ mediante el contrato `payment_reflection.normalized_payload`.
 
 Documento relacionado:
 
-- [Contratos canonicos por rail de transactions](/c:/Users/Alamb/Documents/Vexxo_Backend_API/finance/transactions/RAIL_NORMALIZATION_CONTRACTS.md)
+- [Contratos canonicos por rail de transactions](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/finance/transactions/RAIL_NORMALIZATION_CONTRACTS.md)
 
 ## Casos De Uso
 
@@ -485,6 +485,9 @@ Ya existe:
   - `PayoutInstruction`
 - calculo de pricing
 - idempotencia de request
+- idempotencia aislada por `(owner, idempotency_key)`; una clave no cruza usuarios
+- querysets de cuenta, categoria y proveedor limitados al usuario autenticado
+- replay identico devuelve el intent existente y payload distinto se rechaza
 - publicacion de eventos `payments.*`
 - outbox propio con worker `payments_publish_outbox`
 - listeners locales para publicar senales `RealtimeSignal` de pagos y payouts
@@ -499,8 +502,13 @@ Ya existe:
 - servicios base de payout con guard y eventos
 - claim de outbox para workers concurrentes
 - backoff exponencial y respeto de `next_attempt_at`
+- adapter `local_fake` determinista, deshabilitado por defecto y activable solo
+  por configuracion local
+- maquina de estados que impide degradar estados terminales con callbacks
+  tardios
+- receipts idempotentes por evento y casos explicitos de reverso y chargeback
 
-Todavia falta:
+Todavia falta para proveedores productivos:
 
 - adapter real de cada PSP/retailer
 - autenticacion/firma real de cada callback de proveedor usando el algoritmo
@@ -509,6 +517,11 @@ Todavia falta:
 - dispute/refund workflows profundos con soporte/ops
 - webhooks publicos definitivos si el operador no usa callback interno
 - trazabilidad operativa tan rica como `accounts` en publisher, duracion y fases
+
+`local_fake` cubre `processing`, `succeeded`, `failed`, `requires_action` y
+`timeout` sin mover dinero. Se usa para probar dispatch, callbacks duplicados,
+callbacks fuera de orden, settlement, reversos y disputas antes de habilitar
+un PSP real. Nunca se activa implicitamente fuera del runtime local.
 
 ## Como agregar un proveedor nuevo
 
@@ -598,3 +611,15 @@ La especificacion canonica de ejecucion del rail vive en:
 Este README sigue explicando el contexto y sus flujos, pero el contrato de
 payload operativo del rail ya tiene documento propio.
 
+## Seguridad de callbacks local
+
+Los callbacks publicos usan HMAC SHA-256 y ahora fallan cerrados: si el secreto
+del proveedor esta vacio, `signature_valid=false` y el callback no modifica el
+intent. Las variables `VEXXO_LOCAL_PAYMENT_CALLBACK_SECRET` y
+`VEXXO_LOCAL_WOMPI_CALLBACK_SECRET` permanecen vacias en el ejemplo y se
+configuran manualmente fuera de Git.
+
+`POST /api/payments/intents/intents/{id}/dispatch/` requiere confirmacion
+explicita y material efimero de pago. El adapter Wompi calcula integridad,
+despacha contra sandbox y persiste solo referencias/estado, nunca PAN, CVV ni
+tokens del medio. Permanece no disponible hasta configurar las tres llaves.

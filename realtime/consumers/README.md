@@ -17,7 +17,7 @@ Su objetivo es dar a la UI una superficie barata para polling y depuracion.
 
 Este README es derivado del documento canonico del modulo:
 
-- [realtime/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/realtime/README.md)
+- [realtime/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/realtime/README.md)
 
 Su foco es `RealtimeSignal` y la capa de consumo/lectura.
 

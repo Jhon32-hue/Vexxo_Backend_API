@@ -1,4 +1,4 @@
-from django.db import models
+from common.models.outbox import StandardDomainEventOutbox
 
-# Create your models here.
+__all__ = ["StandardDomainEventOutbox"]
 

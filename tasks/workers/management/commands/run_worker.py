@@ -9,6 +9,8 @@ WORKER_COMMANDS = {
     "accounts.intelligence": "accounts_run_intelligence_worker",
     "alerts.ai": "alerts_run_ai_worker",
     "transactions.voice": "transactions_run_inference_worker",
+    "documents.ocr": "documents_run_ocr_worker",
+    "security.key_rotation": "security_rotate_keys",
 }
 
 

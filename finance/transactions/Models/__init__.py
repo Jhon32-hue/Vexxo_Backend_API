@@ -1,6 +1,8 @@
 from finance.transactions.Models.outbox import TransactionDomainEventOutbox
 from finance.transactions.Models.intake import (
     TransactionExternalDetails,
+    TransactionFieldProvenance,
+    TransactionClassificationRevision,
     TransactionIntakeBatch,
     TransactionIntakeReceipt,
     TransactionReconciliationIssue,
@@ -23,6 +25,8 @@ __all__ = [
     "TransactionIntakeBatch",
     "TransactionIntakeReceipt",
     "TransactionExternalDetails",
+    "TransactionFieldProvenance",
+    "TransactionClassificationRevision",
     "TransactionSourceLink",
     "TransactionReconciliationIssue",
     "TransactionInferenceRequest",

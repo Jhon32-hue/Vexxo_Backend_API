@@ -61,6 +61,17 @@ class UserAdminViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def suspend(self, request, pk=None):
+        from identity.sessions.services import revoke_all_active_sessions_for_user
+        from security.audit import record_security_event
+        from security.models import SecurityAuditEvent
+
+        reason = str(request.headers.get("X-Support-Reason") or request.data.get("reason") or "").strip()
+        if len(reason) < 8:
+            return Response(
+                {"detail": "X-Support-Reason o reason es obligatorio para suspender un usuario."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         user = self.get_object()
         if user.status == UserStatus.SUSPENDED and not user.is_active:
             return Response(
@@ -70,7 +81,18 @@ class UserAdminViewSet(viewsets.ModelViewSet):
         user.status = UserStatus.SUSPENDED
         user.is_active = False
         user.save(update_fields=["status", "is_active", "updated_at"])
-        return Response({"detail": "Usuario suspendido.", "status": user.status})
+        revoked = revoke_all_active_sessions_for_user(user, reason="user_suspended")
+        record_security_event(
+            event_type="identity.user.suspended",
+            severity=SecurityAuditEvent.Severity.CRITICAL,
+            actor=request.user,
+            request=request,
+            source="identity.users.admin",
+            target_type="user",
+            target_id=str(user.pk),
+            metadata={"revoked_sessions": revoked, "reason": reason[:240]},
+        )
+        return Response({"detail": "Usuario suspendido.", "status": user.status, "revoked_sessions": revoked})
 
     @action(detail=True, methods=["post"])
     def activate(self, request, pk=None):

@@ -19,7 +19,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.test import TestCase, override_settings
-from rest_framework.test import APIRequestFactory, force_authenticate
+from rest_framework.test import APIClient, APIRequestFactory, force_authenticate
 
 from common.domain_events import EventContext, EventNames, VexxoAppDomainEvent
 from finance.accounts.domain.events import (
@@ -69,6 +69,33 @@ from finance.accounts.views import AccountBalanceFallbackViewSet, AccountPortfol
 User = get_user_model()
 
 
+class AccountApiContractTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="account-api-user",
+            email="account-api@example.com",
+            password="secret123",
+            plan="free",
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def test_create_account_response_includes_created_id(self):
+        response = self.client.post(
+            "/api/finance/accounts/cuentas/",
+            {
+                "name": "Cuenta API",
+                "currency": "COP",
+                "type": "cash",
+                "ownership": "owned",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["id"], Account.objects.get(name="Cuenta API").id)
+
+
 class AccountDomainGuardsTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
@@ -86,7 +113,7 @@ class AccountDomainGuardsTests(TestCase):
 
         self.assertEqual(snapshot["plan"], "free")
         self.assertEqual(snapshot["usage"]["active_accounts"], 2)
-        self.assertIsNone(snapshot["limits"]["max_active_accounts"])
+        self.assertEqual(snapshot["limits"]["max_active_accounts"], 3)
 
     def test_plan_snapshot_counts_frozen_accounts_against_plan(self):
         Account.objects.create(owner=self.user, name="Cuenta Activa", currency="COP", status=AccountStatus.ACTIVE)

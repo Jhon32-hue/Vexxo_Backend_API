@@ -17,6 +17,7 @@ from __future__ import annotations
 from rest_framework import permissions, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from django.utils.dateparse import parse_datetime
 
 from notifications.deliveries.models import NotificationDelivery, NotificationStatus
 
@@ -56,6 +57,7 @@ class NotificationDeliveryViewSet(viewsets.ReadOnlyModelViewSet):
         channel = (self.request.query_params.get("channel") or "").strip()
         event_type = (self.request.query_params.get("event_type") or "").strip()
         unread = (self.request.query_params.get("unread") or "").strip().lower()
+        created_after = (self.request.query_params.get("created_after") or "").strip()
 
         if status_value:
             qs = qs.filter(status=status_value)
@@ -65,6 +67,10 @@ class NotificationDeliveryViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(event_type=event_type)
         if unread in {"1", "true", "yes"}:
             qs = qs.exclude(status=NotificationStatus.READ)
+        if created_after:
+            parsed = parse_datetime(created_after)
+            if parsed is not None:
+                qs = qs.filter(created_at__gt=parsed)
         return qs
 
     @action(detail=True, methods=["post"])

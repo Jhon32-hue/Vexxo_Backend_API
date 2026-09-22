@@ -1,39 +1,12 @@
 # documents.links_to_transactions
 
-## Que hace
+`DocumentTransactionLink` asocia un documento privado con una transaccion del
+mismo propietario sin introducir el binario o el OCR dentro del ledger.
 
-`documents.links_to_transactions` existe para asociar documentos con
-transacciones u otros movimientos financieros.
+La API autenticada vive en `/api/documents/transaction-links/`. Los querysets y
+serializers validan ownership de documento y transaccion; la restriccion
+`document + transaction + relationship` evita relaciones duplicadas.
 
-## Estado Del Codigo
-
-Hoy esta en scaffold:
-
-- `models.py` vacio
-- `views.py` vacio
-
-## Por Que Existe
-
-En Vexxo es valioso poder conectar:
-
-- una transaccion
-- un pago
-- un comprobante o factura
-
-sin meter todo ese detalle dentro del ledger mismo.
-
-## Relacion Con Otros Modulos
-
-- `finance.transactions`
-  ledger canonico.
-- `payments`
-  pagos externos y soportes operativos.
-- `documents.files`
-  archivo base.
-- `documents.metadata`
-  enrichment del documento.
-
-## Estado Actual
-
-Todavia no hay implementacion publica visible, pero el contexto es correcto y
-coherente con la arquitectura general.
+La relacion sirve como evidencia o soporte, no como autorizacion para alterar
+montos, estados o conciliacion. Falta cerrar la UX mobile de vinculacion y la
+politica ante soft delete del documento.

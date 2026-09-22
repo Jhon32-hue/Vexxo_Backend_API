@@ -1,3 +1,4 @@
+from django.db.models import Q
 from rest_framework import viewsets, permissions
 from rest_framework.exceptions import PermissionDenied
 
@@ -17,7 +18,9 @@ class TeamViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         # Equipos donde el usuario es miembro (activo)
-        return Team.objects.filter(memberships__user=user, memberships__is_active=True).distinct()
+        return Team.objects.filter(
+            Q(owner=user) | Q(memberships__user=user, memberships__is_active=True)
+        ).distinct()
 
     def perform_create(self, serializer):
         user = self.request.user
@@ -46,6 +49,7 @@ class MembershipViewSet(viewsets.ModelViewSet):
 
     serializer_class = MembershipSerializer
     permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ["get", "patch", "head", "options"]
 
     def get_queryset(self):
         user = self.request.user
@@ -53,11 +57,10 @@ class MembershipViewSet(viewsets.ModelViewSet):
             team__owner=user
         ).select_related("team", "user")
 
-    def perform_create(self, serializer):
-        user = self.request.user
-        team = serializer.validated_data.get("team")
-
-        if team.owner != user:
-            raise PermissionDenied("Solo el propietario puede invitar miembros.")
-
-        return super().perform_create(serializer)
+    def perform_update(self, serializer):
+        membership = self.get_object()
+        if membership.team.owner_id != self.request.user.pk:
+            raise PermissionDenied("Solo el propietario puede modificar miembros.")
+        if membership.role == "owner":
+            raise PermissionDenied("La membresia del propietario no se modifica desde esta API.")
+        serializer.save()

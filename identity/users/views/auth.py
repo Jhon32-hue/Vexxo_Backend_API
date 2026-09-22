@@ -17,6 +17,7 @@ Analisis detallado:
 from __future__ import annotations
 
 from django.contrib.auth import authenticate, get_user_model
+from django.core.exceptions import ImproperlyConfigured
 from rest_framework import generics, permissions, serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -54,6 +55,9 @@ from identity.users.serializers import (
     SetPasswordSerializer,
     StepUpCodeConfirmSerializer,
     StepUpCodeRequestSerializer,
+    MfaCodeSerializer,
+    MfaDisableSerializer,
+    MfaTotpEnrollSerializer,
 )
 from identity.users.serializers.user_serializer import UserMeSerializer, UserRegisterSerializer
 from identity.users.services.communication_service import send_password_reset_email
@@ -76,6 +80,16 @@ from identity.users.services.oauth_service import (
     resolve_social_redirect_uri,
     unlink_social_identity,
 )
+from identity.users.services.mfa_service import (
+    begin_totp_enrollment,
+    confirm_totp_enrollment,
+    disable_mfa,
+    get_active_mfa_method,
+    verify_mfa_step_up,
+)
+from security.audit import record_security_event
+from security.models import SecurityAuditEvent
+from security.rate_limits import consume_rate_limit
 
 User = get_user_model()
 
@@ -326,6 +340,12 @@ class PasswordResetRequestView(APIView):
         user = User.objects.filter(email__iexact=email, is_active=True).first()
         if user is not None:
             send_password_reset_email(user=user, redirect_url=redirect_url)
+        record_security_event(
+            event_type="identity.password_reset.requested",
+            request=request,
+            source="identity.users",
+            metadata={"delivery_attempted": user is not None},
+        )
         return Response(
             {
                 "detail": "Si el correo existe, enviaremos instrucciones para recuperar el acceso.",
@@ -356,6 +376,7 @@ class PasswordRecoveryCodeConfirmView(APIView):
         user, error_code, _challenge = confirm_password_recovery_code(
             phone_number=serializer.validated_data["phone_number"],
             code=serializer.validated_data["code"],
+            mfa_code=serializer.validated_data.get("mfa_code", ""),
         )
         if user is None:
             return Response(
@@ -365,6 +386,7 @@ class PasswordRecoveryCodeConfirmView(APIView):
         user.set_password(serializer.validated_data["password"])
         user.save(update_fields=["password", "updated_at"])
         revoke_all_active_sessions_for_user(user, reason="password_recovery_code_completed")
+        record_security_event(event_type="identity.password_recovery.completed", actor=user, request=request, source="identity.users")
         return Response({"detail": "Contrasena actualizada correctamente."}, status=status.HTTP_200_OK)
 
 
@@ -420,6 +442,144 @@ class StepUpCodeConfirmView(APIView):
         )
 
 
+class MfaStatusView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        method = get_active_mfa_method(request.user)
+        return Response(
+            {
+                "enabled": method is not None,
+                "method": method.method if method else None,
+                "confirmed_at": method.confirmed_at if method else None,
+                "recovery_codes_remaining": len(method.recovery_code_hashes or []) if method else 0,
+            }
+        )
+
+
+class MfaTotpEnrollView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from identity.users.security_policy import enforce_operation_policy
+        enforce_operation_policy(request, "identity.mfa.enroll")
+        serializer = MfaTotpEnrollSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            method, secret, provisioning_uri = begin_totp_enrollment(
+                user=request.user,
+                current_password=serializer.validated_data["current_password"],
+            )
+        except ValueError:
+            return Response({"detail": "Credenciales invalidas."}, status=status.HTTP_400_BAD_REQUEST)
+        except ImproperlyConfigured:
+            return Response(
+                {"detail": "El cifrado de credenciales no esta configurado."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        record_security_event(
+            event_type="identity.mfa.enrollment_started",
+            actor=request.user,
+            request=request,
+            source="identity.users",
+            target_type="mfa_method",
+            target_id=str(method.public_id),
+        )
+        return Response(
+            {
+                "method_id": str(method.public_id),
+                "secret": secret,
+                "provisioning_uri": provisioning_uri,
+                "detail": "Confirma un codigo antes de activar MFA.",
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class MfaTotpConfirmView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = MfaCodeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            method, recovery_codes = confirm_totp_enrollment(
+                user=request.user,
+                code=serializer.validated_data["code"],
+            )
+        except ValueError:
+            return Response({"detail": "Codigo invalido."}, status=status.HTTP_400_BAD_REQUEST)
+        record_security_event(
+            event_type="identity.mfa.activated",
+            actor=request.user,
+            request=request,
+            source="identity.users",
+            target_type="mfa_method",
+            target_id=str(method.public_id),
+        )
+        return Response(
+            {
+                "enabled": True,
+                "recovery_codes": recovery_codes,
+                "detail": "Guarda estos codigos. No se volveran a mostrar.",
+            }
+        )
+
+
+class MfaVerifyView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = MfaCodeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        target_session = _resolve_request_session(request)
+        requested_session_id = serializer.validated_data.get("session_id")
+        if requested_session_id:
+            target_session = request.user.identity_sessions.filter(
+                pk=requested_session_id,
+                status="active",
+            ).first()
+        if target_session is None:
+            return Response({"detail": "No se pudo resolver la sesion activa."}, status=status.HTTP_400_BAD_REQUEST)
+        success, method, revoked = verify_mfa_step_up(
+            user=request.user,
+            session=target_session,
+            code=serializer.validated_data["code"],
+        )
+        if not success:
+            return Response({"detail": "Codigo invalido.", "code": method}, status=status.HTTP_400_BAD_REQUEST)
+        record_security_event(
+            event_type="identity.mfa.step_up_completed",
+            actor=request.user,
+            request=request,
+            source="identity.users",
+            metadata={"method": method},
+        )
+        return Response({"verified": True, "method": method, "revoked_risky_sessions": revoked})
+
+
+class MfaDisableView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from identity.users.security_policy import enforce_operation_policy
+        enforce_operation_policy(request, "identity.mfa.disable")
+        serializer = MfaDisableSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            disable_mfa(user=request.user, current_password=serializer.validated_data["current_password"])
+        except ValueError:
+            return Response({"detail": "Credenciales invalidas."}, status=status.HTTP_400_BAD_REQUEST)
+        record_security_event(
+            event_type="identity.mfa.disabled",
+            severity=SecurityAuditEvent.Severity.WARNING,
+            actor=request.user,
+            request=request,
+            source="identity.users",
+        )
+        return Response({"enabled": False})
+
+
 class PasswordResetConfirmView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -430,6 +590,7 @@ class PasswordResetConfirmView(APIView):
         user.set_password(serializer.validated_data["password"])
         user.save(update_fields=["password", "updated_at"])
         revoke_all_active_sessions_for_user(user, reason="password_reset_completed")
+        record_security_event(event_type="identity.password_reset.completed", actor=user, request=request, source="identity.users")
         return Response({"detail": "Contrasena actualizada correctamente."}, status=status.HTTP_200_OK)
 
 
@@ -437,10 +598,14 @@ class SetPasswordView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
+        from identity.users.security_policy import enforce_operation_policy
+        enforce_operation_policy(request, "identity.password.change")
         serializer = SetPasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         request.user.set_password(serializer.validated_data["new_password"])
         request.user.save(update_fields=["password", "updated_at"])
+        revoke_all_active_sessions_for_user(request.user, reason="password_changed")
+        record_security_event(event_type="identity.password.changed", actor=request.user, request=request, source="identity.users")
         return Response({"detail": "Contrasena configurada correctamente."}, status=status.HTTP_200_OK)
 
 
@@ -448,8 +613,31 @@ class LoginView(TokenObtainPairView):
     serializer_class = EmailOrUsernameTokenSerializer
 
     def post(self, request, *args, **kwargs):
+        login = str(request.data.get("username") or request.data.get("email") or "").strip().lower()
+        forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
+        request_ip = (forwarded.split(",")[0].strip() if forwarded else request.META.get("REMOTE_ADDR", "")) or "unknown"
+        for scope, subject in (("identity:login:account", login), ("identity:login:ip", request_ip)):
+            result = consume_rate_limit(scope=scope, subject=subject, limit=10, window_seconds=900)
+            if not result.allowed:
+                record_security_event(
+                    event_type="identity.login.rate_limited",
+                    severity=SecurityAuditEvent.Severity.WARNING,
+                    request=request,
+                    source="identity.users",
+                    metadata={"scope": scope, "retry_after_seconds": result.retry_after_seconds},
+                )
+                return Response(
+                    {"detail": "No fue posible iniciar sesion. Intenta mas tarde.", "retry_after_seconds": result.retry_after_seconds},
+                    status=status.HTTP_429_TOO_MANY_REQUESTS,
+                )
         response = super().post(request, *args, **kwargs)
         if response.status_code >= 400:
+            record_security_event(
+                event_type="identity.login.failed",
+                severity=SecurityAuditEvent.Severity.WARNING,
+                request=request,
+                source="identity.users",
+            )
             return response
 
         user = _resolve_login_user(
@@ -801,6 +989,8 @@ class SocialIdentityUnlinkView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def delete(self, request, provider: str):
+        from identity.users.security_policy import enforce_operation_policy
+        enforce_operation_policy(request, "identity.social.unlink")
         active_identities = UserSocialIdentity.objects.filter(user=request.user, is_active=True)
         if active_identities.count() <= 1 and not request.user.has_usable_password():
             return Response(

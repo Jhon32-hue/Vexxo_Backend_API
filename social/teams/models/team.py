@@ -25,6 +25,7 @@ class Team(models.Model):
         help_text="Equipo personal creado automáticamente para el usuario.",
     )
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         verbose_name = "Equipo"
@@ -40,13 +41,13 @@ class Team(models.Model):
     @property
     def members_count(self) -> int:
         """Número de miembros (incluyendo owner)."""
-        return self.memberships.count()
+        return self.memberships.filter(is_active=True).count()
 
     def is_member(self, user: User) -> bool:
         """Devuelve True si el usuario pertenece al equipo."""
         if not user or not user.is_authenticated:
             return False
-        return self.memberships.filter(user=user).exists()
+        return self.memberships.filter(user=user, is_active=True).exists()
 
     def is_owner(self, user: User) -> bool:
         """Devuelve True si el usuario es el propietario del equipo."""

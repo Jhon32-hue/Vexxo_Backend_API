@@ -61,8 +61,22 @@ class PaymentTemplateViewSet(viewsets.ModelViewSet):
         return PaymentTemplate.objects.filter(owner=self.request.user).order_by("name", "id")
 
     def perform_create(self, serializer):
-        instance = create_payment_template(owner=self.request.user, **serializer.validated_data)
+        instance = create_payment_template(
+            owner=self.request.user,
+            idempotency_key=self.request.headers.get("Idempotency-Key", ""),
+            **serializer.validated_data,
+        )
         serializer.instance = instance
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            self.perform_create(serializer)
+        except ValueError as exc:
+            return _service_error(str(exc))
+        response_status = status.HTTP_200_OK if serializer.instance._idempotent_replay else status.HTTP_201_CREATED
+        return Response(self.get_serializer(serializer.instance).data, status=response_status)
 
     def perform_update(self, serializer):
         instance = update_payment_template(serializer.instance, **serializer.validated_data)

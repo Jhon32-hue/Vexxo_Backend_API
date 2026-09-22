@@ -11,6 +11,7 @@ from typing import Iterable
 from django.db import transaction as db_tx
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
+from security.validators import sanitize_external_payload
 
 from finance.accounts.models.account import Account
 from finance.transactions.Models import (
@@ -144,6 +145,10 @@ def _normalize_external_details(row: dict) -> dict:
         "received_at": _normalize_datetimeish(row.get("received_at")),
         "parsed_text": str(row.get("parsed_text") or "").strip(),
         "parser_version": str(row.get("parser_version") or "").strip(),
+        "classifier_name": str(row.get("classifier_name") or "").strip()[:64],
+        "classifier_version": str(row.get("classifier_version") or "").strip()[:64],
+        "feature_schema_version": str(row.get("feature_schema_version") or "").strip()[:64],
+        "classification_source": str(row.get("classification_source") or "").strip()[:32],
         "needs_user_confirmation": bool(row.get("needs_user_confirmation", False)),
         "inference_status": _normalized_choice(
             row.get("inference_status"),
@@ -214,8 +219,8 @@ def _normalize_row_payload(*, provider: str, source: str, provider_account_id: s
         "notes": str(row.get("notes") or description).strip(),
         "confirmed": bool(row.get("confirmed", status in {Transaction.Status.POSTED, Transaction.Status.RECONCILED})),
         "affects_balance": bool(row.get("affects_balance", status not in {Transaction.Status.CANCELED, Transaction.Status.FAILED})),
-        "raw_payload": row.get("raw_payload") or row.get("raw") or {},
-        "metadata": row.get("metadata") or {},
+        "raw_payload": sanitize_external_payload(row.get("raw_payload") or row.get("raw") or {}),
+        "metadata": sanitize_external_payload(row.get("metadata") or {}),
         "external_details": external_details,
     }
     if normalized["status"] == Transaction.Status.PENDING and normalized["confirmed"]:
@@ -328,6 +333,9 @@ def _sync_source_link(*, source_link: TransactionSourceLink, normalized: dict, t
     source_link.source = normalized.get("source", source_link.source)
     source_link.provider_account_id = normalized.get("provider_account_id", source_link.provider_account_id)
     source_link.provider_status = normalized.get("provider_status", "")
+    metadata = normalized.get("metadata") or {}
+    source_link.schema_version = str(metadata.get("schema_version") or "")[:64]
+    source_link.mapper_version = str(metadata.get("mapper_version") or "")[:64]
     source_link.last_seen_at = timezone.now()
     source_link.last_normalized_payload = normalized
     source_link.canonical_fingerprint = normalized.get("canonical_fingerprint", "")
@@ -340,6 +348,8 @@ def _sync_source_link(*, source_link: TransactionSourceLink, normalized: dict, t
             "source",
             "provider_account_id",
             "provider_status",
+            "schema_version",
+            "mapper_version",
             "last_seen_at",
             "last_normalized_payload",
             "canonical_fingerprint",
@@ -359,6 +369,7 @@ def _ensure_source_link(*, tx: Transaction, normalized: dict) -> TransactionSour
         fingerprint=normalized.get("canonical_fingerprint", ""),
     )
     if link is None:
+        metadata = normalized.get("metadata") or {}
         link = TransactionSourceLink.objects.create(
             transaction=tx,
             provider=normalized.get("provider", ""),
@@ -367,6 +378,8 @@ def _ensure_source_link(*, tx: Transaction, normalized: dict) -> TransactionSour
             external_id=normalized.get("external_id", ""),
             canonical_fingerprint=normalized.get("canonical_fingerprint", ""),
             provider_status=normalized.get("provider_status", ""),
+            schema_version=str(metadata.get("schema_version") or "")[:64],
+            mapper_version=str(metadata.get("mapper_version") or "")[:64],
             last_normalized_payload=normalized,
         )
         return link
@@ -596,6 +609,10 @@ def _upsert_transaction_external_details(*, tx: Transaction, normalized: dict) -
         "received_at": _to_optional_datetime(details_payload.get("received_at")),
         "parsed_text": details_payload.get("parsed_text", ""),
         "parser_version": details_payload.get("parser_version", ""),
+        "classifier_name": details_payload.get("classifier_name", ""),
+        "classifier_version": details_payload.get("classifier_version", ""),
+        "feature_schema_version": details_payload.get("feature_schema_version", ""),
+        "classification_source": details_payload.get("classification_source", ""),
         "needs_user_confirmation": bool(details_payload.get("needs_user_confirmation", False)),
         "inference_status": details_payload.get("inference_status", ""),
     }
@@ -603,6 +620,15 @@ def _upsert_transaction_external_details(*, tx: Transaction, normalized: dict) -
         transaction=tx,
         defaults=defaults,
     )
+    if details.merchant_name:
+        from finance.vendors.normalization_service import record_vendor_alias_suggestion
+
+        record_vendor_alias_suggestion(
+            owner=tx.owner,
+            merchant_name=details.merchant_name,
+            source=normalized.get("source", "transaction_intake"),
+            confidence_score=details.confidence_score or 70,
+        )
     return details
 
 

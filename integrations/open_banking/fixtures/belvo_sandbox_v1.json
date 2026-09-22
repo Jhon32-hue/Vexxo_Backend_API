@@ -1,0 +1,33 @@
+{
+  "fixture_type": "synthetic_sandbox_shaped",
+  "schema_version": "belvo.contract.v1",
+  "account": {
+    "id": "belvo-account-001",
+    "name": "Cuenta de ahorros",
+    "number": "00001234",
+    "type": "savings",
+    "currency": "COP",
+    "balance": {"current": "950000.00", "available": "900000.00"}
+  },
+  "transactions": [
+    {
+      "id": "belvo-tx-pending-001",
+      "amount": "50000.00",
+      "type": "OUTFLOW",
+      "status": "pending",
+      "value_date": "2026-09-18",
+      "currency": "COP",
+      "description": "COMPRA MERCADO 123",
+      "merchant": {"name": "Mercado Demo", "mcc": "5411"}
+    },
+    {
+      "id": "belvo-tx-reversed-001",
+      "amount": "25000.00",
+      "type": "OUTFLOW",
+      "status": "reversed",
+      "value_date": "2026-09-17",
+      "currency": "COP",
+      "description": "REVERSO COMPRA"
+    }
+  ]
+}

@@ -375,6 +375,10 @@ En local:
 
 - `manage.py scheduled_payments_process_runs`
 - `manage.py scheduled_payments_operational_metrics`
+- `scheduler-local` ejecuta automaticamente el procesamiento canonico
+
+El comando manual se conserva para diagnostico y cortes reproducibles. La
+operacion diaria no exige abrir una segunda terminal ni ejecutar cron externo.
 
 En cloud:
 
@@ -394,3 +398,10 @@ deberia volverse el motor interno canonico del concepto visible `Pago
 programado`.
 
 La ruta legacy ya no esta registrada.
+
+## Idempotencia mobile
+
+La creacion de templates acepta `Idempotency-Key`. La unicidad es por owner:
+un replay identico devuelve `200`, mientras reutilizar la clave con otro
+payload devuelve `400`. Esto permite sincronizar pagos programados creados
+offline desde mobile sin duplicarlos.

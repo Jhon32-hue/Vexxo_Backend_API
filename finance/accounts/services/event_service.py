@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from time import monotonic
 
+from django.conf import settings
 from django.utils import timezone
 
 from common.domain_events import EventContext, EventPriority, publish_domain_event

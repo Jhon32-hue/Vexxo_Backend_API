@@ -1,46 +1,13 @@
 # documents.ocr_requests
 
-## Que hace
+`OcrRequest` es la cola PostgreSQL durable para OCR local. Conserva estado,
+engine, intentos, lock, error, texto y datos estructurados. La unicidad
+`owner + idempotency_key` evita trabajos duplicados.
 
-`documents.ocr_requests` existe para representar solicitudes de OCR sobre
-documentos financieros.
+El worker usa `select_for_update(skip_locked=True)` y recupera locks
+`processing` con mas de 15 minutos. El resultado puede ser
+`succeeded`, `review_required` o `failed`; una imagen sin motor/extraccion local
+queda para revision humana en vez de producir datos falsos.
 
-## Estado Del Codigo
-
-Hoy esta en scaffold:
-
-- `models.py` vacio
-- `views.py` vacio
-
-## Rol En El Producto
-
-OCR es valioso para:
-
-- convertir recibos o facturas en datos estructurados
-- ayudar en registro manual
-- acelerar conciliacion y soporte documental
-
-## Relacion Con Otros Modulos
-
-- `documents.files`
-  origen del archivo a procesar.
-- `documents.metadata`
-  destino de lo extraido.
-- `finance.transactions`
-  potencial vinculacion con ledger.
-- `alerts`
-  futuras alertas por documentos procesados o pendientes.
-
-## Encaje Con GCP
-
-Este modulo esta claramente alineado con:
-
-- Cloud Storage
-- Cloud Run workers
-- Document AI o proveedores OCR
-- Cloud Tasks para jobs asincronos
-
-## Estado Actual
-
-La frontera conceptual esta clara, pero no hay implementacion productiva visible
-hoy.
+El outbox `DocumentDomainEventOutbox` publica `documents.ocr.completed.v1` o
+`documents.ocr.review_required.v1` mediante el publisher central.

@@ -12,13 +12,21 @@ from identity.users.services.event_service import publish_user_event_after_commi
 
 
 def grant_consent(*, user, data: dict) -> UserConsent:
+    lookup = {
+        "user": user,
+        "consent_type": data["consent_type"],
+        "provider": data.get("provider", ""),
+        "scope_code": data.get("scope_code", ""),
+    }
+    external_consent_id = str(data.get("external_consent_id") or "").strip()
+    if external_consent_id:
+        # Provider consent IDs identify independent grants for the same scopes.
+        lookup["external_consent_id"] = external_consent_id
+
     consent, _ = UserConsent.objects.update_or_create(
-        user=user,
-        consent_type=data["consent_type"],
-        provider=data.get("provider", ""),
-        scope_code=data.get("scope_code", ""),
+        **lookup,
         defaults={
-            "external_consent_id": data.get("external_consent_id", ""),
+            "external_consent_id": external_consent_id,
             "purpose": data.get("purpose", ""),
             "legal_basis": data.get("legal_basis", ""),
             "terms_version": data.get("terms_version", ""),

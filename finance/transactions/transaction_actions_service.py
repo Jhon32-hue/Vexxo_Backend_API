@@ -164,6 +164,7 @@ def apply_transaction_to_debt_if_any(tx: Transaction) -> None:
         amount=Decimal(tx.amount),
         pay_date=tx.date,
         installment=installment,
+        transaction_obj=tx,
     )
 
 

@@ -24,11 +24,15 @@ def record_payment_settlement(
     settlement_payload: dict | None = None,
 ) -> PaymentSettlementRecord:
     amount_value = Decimal(str(amount or "0"))
+    provider_value = str(provider or "").strip()
+    settlement_key = str(settlement_reference or provider_reference or provider_cus or "").strip()[:128]
+    if not settlement_key and payment_intent is not None:
+        settlement_key = f"intent:{payment_intent.pk}"[:128]
     settlement, _created = PaymentSettlementRecord.objects.get_or_create(
-        settlement_reference=str(settlement_reference or provider_reference or provider_cus or "").strip()[:128],
+        provider=provider_value,
+        settlement_reference=settlement_key,
         defaults={
             "payment_intent": payment_intent,
-            "provider": str(provider or "").strip(),
             "rail": str(rail or "").strip(),
             "provider_reference": str(provider_reference or "").strip()[:128],
             "provider_cus": str(provider_cus or "").strip()[:64],
@@ -73,14 +77,21 @@ def open_payment_operational_case(
     provider_case_reference: str = "",
     details: dict | None = None,
 ) -> PaymentOperationalCase:
-    case = PaymentOperationalCase.objects.create(
-        payment_intent=payment_intent,
-        provider=str(provider or "").strip(),
-        kind=str(kind or PaymentOperationalCase.Kind.ERROR).strip(),
-        provider_reference=str(provider_reference or "").strip()[:128],
-        provider_case_reference=str(provider_case_reference or "").strip()[:128],
-        amount=Decimal(str(amount or "0")),
-        currency=str(currency or "COP").strip().upper() or "COP",
-        details=details or {},
+    provider_value = str(provider or "").strip()
+    kind_value = str(kind or PaymentOperationalCase.Kind.ERROR).strip()
+    case_reference = str(provider_case_reference or "").strip()[:128]
+    if not case_reference:
+        case_reference = f"{kind_value}:{provider_reference or getattr(payment_intent, 'pk', '')}"[:128]
+    case, _created = PaymentOperationalCase.objects.get_or_create(
+        provider=provider_value,
+        provider_case_reference=case_reference,
+        defaults={
+            "payment_intent": payment_intent,
+            "kind": kind_value,
+            "provider_reference": str(provider_reference or "").strip()[:128],
+            "amount": Decimal(str(amount or "0")),
+            "currency": str(currency or "COP").strip().upper() or "COP",
+            "details": details or {},
+        },
     )
     return case

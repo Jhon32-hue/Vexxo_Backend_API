@@ -13,7 +13,7 @@ Este README es el documento canonico del modulo `realtime`.
 
 Subdocumento derivado:
 
-- [consumers/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/realtime/consumers/README.md)
+- [consumers/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/realtime/consumers/README.md)
   detalle del modelo `RealtimeSignal`, lectura por API y semantica operativa
 
 ## Vista visual

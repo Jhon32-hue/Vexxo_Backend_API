@@ -17,6 +17,24 @@ Es una necesidad clasica de soporte:
 Debe operar siempre con cuidado de privacidad y trazabilidad. Buscar un usuario
 internamente es una accion de soporte, no una capacidad neutra.
 
+## API Interna
+
+- `GET /api/internal/support/users/?q=<texto>` busca por email, username,
+  telefono o nombre y limita el resultado a 20 usuarios
+- `GET /api/internal/support/users/<id>/` devuelve una vista 360 minimizada
+- ambas rutas requieren staff o superuser
+- `X-Support-Reason` es obligatorio y admite entre 10 y 500 caracteres
+- `X-Support-Case` permite asociar el acceso a un ticket o investigacion y
+  admite hasta 100 caracteres
+
+La vista 360 contiene identidad operativa y conteos por estado de seguridad,
+finanzas y operaciones. No devuelve saldos, importes, descripciones de
+transacciones, payloads de alertas ni secretos.
+
+Cada busqueda genera auditoria `READ`. El texto buscado se guarda como hash,
+no en claro. Cada consulta individual registra el usuario objetivo, el actor,
+el motivo y el caso.
+
 ## Relacion Con Otros Modulos
 
 - `identity.users`
@@ -26,5 +44,6 @@ internamente es una accion de soporte, no una capacidad neutra.
 
 ## Estado Actual
 
-Subapp instalada, pero sin una capa publica o servicios ricos detectados en
-esta pasada.
+Modulo operativo basico con API interna read-only, permisos staff, minimizacion
+de datos, auditoria y pruebas de aislamiento. No permite ajustes manuales ni
+cambios de estado.

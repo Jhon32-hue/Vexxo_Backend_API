@@ -1,54 +1,63 @@
 # tasks.scheduled
 
-## Que hace
+## Responsabilidad
 
-`tasks.scheduled` agrupa trabajo programado o periodico del sistema.
+`tasks.scheduled` coordina jobs periodicos del runtime local. No contiene reglas
+financieras: invoca servicios canonicos de cada bounded context.
 
-## Archivos Presentes
+## Flujo
 
-- `calendar_sync.py`
-- `cleanups.py`
-- `monthly_reports.py`
-- `reminders.py`
-- `models.py`
+1. `scheduler-local` ejecuta `manage.py run_scheduler --loop`.
+2. el ciclo intenta adquirir un advisory lock singleton en PostgreSQL.
+3. consulta el catalogo `tasks/scheduled/registry.py`.
+4. ejecuta solamente jobs cuyo `next_run_at` ya vencio.
+5. persiste estado y resultado en `ScheduledJobState`.
+6. libera el lock aun cuando un job falle.
 
-## Rol Esperado
+Un fallo queda visible como `failed` y no impide ejecutar los otros jobs del
+ciclo. Docker reinicia el proceso si termina inesperadamente.
 
-Este subdirectorio es el lugar natural para cosas como:
+## Catalogo Actual
 
-- limpiezas programadas
-- recordatorios
-- cierres o reportes mensuales
-- sincronizaciones periodicas
+- `debts.refresh_overdue`: marca cuotas vencidas y recalcula deudas.
+- `payments.process_schedule_runs`: actualiza corridas y emite recordatorios.
+- `identity.expire_attestations`: degrada evidencia de plataforma vencida.
+- `security.purge_retention`: purga auditoria, throttling y challenges por lotes.
+- `documents.migrate_encryption`: cifra documentos historicos cuando hay keyring.
+- `documents.purge_expired`: purga binarios y datos derivados vencidos.
+- `reports.process_exports`: procesa exports durables y expirables.
+- `reports.purge_exports`: destruye material criptografico vencido.
+- `open_banking.retry_syncs`: reintenta sincronizaciones vencidas con backoff.
+- `open_banking.expire_consents`: vence consentimientos y credenciales caducadas.
+- `open_banking.purge_payloads`: elimina cuarentenas externas vencidas.
 
-## Flujo Esperado
+## Operacion
 
-1. un trigger temporal o cron dispara el trabajo
-2. el sistema resuelve lock, contexto o ventana temporal
-3. se ejecuta el job de negocio o mantenimiento
-4. si hace falta, se emiten eventos o se persisten artefactos/resultados
+```powershell
+.\scripts\run_stack.ps1 local up payments
+.\scripts\run_stack.ps1 local status full
+.\scripts\run_stack.ps1 local logs payments -Follow
+```
 
-## Estado Del Codigo
+Ejecucion manual controlada:
 
-En esta pasada no detecte logica consolidada en esos archivos ni modelos
-operativos visibles. Debe leerse como una estructura preparada para jobs
-cron-like mas que como un scheduler ya cerrado.
+```powershell
+docker compose -f docker-compose.local.yml exec -T api python manage.py run_scheduler --force
+```
 
-## Relacion Con Otros Modulos
+## Crecimiento
 
-- `reports`
-  cierres mensuales y snapshots.
-- `payments`
-  recordatorios o pagos programados.
-- `finance.accounts`
-  snapshots, cleanups o sync periodico.
-- `documents`
-  limpiezas de artefactos y expiraciones.
+Un job nuevo se registra una vez en `SCHEDULED_JOBS`. No requiere otro servicio
+Compose, nuevas variables por entorno ni cambios en `run_stack.ps1`. Debe ser
+idempotente, delegar negocio al modulo propietario y devolver un resumen JSON.
 
-## Encaje Con GCP
+No se introduce Celery/Redis mientras PostgreSQL mantenga lag y contencion
+aceptables. La migracion futura puede conservar este catalogo y reemplazar solo
+el adapter de ejecucion.
 
-Su encaje natural es:
+`reports.process_exports` pertenece al catalogo central; no necesita un nuevo
+contenedor, comando diario ni registro por entorno.
 
-- Cloud Scheduler como trigger
-- Cloud Tasks o Cloud Run jobs como ejecucion
-- Cloud SQL para estado o locks si hacen falta
+`documents.migrate_encryption` comparte el mismo scheduler y advisory lock.
+Es no-op hasta que exista un keyring valido, por lo que activar cifrado no
+requiere agregar procesos ni editar catalogos por entorno.

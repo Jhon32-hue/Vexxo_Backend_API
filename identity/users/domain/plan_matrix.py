@@ -28,8 +28,8 @@ from copy import deepcopy
 PLAN_CAPABILITY_MATRIX = {
     "free": {
         "max_accounts": None,
-        "max_active_accounts": None,
-        "max_manual_accounts": None,
+        "max_active_accounts": 3,
+        "max_manual_accounts": 3,
         "max_connected_accounts": 1,
         "max_primary_accounts": 1,
         "max_investment_accounts": 1,

@@ -22,13 +22,13 @@ Este README es el mapa canonico del bounded context `payments`.
 
 Subdocumentos derivados:
 
-- [payment_intents/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/payments/payment_intents/README.md)
+- [payment_intents/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/payments/payment_intents/README.md)
   detalle del aggregate operativo principal, callbacks, outbox y payouts
-- [scheduled_payments/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/payments/scheduled_payments/README.md)
+- [scheduled_payments/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/payments/scheduled_payments/README.md)
   planificacion recurrente y scheduling moderno
-- [calendar/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/payments/calendar/README.md)
+- [calendar/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/payments/calendar/README.md)
   capa reservada de calendario y agenda
-- [reminders/README.md](/c:/Users/Alamb/Documents/Vexxo_Backend_API/payments/reminders/README.md)
+- [reminders/README.md](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/payments/reminders/README.md)
   capa reservada de recordatorios
 
 Regla editorial:

@@ -370,8 +370,30 @@ def _publish_template_event(*, template: PaymentTemplate, event_type: str, sourc
 
 def create_payment_template(**validated_data):
     skip_limit_validation = bool(validated_data.pop("_skip_limit_validation", False))
+    idempotency_key = str(validated_data.pop("idempotency_key", "") or "").strip()
     budget_context_shared_budget = validated_data.pop("budget_context_shared_budget", None)
     category = validated_data.get("category")
+    if idempotency_key:
+        existing = PaymentTemplate.objects.filter(
+            owner=validated_data.get("owner"), idempotency_key=idempotency_key
+        ).first()
+        if existing:
+            comparable = {
+                "name": str(validated_data.get("name") or "").strip(),
+                "default_amount": str(validated_data.get("default_amount") or ""),
+                "currency": str(validated_data.get("currency") or "COP"),
+                "account_id": getattr(validated_data.get("account"), "pk", None),
+            }
+            current = {
+                "name": existing.name,
+                "default_amount": str(existing.default_amount or ""),
+                "currency": existing.currency,
+                "account_id": existing.account_id,
+            }
+            if comparable != current:
+                raise ValueError("Idempotency-Key ya fue usada con otro pago programado.")
+            existing._idempotent_replay = True
+            return existing
     if not skip_limit_validation and validated_data.get("is_active", True):
         from identity.users.services.product_access_service import validate_scheduled_payments_limit
 
@@ -392,7 +414,9 @@ def create_payment_template(**validated_data):
     validated_data["budget_scope"] = attribution["budget_scope"]
     validated_data["shared_budget"] = attribution["shared_budget"]
     validated_data["budget_attribution_source"] = attribution["budget_attribution_source"]
+    validated_data["idempotency_key"] = idempotency_key
     template = PaymentTemplate.objects.create(**validated_data)
+    template._idempotent_replay = False
     _ensure_template_open_run(template)
     _publish_template_event(
         template=template,
@@ -808,7 +832,8 @@ def retry_failed_schedule_run(
 def process_due_schedule_runs(*, as_of_date=None, limit: int = 200) -> dict:
     as_of_date = as_of_date or timezone.localdate()
     queryset = (
-        PaymentScheduleRun.objects.select_related("template", "owner")
+        PaymentScheduleRun.objects.select_for_update(skip_locked=True)
+        .select_related("template", "owner")
         .filter(template__is_active=True)
         .exclude(status__in=list(TERMINAL_RUN_STATUSES))
         .order_by("due_on", "scheduled_for", "id")[: max(1, int(limit or 200))]

@@ -110,6 +110,7 @@ class PaymentTemplate(models.Model):
     next_run_at = models.DateTimeField(null=True, blank=True)
     ends_at = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
+    idempotency_key = models.CharField(max_length=160, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -120,6 +121,13 @@ class PaymentTemplate(models.Model):
             models.Index(fields=["next_run_at"]),
             models.Index(fields=["owner", "budget_scope", "is_active"]),
             models.Index(fields=["shared_budget", "next_run_at"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["owner", "idempotency_key"],
+                condition=~models.Q(idempotency_key=""),
+                name="payment_template_owner_idempotency_unique",
+            )
         ]
 
     def clean(self):

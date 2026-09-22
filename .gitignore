@@ -1,10 +1,31 @@
-# Env
-*.env
-*.scripts
-enviroment
+# Secrets and local overrides
+.env
+.env.*
+!.env.local.example
+!.env.test.example
+*.secrets.*
+cloud.env*.ps1
 
-# Local Windows wrappers for PostgreSQL dev flow
-scripts/run_manage_vexxo_app.cmd
-scripts/migrate_vexxo_app.cmd
-scripts/test_transactions_vexxo_app.cmd
+# Python
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Runtime artifacts
+.runtime/
+staticfiles/
+media/
+*.log
+
+# Local JavaScript tooling
+node_modules/
+
+# IDE and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
 

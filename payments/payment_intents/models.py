@@ -88,7 +88,7 @@ class PaymentIntent(models.Model):
     beneficiary_name = models.CharField(max_length=160, blank=True, default="")
     beneficiary_document = models.CharField(max_length=64, blank=True, default="")
     beneficiary_account_ref = models.CharField(max_length=128, blank=True, default="")
-    idempotency_key = models.CharField(max_length=160, unique=True)
+    idempotency_key = models.CharField(max_length=160)
     status = models.CharField(max_length=24, choices=Status.choices, default=Status.CREATED)
     source = models.CharField(max_length=64, blank=True, default="payments.payment_intents.create")
     command_payload = models.JSONField(default=dict, blank=True)
@@ -112,6 +112,12 @@ class PaymentIntent(models.Model):
             models.Index(fields=["provider", "created_at"]),
             models.Index(fields=["payment_type", "created_at"]),
             models.Index(fields=["rail", "created_at"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["owner", "idempotency_key"],
+                name="payment_intent_owner_idempotency_unique",
+            ),
         ]
 
     def mark_dispatched(self, *, provider_intent_id: str = "", provider_metadata: dict | None = None, commit: bool = True):
@@ -294,7 +300,7 @@ class PayoutBatch(models.Model):
     provider = models.CharField(max_length=64)
     rail = models.CharField(max_length=24, choices=PaymentIntent.Rail.choices, default=PaymentIntent.Rail.PAYOUT)
     currency = models.CharField(max_length=12, default="COP")
-    idempotency_key = models.CharField(max_length=160, unique=True)
+    idempotency_key = models.CharField(max_length=160)
     status = models.CharField(max_length=24, choices=Status.choices, default=Status.CREATED)
     total_instructions = models.PositiveIntegerField(default=0)
     total_amount = models.DecimalField(max_digits=20, decimal_places=2, default=0)
@@ -308,6 +314,12 @@ class PayoutBatch(models.Model):
         indexes = [
             models.Index(fields=["owner", "created_at"]),
             models.Index(fields=["status", "created_at"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["owner", "idempotency_key"],
+                name="payout_batch_owner_idempotency_unique",
+            ),
         ]
 
 
@@ -594,6 +606,13 @@ class PaymentSettlementRecord(models.Model):
             models.Index(fields=["settlement_reference"]),
             models.Index(fields=["provider_reference"]),
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["provider", "settlement_reference"],
+                condition=~Q(settlement_reference=""),
+                name="unique_payment_provider_settlement_reference",
+            )
+        ]
 
 
 class PaymentOperationalCase(models.Model):
@@ -634,4 +653,11 @@ class PaymentOperationalCase(models.Model):
             models.Index(fields=["status", "opened_at"]),
             models.Index(fields=["provider_reference"]),
             models.Index(fields=["provider_case_reference"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["provider", "provider_case_reference"],
+                condition=~Q(provider_case_reference=""),
+                name="unique_payment_provider_case_reference",
+            )
         ]

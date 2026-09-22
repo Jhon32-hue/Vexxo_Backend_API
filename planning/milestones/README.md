@@ -13,11 +13,9 @@ Ejemplos conceptuales:
 
 ## Estado Del Codigo
 
-Hoy el modulo esta en scaffold:
-
-- `models.py` vacio
-- `views.py` vacio
-- sin API o servicios detectados
+El paquete permanece reservado para una futura separacion de bounded context.
+La capacidad operativa actual vive deliberadamente en `planning.goals` como
+`GoalMilestone`, porque el hito comparte aggregate, lock y outbox con la meta.
 
 ## Relacion Con Otros Modulos
 
@@ -41,4 +39,6 @@ sobre Cloud SQL, con derivaciones async por eventos o workers.
 
 ## Estado Actual
 
-No hay logica operativa visible hoy. Debe leerse como un contexto reservado.
+La API activa es `POST /api/planning/goals/milestones/`. No se duplica aqui
+para evitar dos fuentes de verdad. Una separacion futura requerira migracion de
+datos, contrato versionado y compatibilidad explicita.

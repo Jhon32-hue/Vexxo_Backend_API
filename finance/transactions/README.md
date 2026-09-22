@@ -1,4 +1,4 @@
-﻿# finance.transactions
+# finance.transactions
 
 ## Que hace
 
@@ -6,7 +6,7 @@
 
 Documento complementario recomendado:
 
-- [Catalogo de fuentes e integraciones](/c:/Users/Alamb/Documents/Vexxo_Backend_API/INTEGRATION_SOURCE_CATALOG.md)
+- [Catalogo de fuentes e integraciones](https://gitlab.com/vexxo-sas/vexxo_backend_api/-/blob/development/INTEGRATION_SOURCE_CATALOG.md)
 - [Contratos canonicos por rail](RAIL_NORMALIZATION_CONTRACTS.md)
 
 Su trabajo no es ejecutar rails externos ni hablar con PSPs. Su trabajo es:
@@ -1101,4 +1101,12 @@ Eso ayuda, pero no cierra todavia la deuda principal:
 - los signals siguen existiendo como compatibilidad para paths no migrados; no
   son el coordinador principal del CRUD manual
 
+## Procedencia Y Clasificacion
+
+`TransactionFieldProvenance` registra fuente, version, confianza, actor y
+valor anterior/nuevo. Una correccion humana de categoria crea tambien
+`TransactionClassificationRevision`, sin borrar la decision previa.
+
+El intake externo redacta tokens, secretos, passwords, API keys y headers de
+autorizacion antes de persistir JSON, conservando la metadata financiera util.
 

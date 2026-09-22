@@ -39,6 +39,8 @@ producto oficial se centra en:
 - se define sobre un `Team`
 - cualquier miembro activo puede verlo
 - solo `owner` y `accountant` pueden administrarlo
+- miembros `viewer` no pueden editar ni vincular movimientos
+- el BFF mobile incluye presupuestos visibles por membresia en datos y version
 - no se apoya en inferencia ciega para clasificar gasto grupal
 - si la UI ya conoce el contexto de una salida o evento, puede sugerir
   `shared_budget` sin obligar al usuario a linkear todo a mano

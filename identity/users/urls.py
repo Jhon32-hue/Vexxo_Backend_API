@@ -18,6 +18,11 @@ from identity.users.views.admin import UserAdminViewSet
 from identity.users.views.auth import (
     CompleteOnboardingView,
     LoginView,
+    MfaDisableView,
+    MfaStatusView,
+    MfaTotpConfirmView,
+    MfaTotpEnrollView,
+    MfaVerifyView,
     LogoutView,
     PasswordRecoveryCodeConfirmView,
     PasswordRecoveryCodeRequestView,
@@ -45,6 +50,11 @@ router.register(r"admin/users", UserAdminViewSet, basename="admin-users")
 urlpatterns = [
     path("auth/register/", RegisterView.as_view(), name="user-register"),
     path("auth/login/", LoginView.as_view(), name="user-login"),
+    path("auth/mfa/status/", MfaStatusView.as_view(), name="user-mfa-status"),
+    path("auth/mfa/totp/enroll/", MfaTotpEnrollView.as_view(), name="user-mfa-totp-enroll"),
+    path("auth/mfa/totp/confirm/", MfaTotpConfirmView.as_view(), name="user-mfa-totp-confirm"),
+    path("auth/mfa/verify/", MfaVerifyView.as_view(), name="user-mfa-verify"),
+    path("auth/mfa/disable/", MfaDisableView.as_view(), name="user-mfa-disable"),
     path("auth/password-recovery/request-code/", PasswordRecoveryCodeRequestView.as_view(), name="user-password-recovery-request-code"),
     path("auth/password-recovery/confirm-code/", PasswordRecoveryCodeConfirmView.as_view(), name="user-password-recovery-confirm-code"),
     path("auth/step-up/request-code/", StepUpCodeRequestView.as_view(), name="user-step-up-request-code"),

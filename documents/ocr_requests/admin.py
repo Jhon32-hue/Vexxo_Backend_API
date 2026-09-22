@@ -1,3 +1,7 @@
 from django.contrib import admin
 
-# Register your models here.
+from documents.ocr_requests.models import OcrFieldObservation, OcrRequest
+
+
+admin.site.register(OcrRequest)
+admin.site.register(OcrFieldObservation)

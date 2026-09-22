@@ -78,8 +78,8 @@ class BudgetApiTests(TestCase):
 
     def test_create_category_budget_returns_fixed_amount_and_dynamic_metrics(self):
         self._tx(amount=Decimal("40.00"))
-        self._tx(amount=Decimal("90.00"), status=Transaction.Status.PENDING)
-        self._tx(amount=Decimal("30.00"), confirmed=False)
+        self._tx(amount=Decimal("90.00"), status=Transaction.Status.PENDING, confirmed=False)
+        self._tx(amount=Decimal("30.00"), affects_balance=False)
         self._template(default_amount=Decimal("70.00"))
 
         response = self.client.post(
@@ -329,6 +329,32 @@ class BudgetApiTests(TestCase):
         outsider_client.force_authenticate(user=self.other_user)
         outsider_response = outsider_client.get(f"/api/finance/budgets/presupuestos-compartidos/{budget_id}/")
         self.assertEqual(outsider_response.status_code, 403)
+
+    def test_viewer_can_read_but_cannot_mutate_shared_budget(self):
+        viewer = User.objects.create_user(
+            username="budget-viewer",
+            email="budget-viewer@example.com",
+            password="secret123A",
+        )
+        Membership.objects.create(team=self.team, user=viewer, role="viewer", is_active=True)
+        created = self.client.post(
+            "/api/finance/budgets/presupuestos-compartidos/",
+            {"team": self.team.pk, "name": "Solo lectura", "month": "2026-05", "amount": "300.00"},
+            format="json",
+        )
+        budget_id = created.data["id"]
+        viewer_client = APIClient()
+        viewer_client.force_authenticate(user=viewer)
+
+        detail = viewer_client.get(f"/api/finance/budgets/presupuestos-compartidos/{budget_id}/")
+        update = viewer_client.patch(
+            f"/api/finance/budgets/presupuestos-compartidos/{budget_id}/",
+            {"amount": "999.00"},
+            format="json",
+        )
+
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(update.status_code, 403)
 
     def test_reports_budget_monthly_summary_view_uses_budget_service(self):
         self._tx(amount=Decimal("45.00"))

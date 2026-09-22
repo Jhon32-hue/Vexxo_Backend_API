@@ -1,36 +1,22 @@
 # documents.files
 
-## Que hace
+Representa archivos privados de un usuario. `DocumentFile` persiste nombre
+original, MIME, tamano, SHA-256, estado y ruta interna aleatoria.
 
-`documents.files` existe para representar archivos documentales individuales.
+La subida es idempotente por `owner + sha256`. Un archivo de otro usuario nunca
+aparece en list/retrieve y el borrado es logico para conservar trazabilidad.
+Los binarios se guardan bajo `MEDIA_ROOT/documents/<owner>/` con nombre UUID.
 
-## Estado Del Codigo
+API: `GET|POST /api/documents/files/`, `GET|DELETE
+/api/documents/files/{uuid}/` y `POST .../{uuid}/request-ocr/`.
 
-Hoy esta en scaffold:
+## Seguridad Del Archivo
 
-- `models.py` vacio
-- `views.py` vacio
+Con keyring activo, los archivos nuevos usan AES-256-GCM con DEK por archivo y
+KEK versionada; SHA-256 representa siempre el contenido original. Antes de
+persistir se ejecuta `basic` (politica minima/EICAR) o ClamAV por INSTREAM.
+Los historicos sin cifrar siguen legibles para migracion progresiva.
 
-## Rol Esperado
-
-Cuando madure, aqui deberian vivir conceptos como:
-
-- archivo subido
-- identificador interno
-- tipo MIME
-- owner
-- tamano
-- estado del archivo
-
-## Relacion Con Otros Modulos
-
-- `documents.storage`
-  backend fisico del artefacto.
-- `documents.metadata`
-  atributos enriquecidos.
-- `documents.links_to_transactions`
-  union con ledger o pagos.
-
-## Estado Actual
-
-Contexto reservado, sin superficie funcional detectada hoy.
+`POST .../{uuid}/download-grant/` emite un token temporal cuyo hash es lo unico
+persistido. `GET /api/documents/downloads/{grant}/` exige `X-Download-Token`, no
+permite cache y consume el grant una sola vez.

@@ -1,3 +1,3 @@
-from finance.vendors.models.provedores import Vendor
+from finance.vendors.models.provedores import Vendor, VendorAlias
 
-__all__ = ["Vendor"]
+__all__ = ["Vendor", "VendorAlias"]

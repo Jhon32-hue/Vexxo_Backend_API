@@ -217,6 +217,12 @@ def _serialize_category_budget_row(budget: Budget, metrics: BudgetMetrics) -> di
 
 def _serialize_shared_budget_row(budget: SharedBudget, metrics: BudgetMetrics) -> dict:
     thresholds = normalize_alert_thresholds(budget.alert_thresholds)
+    linked_transactions_count = getattr(budget, "_linked_transactions_count", None)
+    if linked_transactions_count is None:
+        linked_transactions_count = budget.transaction_links.count()
+    linked_templates_count = getattr(budget, "_linked_templates_count", None)
+    if linked_templates_count is None:
+        linked_templates_count = budget.template_links.count()
     return {
         "id": budget.pk,
         "scope_type": "shared",
@@ -231,8 +237,8 @@ def _serialize_shared_budget_row(budget: SharedBudget, metrics: BudgetMetrics) -
             "name": budget.team.name,
             "owner_id": budget.team.owner_id,
         },
-        "linked_transactions_count": getattr(budget, "_linked_transactions_count", budget.transaction_links.count()),
-        "linked_templates_count": getattr(budget, "_linked_templates_count", budget.template_links.count()),
+        "linked_transactions_count": linked_transactions_count,
+        "linked_templates_count": linked_templates_count,
         "metrics": _serialize_metrics(metrics),
     }
 
@@ -426,13 +432,18 @@ def _shared_actual_spent_map(shared_budgets: list[SharedBudget]) -> dict[int, De
     attributed_ids_by_budget: dict[int, set[int]] = defaultdict(set)
     for shared_budget_id, transaction_id in attributed_rows:
         attributed_ids_by_budget[int(shared_budget_id)].add(int(transaction_id))
+    all_transaction_ids = set().union(*linked_ids_by_budget.values(), *attributed_ids_by_budget.values())
+    transactions_by_id = {
+        int(tx.pk): tx
+        for tx in Transaction.objects.filter(pk__in=all_transaction_ids).only("id", "type", "status", "date", "amount")
+    }
     mapping: dict[int, Decimal] = {}
     for budget in shared_budgets:
         period = resolve_budget_period(budget.month)
         total = ZERO
         effective_tx_ids = linked_ids_by_budget.get(int(budget.pk), set()) | attributed_ids_by_budget.get(int(budget.pk), set())
-        transactions = Transaction.objects.filter(pk__in=effective_tx_ids)
-        for tx in transactions:
+        for transaction_id in effective_tx_ids:
+            tx = transactions_by_id.get(transaction_id)
             if not tx:
                 continue
             if tx.type != Transaction.Type.EXPENSE:
@@ -459,13 +470,20 @@ def _shared_committed_spent_map(shared_budgets: list[SharedBudget]) -> dict[int,
     attributed_template_ids_by_budget: dict[int, set[int]] = defaultdict(set)
     for shared_budget_id, template_id in attributed_template_rows:
         attributed_template_ids_by_budget[int(shared_budget_id)].add(int(template_id))
+    all_template_ids = set().union(*linked_template_ids_by_budget.values(), *attributed_template_ids_by_budget.values())
+    templates_by_id = {
+        int(template.pk): template
+        for template in PaymentTemplate.objects.filter(pk__in=all_template_ids).only(
+            "id", "is_active", "amount_mode", "default_amount", "next_run_at"
+        )
+    }
     mapping: dict[int, Decimal] = {}
     for budget in shared_budgets:
         period = resolve_budget_period(budget.month)
         total = ZERO
         effective_template_ids = linked_template_ids_by_budget.get(int(budget.pk), set()) | attributed_template_ids_by_budget.get(int(budget.pk), set())
-        templates = PaymentTemplate.objects.filter(pk__in=effective_template_ids)
-        for template in templates:
+        for template_id in effective_template_ids:
+            template = templates_by_id.get(template_id)
             if not template or not template.is_active:
                 continue
             if template.amount_mode != PaymentTemplate.AmountMode.FIXED or template.default_amount is None:
@@ -582,7 +600,7 @@ def _resolve_threshold_alerts_for_budget_key(*, owner, budget_key: str, keep_thr
     for alert in _active_budget_alerts(owner, budget_key=budget_key):
         threshold = int((alert.payload or {}).get("threshold_percent") or 0)
         if threshold not in keep_thresholds:
-            alert.resolve(commit=True)
+            alert.mark_resolved(commit=True)
 
 
 def _sync_threshold_alerts_for_row(*, owner, row: dict) -> None:

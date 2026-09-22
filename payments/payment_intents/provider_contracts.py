@@ -169,7 +169,7 @@ DEFAULT_PROVIDER_CONTRACT = {
             "strategy": "hmac_sha256_body",
             "header": "X-Vexxo-Provider-Signature",
             "secret_setting_key": "callback_secret",
-            "allow_unsigned_when_secret_missing": True,
+            "allow_unsigned_when_secret_missing": False,
         },
     },
 }
@@ -177,6 +177,20 @@ DEFAULT_PROVIDER_CONTRACT = {
 
 PAYMENT_PROVIDER_CONTRACTS = {
     "generic": DEFAULT_PROVIDER_CONTRACT,
+    "local_fake": _deep_merge(
+        DEFAULT_PROVIDER_CONTRACT,
+        {
+            "provider": "local_fake",
+            "schema_version": "2026-09-19",
+        },
+    ),
+    "local-stub": _deep_merge(
+        DEFAULT_PROVIDER_CONTRACT,
+        {
+            "provider": "local-stub",
+            "schema_version": "2026-09-19",
+        },
+    ),
     "wompi": _deep_merge(
         DEFAULT_PROVIDER_CONTRACT,
         {
@@ -238,7 +252,8 @@ PAYMENT_PROVIDER_CONTRACTS = {
                     "disputed": "disputed",
                 },
                 "signature": {
-                    "header": "X-Wompi-Signature",
+                    "strategy": "wompi_event_checksum",
+                    "header": "X-Event-Checksum",
                 },
             },
         },
@@ -259,7 +274,7 @@ def build_public_provider_contract(provider: str) -> dict[str, Any]:
     callback_contract["signature"] = {
         "strategy": signature.get("strategy"),
         "header": signature.get("header"),
-        "allow_unsigned_when_secret_missing": signature.get("allow_unsigned_when_secret_missing", True),
+        "allow_unsigned_when_secret_missing": signature.get("allow_unsigned_when_secret_missing", False),
     }
     return {
         "provider": contract.get("provider"),

@@ -13,11 +13,9 @@ Ejemplos conceptuales:
 
 ## Estado Del Codigo
 
-Hoy el modulo esta en scaffold:
-
-- `models.py` vacio
-- `views.py` vacio
-- sin endpoint o calculadora publica detectada
+El paquete permanece reservado para escenarios multi-dominio. La proyeccion
+operativa inicial de metas vive en `planning.goals` para mantener juntas sus
+reglas, permisos y supuestos.
 
 ## Relacion Con Otros Modulos
 
@@ -48,6 +46,7 @@ Cuando se materialice, podria apoyarse en:
 
 ## Estado Actual
 
-No hay implementacion funcional visible hoy. El nombre del contexto anticipa una
-evolucion importante del producto, pero todavia no debe confundirse con una
-capacidad ya cerrada.
+`GET /api/planning/goals/metas/<id>/projection/` calcula velocidad historica,
+fecha estimada y aporte mensual requerido. Es determinista y no modifica el
+ledger. Este paquete no expone una segunda API hasta que existan escenarios
+transversales versionados.

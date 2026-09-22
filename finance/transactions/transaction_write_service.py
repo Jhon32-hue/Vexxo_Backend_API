@@ -77,6 +77,12 @@ def update_manual_transaction(
     budget_context_shared_budget=None,
 ):
     before = serialize_transaction_state(instance)
+    previous_category_id = instance.category_id
+    changed_values = {
+        field: (getattr(instance, f"{field}_id", None) if field in {"account", "category", "vendor", "shared_budget"} else getattr(instance, field, None), value.pk if hasattr(value, "pk") else value)
+        for field, value in validated_data.items()
+        if hasattr(instance, field) or hasattr(instance, f"{field}_id")
+    }
     for attr, value in validated_data.items():
         setattr(instance, attr, value)
     tx = save_transaction_with_events(
@@ -87,6 +93,27 @@ def update_manual_transaction(
         event_source=event_source,
     )
     tx = apply_tag_selection(instance, tags_data)
+    from finance.transactions.Models import TransactionClassificationRevision, TransactionFieldProvenance
+
+    for field, (previous, current) in changed_values.items():
+        if previous != current:
+            TransactionFieldProvenance.objects.create(
+                transaction=tx,
+                field_name=field,
+                source=TransactionFieldProvenance.Source.USER,
+                previous_value=previous,
+                current_value=current,
+                actor=actor,
+            )
+    if previous_category_id != tx.category_id:
+        TransactionClassificationRevision.objects.create(
+            transaction=tx,
+            previous_category_id=previous_category_id,
+            category_id=tx.category_id,
+            source=TransactionFieldProvenance.Source.USER,
+            actor=actor,
+            reason="manual_correction",
+        )
     return tx
 
 

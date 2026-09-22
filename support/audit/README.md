@@ -34,6 +34,8 @@ Hace falta una superficie de auditoria entendible para:
 - la auditoria no debe romper el flujo de negocio
 - si falla y `silent=True`, el negocio sigue y el error se registra
 - debe capturar modulo, accion, entidad, impacto y metadata suficiente
+- las lecturas internas sensibles usan la accion `READ`
+- las busquedas no deben persistir datos de consulta sensibles en claro
 
 ## Relacion Con Otros Modulos
 
@@ -63,6 +65,7 @@ Diferencia:
 - quien forzo recalculo o cambio de estado
 - quien aplico un deny explicito de permiso
 - que operador intervino un payout o pago en disputa
+- que operador busco o consulto la vista 360 de un usuario y por que
 
 ## Estado Actual
 
@@ -72,6 +75,8 @@ La API actual se comporta asi:
 
 - usuario normal: ve solo su propia auditoria
 - staff: puede ver auditoria global y filtrar por `user_id`
+- `admin_tools.user_lookup`: audita busquedas y lecturas individuales con
+  actor, motivo y caso de soporte
 
 La arquitectura ya deja listo el camino para:
 

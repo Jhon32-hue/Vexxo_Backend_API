@@ -1,0 +1,66 @@
+config:
+  target: "http://127.0.0.1:8000"
+  phases:
+    - duration: 10
+      arrivalRate: 1
+  environments:
+    smoke:
+      phases:
+        - duration: 10
+          arrivalRate: 2
+    baseline:
+      phases:
+        - duration: 15
+          arrivalRate: 2
+          name: warm-up
+        - duration: 30
+          arrivalRate: 5
+          rampTo: 15
+          name: normal-ramp
+        - duration: 15
+          arrivalRate: 15
+          name: sustained
+    stress:
+      phases:
+        - duration: 15
+          arrivalRate: 5
+          name: warm-up
+        - duration: 45
+          arrivalRate: 10
+          rampTo: 40
+          name: stress-ramp
+        - duration: 20
+          arrivalRate: 40
+          name: stress-hold
+  plugins:
+    expect: {}
+    ensure:
+      thresholds:
+        - http.response_time.p95: 750
+        - http.response_time.p99: 1500
+      conditions:
+        - expression: "http.codes.200 == http.requests"
+  http:
+    timeout: 10
+    defaults:
+      headers:
+        X-Load-Test: artillery-local
+scenarios:
+  - name: public runtime health
+    flow:
+      - get:
+          url: "/healthz/"
+          expect:
+            - statusCode: 200
+      - get:
+          url: "/readyz/"
+          expect:
+            - statusCode: 200
+      - get:
+          url: "/api/runtime/health/"
+          expect:
+            - statusCode: 200
+      - get:
+          url: "/api/runtime/readiness/"
+          expect:
+            - statusCode: 200

@@ -152,6 +152,19 @@ El objetivo es:
 6. al confirmarse el pago, se crea la `Transaction`
 7. la transaccion preserva `debt_id` e `installment_id`
 
+Las transiciones se ejecutan en `finance.debts.services`. Guardar un modelo con
+`Debt.objects.create()` ya no genera cuotas ni cambia estados de forma oculta.
+
+## Seguridad Y Ownership
+
+- las APIs de deudas y cuotas requieren autenticacion
+- cada usuario solo lista y consulta sus propios registros
+- `owner` se asigna desde `request.user` y es de solo lectura
+- vendor, deuda, transaccion y payment template deben pertenecer al mismo
+  usuario
+- una cuota existente no puede trasladarse a otra deuda
+- una relacion cruzada se rechaza antes de persistirse
+
 ## Que cambio con la migracion
 
 Antes:
@@ -180,16 +193,41 @@ Ahora:
 - `finance.budgets`
   puede considerar el template como gasto comprometido
 
-## Encaje con GCP
+## Runtime local
 
-Este modulo sigue siendo principalmente OLTP sobre Cloud SQL, pero ahora encaja
-mejor en el flujo distribuido:
+Este modulo funciona sobre PostgreSQL local. La ejecucion durable se conserva
+mediante los outboxes y workers ya existentes en los contextos que orquestan
+pagos y transacciones:
 
-- Cloud Run API crea deuda/cuota y su enlace moderno
+- la API crea deuda/cuota y su enlace moderno
 - `scheduled_payments` orquesta ocurrencias y recordatorios
-- Cloud Tasks / jobs pueden empujar ejecucion de pagos
+- los workers locales procesan trabajo diferido cuando aplica
 - `payment_intents` maneja la integracion externa
 - `transactions` consolida el ledger final
+- `domain-outbox` publica eventos de debts y goals en un solo proceso local
+
+El comando `python manage.py debts_refresh_overdue` marca vencimientos y
+recalcula estados. Puede recibir `--as-of YYYY-MM-DD` para pruebas o cortes
+operativos reproducibles.
+
+## Eventos Durables
+
+La tabla `debts_debtdomaineventoutbox` guarda eventos en la misma transaccion
+que modifica deuda o cuota:
+
+- `debts.created.v1`
+- `debts.updated.v1`
+- `debts.deleted.v1`
+- `debts.installments.generated.v1`
+- `debts.installment.updated.v1`
+- `debts.payment.applied.v1`
+- `debts.status.changed.v1`
+- `debts.overdue.refreshed.v1`
+- `debts.debt.restructured.v1`
+
+La integracion desde transactions ocurre por el listener requerido del evento
+de transaccion. Ya no existe un `post_save(Transaction)` paralelo que pueda
+aplicar el pago dos veces.
 
 ## Estado actual
 
@@ -199,6 +237,11 @@ Hoy este modulo ya soporta de forma coherente:
 - enlace moderno a `PaymentTemplate`
 - preservacion de `debt/installment` en la `Transaction`
 - convivencia temporal con FKs y lectura legacy
+- aislamiento por propietario y validacion de referencias cruzadas
+- servicios atomicos, estados explicitos y outbox durable
+- frecuencias semanal, quincenal, mensual, trimestral y anual
+- reestructuracion versionada que preserva cuotas pagadas y reemplaza solo el
+  calendario pendiente
 
 Lo que no hace por si solo:
 
@@ -206,4 +249,10 @@ Lo que no hace por si solo:
 - no maneja rails externos
 - no es el scheduler de recordatorios
 
-Esos roles ya quedaron fuera de `debts`, donde pertenecen.
+Esos roles ya quedaron fuera de `debts`, donde pertenecen. El scheduler local
+ejecuta el refresco de vencimientos con advisory lock.
+
+`POST /api/finance/debts/deudas/{id}/restructure/` exige
+`Idempotency-Key`, motivo y nuevo calendario. El servicio bloquea la deuda,
+rechaza cuotas parcialmente pagadas, conserva historia liquidada y guarda
+snapshots antes/despues para soporte y auditoria.

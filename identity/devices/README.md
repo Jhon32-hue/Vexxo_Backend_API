@@ -72,11 +72,10 @@ classDiagram
 - `identity.eventing`
   puede publicar eventos relacionados a dispositivos
 
-## Encaje Con GCP
+## Encaje Operativo
 
-Es una pieza OLTP de seguridad sobre Cloud SQL + Cloud Run.
-
-No necesita procesamiento largo, pero es importante para:
+Es una pieza OLTP sobre PostgreSQL. No necesita otra cola ni servicio local,
+pero es importante para:
 
 - auditoria
 - deteccion de actividad sospechosa
@@ -95,3 +94,28 @@ Hoy el API expone:
 
 El modulo ya es util operativamente aunque aun no sea una plataforma completa
 de risk scoring de dispositivos.
+
+## Firma De Dispositivo
+
+El registro acepta una clave publica Ed25519. `signature-challenge` entrega un
+nonce que expira en tres minutos y `verify-signature` lo consume una sola vez.
+Una firma correcta marca `key_verified`; `platform_verified` queda reservado
+para futuros adapters oficiales de Play Integrity y App Attest.
+
+Los adapters oficiales ya existen como una comprobacion separada:
+`platform-attestation-challenge` genera evidencia de un solo uso y
+`verify-platform-attestation` valida el verdict de Google o la cadena,
+nonce, app id, AAGUID y clave de Apple. Solo este flujo marca
+`platform_verified`; Ed25519 continua marcando exclusivamente `key_verified`.
+Las credenciales y raices quedan vacias en `.env.local.example`.
+
+La verificacion oficial expira segun
+`DEVICE_ATTESTATION_VALIDITY_DAYS`. El scheduler degrada evidencias vencidas;
+fallos consecutivos marcan el dispositivo como sospechoso y revocan sus
+sesiones. `devices_revoke_attestations` permite revocacion masiva con dry-run y
+guardrails por proveedor o antiguedad.
+
+La prueba real de Play Integrity exige una app distribuida por Google Play y la
+de App Attest exige hardware Apple. Los mocks prueban el lifecycle, pero no
+certifican la evidencia de plataforma. Consulta
+[Garantias de identidad](../../docs/IDENTITY_SECURITY_ASSURANCE.md).
