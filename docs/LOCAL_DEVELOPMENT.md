@@ -21,6 +21,21 @@ Compose, settings ni Git. La generacion y rotacion estan descritas en
 El comando construye la imagen, levanta PostgreSQL, ejecuta migraciones,
 arranca Django y valida readiness.
 
+El emulador Android accede al host mediante `10.0.2.2`. Ese host esta incluido
+explicitamente en `VEXXO_LOCAL_ALLOWED_HOSTS`; no se usa un wildcard. Para un
+telefono fisico agrega temporalmente la IP LAN del equipo a esa variable en
+`.env.local` y recrea `api`. Si el registro muestra un error generico, revisa:
+
+```powershell
+.\scripts\run_stack.ps1 local status auth
+.\scripts\run_stack.ps1 local logs auth -Follow
+```
+
+Un log `DisallowedHost` indica configuracion de acceso local, no un error de
+PostgreSQL ni de las credenciales ingresadas por la persona. Los comandos
+`up`, `status` y `verify` prueban automaticamente `Host: 10.0.2.2:8000` para
+detectar esta incompatibilidad antes de abrir Flutter.
+
 Si un antivirus o proxy inspecciona HTTPS, el runner exporta la CA local de
 AVG como secreto temporal de BuildKit. Para otra CA corporativa se puede
 definir `VEXXO_LOCAL_CA_CERT_PATH` con la ruta a un certificado PEM. La CA se

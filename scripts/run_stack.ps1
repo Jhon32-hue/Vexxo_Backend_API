@@ -91,6 +91,30 @@ function Invoke-Compose([string[]]$Arguments) {
     }
 }
 
+function Test-LocalMobileApiHost {
+    $composeArguments = @('--env-file', $envFile, '-f', $composeFile)
+    if ($Performance) {
+        $composeArguments += @('-f', $performanceComposeFile)
+    }
+    $portBindings = & docker compose @composeArguments port api 8000
+    $composeExitCode = $LASTEXITCODE
+    $portBinding = $portBindings | Select-Object -First 1
+    if ($composeExitCode -ne 0 -or $portBinding -notmatch ':(\d+)$') {
+        throw 'No fue posible resolver el puerto local del API.'
+    }
+
+    $hostPort = $Matches[1]
+    $response = Invoke-WebRequest `
+        -Uri "http://127.0.0.1:$hostPort/readyz/" `
+        -Headers @{ Host = "10.0.2.2:$hostPort" } `
+        -UseBasicParsing `
+        -TimeoutSec 5
+    if ($response.StatusCode -ne 200) {
+        throw "Mobile host probe fallo con HTTP $($response.StatusCode)."
+    }
+    Write-Output "mobile_host_check=ok host=10.0.2.2:$hostPort"
+}
+
 function Get-TestModuleLabels {
     Get-ChildItem -LiteralPath $root -Recurse -File |
         Where-Object {
@@ -114,6 +138,7 @@ switch ($Action) {
         if ($Build) { $migrate += '--build' }
         Invoke-Compose ($migrate + @('migrate'))
         Invoke-Compose ($up + $services)
+        Test-LocalMobileApiHost
         Invoke-Compose @('exec', '-T', 'api', 'python', 'manage.py', 'runtime_status', '--strict')
         if ($Performance) {
             Invoke-Compose @('exec', '-T', 'api', 'python', 'manage.py', 'db_connection_budget', '--strict')
@@ -128,6 +153,7 @@ switch ($Action) {
     }
     'status' {
         Invoke-Compose @('ps')
+        Test-LocalMobileApiHost
         Invoke-Compose @('exec', '-T', 'api', 'python', 'manage.py', 'runtime_status', '--strict')
         Invoke-Compose @('exec', '-T', 'api', 'python', 'manage.py', 'outbox_status')
         Invoke-Compose @('exec', '-T', 'api', 'python', 'manage.py', 'worker_status')
@@ -136,6 +162,7 @@ switch ($Action) {
         }
     }
     'verify' {
+        Test-LocalMobileApiHost
         Invoke-Compose @('exec', '-T', 'api', 'python', 'manage.py', 'check')
         Invoke-Compose @('exec', '-T', 'api', 'python', 'manage.py', 'migrate', '--check')
         Invoke-Compose @('exec', '-T', 'api', 'python', 'manage.py', 'makemigrations', '--check', '--dry-run')

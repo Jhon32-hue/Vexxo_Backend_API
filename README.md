@@ -17,6 +17,10 @@ El PostgreSQL de Docker es la unica base local del proyecto. pgAdmin se usa
 solo como cliente y se conecta a `127.0.0.1:54329` con la base y credenciales
 de `.env.local`.
 
+Flutter en el emulador Android usa `http://10.0.2.2:8000`; Compose permite ese
+host solo en el perfil local. Para dispositivos fisicos, la IP LAN se agrega
+manualmente a `VEXXO_LOCAL_ALLOWED_HOSTS` sin habilitar `*`.
+
 Deudas y metas ya operan con servicios explicitos y outboxes durables. Los
 slices financieros levantan `domain-outbox` y un `scheduler-local` singleton
 para vencimientos y pagos programados, por lo que no se necesitan Celery,
