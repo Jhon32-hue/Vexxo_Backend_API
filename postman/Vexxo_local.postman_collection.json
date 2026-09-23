@@ -4824,6 +4824,72 @@
           }
         },
         {
+          "name": "Notification Catalog",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Notification Catalog: status esperado', function () {",
+                  "  pm.expect([200]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Catalogo versionado de mensajes, categorias, prioridades y deeplinks.",
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/notifications/deliveries/entregas-notificacion/catalog/"
+          }
+        },
+        {
+          "name": "Finance Notifications",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Finance Notifications: status esperado', function () {",
+                  "  pm.expect([200]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Filtra confirmaciones y cambios financieros.",
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/notifications/deliveries/entregas-notificacion/?category=finance"
+          }
+        },
+        {
+          "name": "High Priority Notifications",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('High Priority Notifications: status esperado', function () {",
+                  "  pm.expect([200]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Filtra acciones que requieren atencion.",
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/notifications/deliveries/entregas-notificacion/?priority=high"
+          }
+        },
+        {
           "name": "Mark Notification Read",
           "event": [
             {

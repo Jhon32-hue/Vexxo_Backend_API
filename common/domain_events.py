@@ -157,6 +157,7 @@ class EventNames:
 
     # --- SHARED EXPENSES ---
     SHARED_EXPENSE_CREATED = "shared_expenses.created.v1"
+    SHARED_EXPENSE_SHARE_INVITED = "shared_expenses.share.invited.v1"
     SHARED_EXPENSE_REVISED = "shared_expenses.revised.v1"
     SHARED_EXPENSE_SHARE_ACCEPTED = "shared_expenses.share.accepted.v1"
     SHARED_EXPENSE_DISPUTED = "shared_expenses.disputed.v1"
@@ -167,6 +168,10 @@ class EventNames:
     ALERT_CREATED = "alerts.created.v1"
     #Recientemente agregado
     ALERT_AI_ENRICHED = "alerts.ai.enriched.v1"
+
+    # --- DOCUMENTS ---
+    DOCUMENT_OCR_COMPLETED = "documents.ocr.completed.v1"
+    DOCUMENT_OCR_REVIEW_REQUIRED = "documents.ocr.review_required.v1"
     INSIGHT_GENERATED = "insight.generated.v1"
     ML_ANOMALY_DETECTED = "ml.anomaly.detected.v1"
     # --- DEBTS ---
@@ -309,7 +314,15 @@ KNOWN_EVENT_TYPES: Dict[str, str] = {
     EventNames.TRANSACTION_PARTICIPANT_UPDATED: "Participante de transaccion actualizado",
     EventNames.TRANSACTION_PARTICIPANT_DELETED: "Participante de transaccion eliminado",
     EventNames.TRANSACTION_PARTICIPANT_SETTLED: "Participante de transaccion liquidado",
+    EventNames.SHARED_EXPENSE_CREATED: "Gasto compartido creado",
+    EventNames.SHARED_EXPENSE_SHARE_INVITED: "Invitacion a gasto compartido creada",
+    EventNames.SHARED_EXPENSE_SHARE_ACCEPTED: "Parte de gasto compartido aceptada",
+    EventNames.SHARED_EXPENSE_DISPUTED: "Gasto compartido disputado",
+    EventNames.SHARED_EXPENSE_SETTLEMENT_RECORDED: "Liquidacion de gasto compartido registrada",
+    EventNames.SHARED_EXPENSE_CANCELED: "Gasto compartido cancelado",
     EventNames.ALERT_CREATED: "Alerta creada",
+    EventNames.DOCUMENT_OCR_COMPLETED: "Procesamiento OCR completado",
+    EventNames.DOCUMENT_OCR_REVIEW_REQUIRED: "Documento OCR requiere revision",
     EventNames.DEBT_CREATED: "Deuda creada",
     EventNames.DEBT_UPDATED: "Deuda actualizada",
     EventNames.DEBT_DELETED: "Deuda eliminada",

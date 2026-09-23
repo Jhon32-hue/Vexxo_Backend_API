@@ -503,6 +503,9 @@ def build_collection() -> dict:
     notification_items = [
         request("List Notifications", "GET", "/api/notifications/deliveries/entregas-notificacion/", "Inbox durable.", capture=("notification_id", "((data.results || data)[0] || {}).id")),
         request("Notification Stats", "GET", "/api/notifications/deliveries/entregas-notificacion/stats/", "Conteos del inbox."),
+        request("Notification Catalog", "GET", "/api/notifications/deliveries/entregas-notificacion/catalog/", "Catalogo versionado de mensajes, categorias, prioridades y deeplinks."),
+        request("Finance Notifications", "GET", "/api/notifications/deliveries/entregas-notificacion/?category=finance", "Filtra confirmaciones y cambios financieros."),
+        request("High Priority Notifications", "GET", "/api/notifications/deliveries/entregas-notificacion/?priority=high", "Filtra acciones que requieren atencion."),
         request("Mark Notification Read", "POST", "/api/notifications/deliveries/entregas-notificacion/{{notification_id}}/mark_read/", "Marca entrega leida.", body={}, expected=(200, 400)),
         request("Mark All Notifications Read", "POST", "/api/notifications/deliveries/entregas-notificacion/mark_all_read/", "Limpia pendientes de lectura.", body={}),
         request("My Notification Preferences", "GET", "/api/notifications/preferences/me/", "Preferencias por canal."),

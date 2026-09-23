@@ -12,11 +12,19 @@ mensajeria:
 
 ## Estado Del Codigo
 
-Hoy este modulo esta en scaffold:
+El catalogo v1 vive en `catalog.py` y es la fuente canonica para el inbox:
 
-- `models.py` vacio
-- `views.py` vacio
-- sin plantilla persistente o servicio publico detectado
+- `notification_key` estable, independiente del copy
+- evento de dominio origen
+- categoria y prioridad
+- titulo y mensaje estatico o derivado de campos permitidos
+- deeplink Flutter
+- allowlist de payload publico
+- version de plantilla
+
+`GET /api/notifications/deliveries/entregas-notificacion/catalog/` permite
+inspeccionarlo. No hay modelos editables: por ahora los cambios de copy pasan
+por revision de codigo, pruebas y despliegue.
 
 ## Rol En El Producto
 
@@ -47,7 +55,21 @@ Mas adelante este modulo podria trabajar con:
 - Cloud Storage si aparecen artefactos ricos o assets
 - workers para rendering o entrega por canal
 
-## Estado Actual
+## Cobertura V1
 
-Hoy el sistema genera mensajes desde listeners y servicios, sin un repositorio
-formal de templates en este modulo.
+| Categoria | Acciones relevantes |
+| --- | --- |
+| Lifecycle | bienvenida y onboarding completado |
+| Seguridad | dispositivo registrado o revocado |
+| Finanzas | cuenta, gasto/ingreso, presupuesto, pago, deuda, meta y aportes |
+| Colaboracion | cuenta compartida y lifecycle de gastos compartidos |
+| Recordatorios | pagos programados y cuotas vencidas |
+| Integraciones | importacion de movimientos y resultado de sincronizacion |
+| Sistema | alertas accionables y resultado de procesamiento OCR |
+
+No toda operacion produce inbox. Cambios tecnicos, callbacks, recalculos y
+eventos de soporte permanecen observables sin interrumpir al usuario.
+
+Cada entrega se deduplica por `notification_key + usuario + outbox_event_id`.
+Un reintento del mismo evento no crea otra fila, mientras una nueva accion
+sobre la misma cuenta, gasto o pago conserva su propia confirmacion.

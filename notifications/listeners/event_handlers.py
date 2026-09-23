@@ -19,7 +19,13 @@ import logging
 from django.contrib.auth import get_user_model
 
 from common.domain_events import EventContext, EventNames, EventPriority, VexxoAppDomainEvent, subscribe
+from notifications.deliveries.models import NotificationCategory
 from notifications.deliveries.services import create_notification_delivery
+from notifications.preferences.services import get_or_create_notification_preferences
+from notifications.templates.catalog import (
+    minimized_notification_payload,
+    resolve_notification_definition,
+)
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -40,8 +46,33 @@ def _notify_user(
     payload: dict,
     dedupe_key: str = "",
 ):
+    definition = resolve_notification_definition(event.type)
+    if definition is not None:
+        user_id = payload.get(definition.recipient_field) or user_id
     user = _load_user(user_id)
     if not user:
+        return
+    if definition is not None:
+        preferences = get_or_create_notification_preferences(user)
+        if not preferences.in_app_enabled and definition.category != NotificationCategory.SECURITY:
+            return
+        event_reference = str((event.metadata or {}).get("outbox_event_id") or event.id)
+        normalized_dedupe = f"notification:{definition.key}:{user.pk}:{event_reference}"
+        create_notification_delivery(
+            owner=user,
+            notification_key=definition.key,
+            category=definition.category,
+            priority=definition.priority,
+            template_key=definition.key,
+            template_version=definition.version,
+            action_path=definition.action_path,
+            title=definition.render_title(payload),
+            message=definition.render_message(payload),
+            event_type=event.type,
+            source="notifications.listeners.catalog",
+            payload=minimized_notification_payload(definition, event),
+            dedupe_key=normalized_dedupe,
+        )
         return
     target_user_id = payload.get("user_id") or payload.get("owner_id") or user.id
     normalized_dedupe = dedupe_key or (
@@ -62,6 +93,39 @@ def _notify_user(
         event.type,
         user.id,
     )
+
+
+def materialize_catalog_notification(event: VexxoAppDomainEvent) -> None:
+    definition = resolve_notification_definition(event.type)
+    if definition is None:
+        return
+    payload = event.payload or {}
+    _notify_user(
+        user_id=payload.get(definition.recipient_field),
+        title="",
+        message="",
+        event=event,
+        payload=payload,
+    )
+
+
+@subscribe("users.*", name="notifications.catalog.identity", run_async=True, contexts=[EventContext.IDENTITY])
+@subscribe("accounts.*", name="notifications.catalog.accounts", run_async=True, contexts=[EventContext.ACCOUNTS])
+@subscribe("transactions.*", name="notifications.catalog.transactions", run_async=True, contexts=[EventContext.TRANSACTIONS])
+@subscribe("budgets.*", name="notifications.catalog.budgets", run_async=True, contexts=[EventContext.BUDGETS])
+@subscribe("goals.*", name="notifications.catalog.goals", run_async=True, contexts=[EventContext.GOALS])
+@subscribe("debts.*", name="notifications.catalog.debts", run_async=True, contexts=[EventContext.DEBTS])
+@subscribe(
+    "shared_expenses.*",
+    name="notifications.catalog.shared_expenses",
+    run_async=True,
+    contexts=[EventContext.SHARED_EXPENSES],
+)
+@subscribe("payments.*", name="notifications.catalog.payments", run_async=True, contexts=[EventContext.PAYMENTS])
+@subscribe("alerts.*", name="notifications.catalog.alerts", run_async=True, contexts=[EventContext.ALERTS])
+@subscribe("documents.*", name="notifications.catalog.documents", run_async=True, contexts=[EventContext.DOCUMENTS])
+def handle_catalog_event(event: VexxoAppDomainEvent) -> None:
+    materialize_catalog_notification(event)
 
 
 def _format_money(payload: dict) -> str:

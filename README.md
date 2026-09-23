@@ -1798,10 +1798,13 @@ Es el puente entre datos financieros y explicacion accionable.
 
 Resuelven como se entrega feedback sin mezclarlo con el core transaccional.
 
-- `notifications.deliveries`: inbox durable
-- `notifications.listeners`: transforma eventos del dominio en mensajes
+- `notifications.deliveries`: inbox durable con identidad, categoria, prioridad
+  y deeplink de producto
+- `notifications.listeners`: transforma solo eventos relevantes del dominio en
+  mensajes y minimiza el payload antes de exponerlo
 - `notifications.preferences`: control activo de inbox, push, lifecycle email y newsletter
-- `notifications.templates`: contexto reservado para plantillas y renderizado
+- `notifications.templates`: catalogo versionado en codigo para copy, payload
+  permitido y politica de navegacion; no requiere editar textos en produccion
 - `realtime.consumers`: persiste `RealtimeSignal` para polling o gateways
   futuros
 

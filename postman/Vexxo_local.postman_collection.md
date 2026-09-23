@@ -48,7 +48,7 @@ La generacion no necesita Django ni credenciales. La primera linea solo verifica
 | `07 - Scheduled Payments` | 12 | Plantillas, corridas, vencimientos y materializacion de pagos. |
 | `08 - Payments and Providers` | 12 | Pricing, intents, payouts, callbacks, settlement y contratos por proveedor. |
 | `09 - Alerts and Rules` | 7 | Alertas de producto, acciones y reglas configurables. |
-| `10 - Notifications and Realtime` | 8 | Inbox durable, preferencias y senales de UX. |
+| `10 - Notifications and Realtime` | 11 | Inbox durable, preferencias y senales de UX. |
 | `11 - Documents and OCR` | 8 | Archivos privados, OCR durable y vinculacion al ledger. |
 | `12 - Contacts and Teams` | 8 | Contactos, equipos y base social para gastos compartidos. |
 | `13 - Shared Expenses` | 8 | Division, invitacion, acceptance, disputa y settlement sin duplicar el ledger. |

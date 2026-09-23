@@ -14,12 +14,14 @@ Analisis detallado:
 
 from __future__ import annotations
 
+from django.db.models import Count
 from rest_framework import permissions, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.utils.dateparse import parse_datetime
 
 from notifications.deliveries.models import NotificationDelivery, NotificationStatus
+from notifications.templates.catalog import notification_catalog_snapshot
 
 
 class NotificationDeliverySerializer(serializers.ModelSerializer):
@@ -29,6 +31,12 @@ class NotificationDeliverySerializer(serializers.ModelSerializer):
         model = NotificationDelivery
         fields = [
             "id",
+            "notification_key",
+            "category",
+            "priority",
+            "template_key",
+            "template_version",
+            "action_path",
             "channel",
             "status",
             "event_type",
@@ -56,6 +64,8 @@ class NotificationDeliveryViewSet(viewsets.ReadOnlyModelViewSet):
         status_value = (self.request.query_params.get("status") or "").strip()
         channel = (self.request.query_params.get("channel") or "").strip()
         event_type = (self.request.query_params.get("event_type") or "").strip()
+        category = (self.request.query_params.get("category") or "").strip()
+        priority = (self.request.query_params.get("priority") or "").strip()
         unread = (self.request.query_params.get("unread") or "").strip().lower()
         created_after = (self.request.query_params.get("created_after") or "").strip()
 
@@ -65,6 +75,10 @@ class NotificationDeliveryViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(channel=channel)
         if event_type:
             qs = qs.filter(event_type=event_type)
+        if category:
+            qs = qs.filter(category=category)
+        if priority:
+            qs = qs.filter(priority=priority)
         if unread in {"1", "true", "yes"}:
             qs = qs.exclude(status=NotificationStatus.READ)
         if created_after:
@@ -89,11 +103,20 @@ class NotificationDeliveryViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=["get"])
     def stats(self, request):
         qs = self.get_queryset()
+        by_category = {
+            row["category"]: row["total"]
+            for row in qs.values("category").annotate(total=Count("pk"))
+        }
         return Response(
             {
                 "total": qs.count(),
                 "unread": qs.exclude(status=NotificationStatus.READ).count(),
                 "read": qs.filter(status=NotificationStatus.READ).count(),
+                "by_category": by_category,
             },
             status=status.HTTP_200_OK,
         )
+
+    @action(detail=False, methods=["get"])
+    def catalog(self, request):
+        return Response({"version": 1, "items": notification_catalog_snapshot()})

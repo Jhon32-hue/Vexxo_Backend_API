@@ -5,6 +5,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
 
+from common.domain_events import EventNames
 from finance.accounts.models import Account
 from finance.transactions.Models import Transaction, TransactionParticipant
 from social.shared_expenses.models import SharedExpense, SharedExpenseDomainEventOutbox, SharedExpenseSettlement
@@ -117,7 +118,14 @@ class SharedExpenseApiTests(TestCase):
         self.assertEqual(expense.shares.count(), 2)
         self.assertEqual(sum(expense.shares.values_list("expected_amount", flat=True)), Decimal("100.00"))
         self.assertEqual(TransactionParticipant.objects.count(), 0)
-        self.assertTrue(SharedExpenseDomainEventOutbox.objects.filter(event_type="shared_expenses.created.v1").exists())
+        self.assertTrue(
+            SharedExpenseDomainEventOutbox.objects.filter(event_type=EventNames.SHARED_EXPENSE_CREATED).exists()
+        )
+        invitation = SharedExpenseDomainEventOutbox.objects.get(
+            event_type=EventNames.SHARED_EXPENSE_SHARE_INVITED
+        )
+        self.assertEqual(invitation.payload["participant_user_id"], self.participant.pk)
+        self.assertEqual(invitation.payload["currency"], "COP")
 
     def test_reusing_idempotency_key_with_different_payload_conflicts(self):
         self.assertEqual(self._create().status_code, 201)

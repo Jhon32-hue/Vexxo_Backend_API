@@ -33,6 +33,23 @@ class NotificationStatus(models.TextChoices):
     READ = "read", "Read"
 
 
+class NotificationCategory(models.TextChoices):
+    LIFECYCLE = "lifecycle", "Lifecycle"
+    SECURITY = "security", "Security"
+    FINANCE = "finance", "Finance"
+    COLLABORATION = "collaboration", "Collaboration"
+    REMINDER = "reminder", "Reminder"
+    INTEGRATION = "integration", "Integration"
+    SYSTEM = "system", "System"
+
+
+class NotificationPriority(models.TextChoices):
+    LOW = "low", "Low"
+    NORMAL = "normal", "Normal"
+    HIGH = "high", "High"
+    CRITICAL = "critical", "Critical"
+
+
 class NotificationDelivery(models.Model):
     """
     Notificacion persistente para inbox y futuras entregas multicanal.
@@ -43,6 +60,22 @@ class NotificationDelivery(models.Model):
         on_delete=models.CASCADE,
         related_name="notification_deliveries",
     )
+    notification_key = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    category = models.CharField(
+        max_length=24,
+        choices=NotificationCategory.choices,
+        default=NotificationCategory.SYSTEM,
+        db_index=True,
+    )
+    priority = models.CharField(
+        max_length=16,
+        choices=NotificationPriority.choices,
+        default=NotificationPriority.NORMAL,
+        db_index=True,
+    )
+    template_key = models.CharField(max_length=128, blank=True, default="")
+    template_version = models.PositiveSmallIntegerField(default=1)
+    action_path = models.CharField(max_length=255, blank=True, default="")
     channel = models.CharField(max_length=16, choices=NotificationChannel.choices, default=NotificationChannel.IN_APP)
     status = models.CharField(max_length=16, choices=NotificationStatus.choices, default=NotificationStatus.PENDING)
     event_type = models.CharField(max_length=128, blank=True, default="")
@@ -63,6 +96,7 @@ class NotificationDelivery(models.Model):
             models.Index(fields=["owner", "channel"]),
             models.Index(fields=["owner", "created_at"]),
             models.Index(fields=["event_type", "created_at"]),
+            models.Index(fields=["category", "priority", "created_at"]),
         ]
 
     def __str__(self) -> str:

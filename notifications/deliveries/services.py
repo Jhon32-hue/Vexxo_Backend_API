@@ -8,7 +8,13 @@ Descripcion general:
 
 from __future__ import annotations
 
-from notifications.deliveries.models import NotificationChannel, NotificationDelivery, NotificationStatus
+from notifications.deliveries.models import (
+    NotificationCategory,
+    NotificationChannel,
+    NotificationDelivery,
+    NotificationPriority,
+    NotificationStatus,
+)
 
 
 def create_notification_delivery(
@@ -22,6 +28,12 @@ def create_notification_delivery(
     channel: str = NotificationChannel.IN_APP,
     dedupe_key: str = "",
     mark_delivered_immediately: bool = True,
+    notification_key: str = "",
+    category: str = NotificationCategory.SYSTEM,
+    priority: str = NotificationPriority.NORMAL,
+    template_key: str = "",
+    template_version: int = 1,
+    action_path: str = "",
 ) -> NotificationDelivery:
     payload = payload or {}
     normalized_dedupe = (dedupe_key or "").strip()
@@ -31,6 +43,12 @@ def create_notification_delivery(
             dedupe_key=normalized_dedupe,
             defaults={
                 "owner": owner,
+                "notification_key": notification_key,
+                "category": category,
+                "priority": priority,
+                "template_key": template_key or notification_key,
+                "template_version": template_version,
+                "action_path": action_path,
                 "channel": channel,
                 "event_type": event_type,
                 "source": source,
@@ -45,6 +63,12 @@ def create_notification_delivery(
 
     obj = NotificationDelivery.objects.create(
         owner=owner,
+        notification_key=notification_key,
+        category=category,
+        priority=priority,
+        template_key=template_key or notification_key,
+        template_version=template_version,
+        action_path=action_path,
         channel=channel,
         event_type=event_type,
         source=source,

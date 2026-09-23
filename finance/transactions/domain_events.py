@@ -69,6 +69,7 @@ def build_transaction_payload(tx, *, before: dict | None = None, after: dict | N
         "confirmed": tx.confirmed,
         "affects_balance": tx.affects_balance,
         "amount": str(tx.amount),
+        "currency": str(getattr(tx.account, "currency", "") or getattr(tx.owner, "preferred_currency", "") or "COP").upper(),
         "date": _serialize_dateish(tx.date),
         "description": tx.description,
         "booking_datetime": _serialize_dateish(tx.booking_datetime),

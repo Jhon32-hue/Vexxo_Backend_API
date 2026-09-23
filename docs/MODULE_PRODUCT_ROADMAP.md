@@ -132,10 +132,10 @@ externa y nunca debe convertirse en la fuente contable final.
 | `alerts.triggers` | Scaffold | Sin uso directo. | Operacion identifica el evento disparador. | Implementar solo si rules/listeners no cubren la responsabilidad. |
 | `alerts.listeners` | Scaffold nominal | Sin API; los handlers reales viven hoy junto al dominio. | Operacion observa consumo y retries. | Consolidar ubicacion sin duplicar listeners. |
 | `alerts.ai_stub` | Scaffold/adaptador | Enriquecimiento opcional, nunca autoridad financiera. | Operacion ve version y estado del job. | Fake local y contrato de explicabilidad. |
-| `notifications.deliveries` | Operativo | Inbox persistente y marcar como leida. | Soporte consulta estados agregados. | Dedupe por evento/canal y retry de entregas. |
-| `notifications.preferences` | Operativo | Activar o silenciar canales y tipos. | Soporte explica por que no se entrego. | Aplicar preferencias en todos los listeners. |
-| `notifications.listeners` | Operativo parcial | Convierte eventos en items de inbox. | Operacion monitorea efectos por evento. | Matriz documentada de evento a notificacion. |
-| `notifications.templates` | Scaffold | Mensajes consistentes por locale/canal. | Operacion versiona plantillas. | Introducir cuando exista mas de un canal real. |
+| `notifications.deliveries` | Operativo | Inbox persistente, categorizado y accionable. | Soporte consulta identidad, prioridad, plantilla y evento origen. | Worker durable de email/push con retry y dead letter. |
+| `notifications.preferences` | Operativo | Activar o silenciar canales opcionales; seguridad in-app permanece obligatoria. | Soporte explica por que no se entrego. | Agregar preferencias granulares por categoria cuando exista evidencia de uso. |
+| `notifications.listeners` | Operativo | Convierte eventos relevantes en items minimizados del inbox. | Operacion monitorea dedupe y evento origen. | Aplicar preferencias finas por tipo cuando exista evidencia de uso. |
+| `notifications.templates` | Operativo en codigo | Catalogo versionado de copy, categoria, prioridad, deeplink y allowlist de payload. | Operacion inspecciona el catalogo por API sin editarlo en caliente. | Agregar variantes email/push sobre el mismo catalogo. |
 | `realtime.consumers` | Parcial | Polling de senales para refrescar vistas. | Operacion inspecciona backlog y expiracion. | Contrato de cursor, ack y retencion; WebSocket no es prioridad. |
 
 Para el volumen inicial de aproximadamente 1.000 usuarios no se requiere

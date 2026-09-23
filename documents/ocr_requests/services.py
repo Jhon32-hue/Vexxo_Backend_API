@@ -8,6 +8,7 @@ from django.db.models import Q
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
+from common.domain_events import EventNames
 from documents.files.models import DocumentFile
 from documents.files.services import read_document_plaintext
 from documents.ocr_requests.event_service import enqueue_document_event
@@ -103,7 +104,11 @@ def process_ocr_batch(*, limit: int = 25, worker_id: str = "") -> dict:
                 )
                 request.document.save(update_fields=["status", "updated_at"])
                 enqueue_document_event(
-                    event_type="documents.ocr.completed.v1" if text else "documents.ocr.review_required.v1",
+                    event_type=(
+                        EventNames.DOCUMENT_OCR_COMPLETED
+                        if text
+                        else EventNames.DOCUMENT_OCR_REVIEW_REQUIRED
+                    ),
                     request=request,
                     payload={
                         "owner_id": request.owner_id,

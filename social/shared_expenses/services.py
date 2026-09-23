@@ -8,10 +8,9 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.utils import timezone
 
+from common.domain_events import EventNames
 from finance.transactions.Models import Transaction, TransactionParticipant
 from finance.transactions.transaction_write_service import create_manual_transaction
-from notifications.deliveries.models import NotificationChannel
-from notifications.deliveries.services import create_notification_delivery
 from social.shared_expenses.event_service import enqueue_shared_expense_event
 from social.shared_expenses.models import SharedExpense, SharedExpenseSettlement, SharedExpenseShare
 
@@ -147,15 +146,17 @@ def _create_share_records(*, expense: SharedExpense, calculated: list[dict]) -> 
         share.save()
         records.append(share)
         if share.participant_user_id and not share.is_payer:
-            create_notification_delivery(
-                owner=share.participant_user,
-                title="Te invitaron a dividir un gasto",
-                message=f"{expense.owner.display_name} te asigno {share.expected_amount} {expense.currency}.",
-                event_type="shared_expenses.share.invited.v1",
-                source="social.shared_expenses",
-                payload={"shared_expense_id": str(expense.public_id), "share_id": str(share.public_id)},
-                channel=NotificationChannel.IN_APP,
-                dedupe_key=f"shared-expense-share:{share.public_id}:invited",
+            enqueue_shared_expense_event(
+                expense=expense,
+                event_type=EventNames.SHARED_EXPENSE_SHARE_INVITED,
+                action=f"share_invited:{share.public_id}",
+                actor_id=expense.owner_id,
+                extra={
+                    "participant_user_id": share.participant_user_id,
+                    "share_id": str(share.public_id),
+                    "amount": str(share.expected_amount),
+                    "currency": expense.currency,
+                },
             )
     return records
 

@@ -9,6 +9,8 @@ Su responsabilidad es:
 - almacenar entregas visibles por el usuario
 - deduplicar mensajes cuando el bus reintenta
 - permitir lectura, listado y marcado como leido
+- conservar `notification_key`, categoria, prioridad, plantilla/version y ruta
+  de accion sin depender del texto visible
 
 ## Alcance documental
 
@@ -20,10 +22,11 @@ Su foco es solo `NotificationDelivery` y la semantica del inbox durable.
 
 ## Flujo Principal
 
-1. un listener decide crear una notificacion
-2. `create_notification_delivery()` persiste la entrega
-3. mobile/web consulta el inbox por API
-4. el usuario marca una o varias entregas como leidas
+1. un listener consulta el catalogo versionado
+2. el catalogo minimiza el payload y define la ruta de accion
+3. `create_notification_delivery()` persiste la entrega idempotente
+4. mobile/web consulta el inbox por API
+5. el usuario marca una o varias entregas como leidas y navega al contexto
 
 ## Diferencia Frente a Otras Capas
 
@@ -57,6 +60,8 @@ Es una pieza simple y robusta para Cloud SQL + Cloud Run:
 - la deduplicacion debe proteger frente a retries del bus
 - el estado `read` no debe perder trazabilidad de `delivered`
 - la UI no debe confundir inbox con realtime efimero
+- el payload publico usa allowlist por tipo; no replica eventos financieros
+  completos, tokens ni metadata de proveedor
 
 ## Estado Actual
 
