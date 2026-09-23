@@ -135,6 +135,11 @@ def build_collection() -> dict:
         ("income_source_id", ""),
         ("tag_id", ""),
         ("participant_id", ""),
+        ("shared_expense_id", ""),
+        ("shared_expense_share_id", ""),
+        ("shared_expense_version", "1"),
+        ("invited_access_token", ""),
+        ("invited_transaction_id", ""),
         ("budget_id", ""),
         ("shared_budget_id", ""),
         ("team_id", ""),
@@ -563,7 +568,67 @@ def build_collection() -> dict:
         request("List Team Members", "GET", "/api/social/teams/miembros/?team={{team_id}}", "Miembros del equipo."),
         request("Add Team Member", "POST", "/api/social/teams/miembros/", "Agrega miembro a equipo.", body={"team": "{{team_id}}", "user": "{{user_id}}", "role": "member"}, capture=("team_member_id", "data.id"), expected=(201, 400)),
     ]
-    sections.append(folder("11 - Contacts and Teams", "Contactos, equipos y base social para gastos compartidos.", social_items))
+    sections.append(folder("12 - Contacts and Teams", "Contactos, equipos y base social para gastos compartidos.", social_items))
+
+    shared_expense_items = [
+        request("List Shared Expenses", "GET", "/api/social/shared-expenses/shared-expenses/", "Aggregates propios, invitaciones y gastos de equipos visibles."),
+        request(
+            "Create Shared Expense",
+            "POST",
+            "/api/social/shared-expenses/shared-expenses/",
+            "Crea gasto manual y reparto de forma atomica e idempotente.",
+            headers=[("Idempotency-Key", "postman-shared-expense-001")],
+            body={
+                "transaction_payload": {"account": "{{account_id}}", "category": "{{category_id}}", "type": "expense", "status": "posted", "amount": "90000.00", "date": "{{current_date}}", "description": "Cena compartida", "channel": "manual", "data_origin": "manual", "confirmed": True},
+                "split_method": "equal",
+                "shares": [
+                    {"display_name": "Yo", "is_payer": True},
+                    {"display_name": "Invitado Postman", "email": "invitado@example.com", "is_payer": False},
+                ],
+            },
+            capture=("shared_expense_id", "data.public_id"),
+            extra_tests=[
+                "if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) {",
+                "  const data = pm.response.json();",
+                "  const invited = (data.shares || []).find((item) => !item.is_payer);",
+                "  if (invited) pm.collectionVariables.set('shared_expense_share_id', invited.public_id);",
+                "  if (data.version) pm.collectionVariables.set('shared_expense_version', data.version);",
+                "}",
+            ],
+            expected=(201, 400, 409),
+        ),
+        request("Retrieve Shared Expense", "GET", "/api/social/shared-expenses/shared-expenses/{{shared_expense_id}}/", "Detalle versionado del reparto."),
+        request(
+            "Accept Shared Expense Share",
+            "POST",
+            "/api/social/shared-expenses/shared-expenses/{{shared_expense_id}}/accept/",
+            "Ejecutar con invited_access_token del usuario cuyo correo coincide con la invitacion.",
+            bearer_variable="invited_access_token",
+            body={"share_id": "{{shared_expense_share_id}}", "base_version": "{{shared_expense_version}}"},
+            expected=(200, 400, 401, 403, 404, 409),
+        ),
+        request(
+            "Revise Shared Expense",
+            "POST",
+            "/api/social/shared-expenses/shared-expenses/{{shared_expense_id}}/revise/",
+            "El pagador puede revisar partes solo antes de aceptaciones ajenas.",
+            body={"base_version": "{{shared_expense_version}}", "split_method": "percentage", "shares": [{"display_name": "Yo", "is_payer": True, "percentage": "60.00"}, {"display_name": "Invitado Postman", "email": "invitado@example.com", "is_payer": False, "percentage": "40.00"}]},
+            expected=(200, 400, 403, 404, 409),
+        ),
+        request(
+            "Settle Shared Expense Share",
+            "POST",
+            "/api/social/shared-expenses/shared-expenses/{{shared_expense_id}}/settle/",
+            "Requiere una parte aceptada y una transaccion real del actor invitado.",
+            bearer_variable="invited_access_token",
+            headers=[("Idempotency-Key", "postman-shared-settlement-001")],
+            body={"share_id": "{{shared_expense_share_id}}", "transaction": "{{invited_transaction_id}}", "amount": "45000.00", "base_version": "{{shared_expense_version}}"},
+            expected=(200, 400, 401, 403, 404, 409),
+        ),
+        request("Dispute Shared Expense Share", "POST", "/api/social/shared-expenses/shared-expenses/{{shared_expense_id}}/dispute/", "Abre una disputa trazable sobre una parte.", bearer_variable="invited_access_token", body={"share_id": "{{shared_expense_share_id}}", "base_version": "{{shared_expense_version}}"}, expected=(200, 400, 401, 403, 404, 409)),
+        request("Cancel Shared Expense", "POST", "/api/social/shared-expenses/shared-expenses/{{shared_expense_id}}/cancel/", "Cancela el aggregate si aun no tiene liquidaciones.", body={"base_version": "{{shared_expense_version}}"}, expected=(200, 400, 403, 404, 409)),
+    ]
+    sections.append(folder("13 - Shared Expenses", "Division, invitacion, acceptance, disputa y settlement sin duplicar el ledger.", shared_expense_items))
 
     catalog_items = [
         request("List Categories", "GET", "/api/finance/categories/categorias/", "Categorias personales; nunca devuelve categorias de otro owner.", capture=("category_id", "(((data.results || data).find((item) => item.type === 'expense')) || {}).id")),
@@ -586,7 +651,7 @@ def build_collection() -> dict:
         request("Create Shared Goal", "POST", "/api/planning/shared-goals/goals/", "Comparte una meta con un equipo sin transferir ownership.", body={"goal": "{{goal_id}}", "team": "{{team_id}}", "contribution_policy": "members"}, capture=("shared_goal_id", "data.id"), expected=(201, 400)),
         request("Shared Goal Projection", "GET", "/api/planning/shared-goals/goals/{{shared_goal_id}}/projection/", "Consulta la proyeccion bajo membresia activa.", expected=(200, 403, 404)),
     ]
-    sections.append(folder("12 - Finance Catalogs and Planning", "Categorias, comercios, FX, deudas y metas.", catalog_items))
+    sections.append(folder("14 - Finance Catalogs and Planning", "Categorias, comercios, FX, deudas y metas.", catalog_items))
 
     report_items = [
         request("Cashflow Report", "GET", "/api/reports/reportes/cashflow?date_from={{current_date}}&date_to={{current_date}}", "Flujo de caja por periodo."),
@@ -598,7 +663,7 @@ def build_collection() -> dict:
         request("Create Encrypted Export", "POST", "/api/reports/exports/", "Crea un job durable desde un snapshot inmutable.", body={"snapshot_id": "{{report_snapshot_id}}", "format": "json"}, capture=("report_export_id", "data.id"), extra_tests=["if (pm.response.code === 202 && pm.response.text()) {", "  const payload = pm.response.json();", "  if (payload.download_token) pm.collectionVariables.set('report_download_token', payload.download_token);", "}"], expected=(202, 400, 404, 503)),
         request("Download Report Export", "GET", "/api/reports/exports/{{report_export_id}}/download/", "Descarga de un solo uso cuando el scheduler marque el export ready.", headers=[("X-Download-Token", "{{report_download_token}}")], expected=(200, 404)),
     ]
-    sections.append(folder("13 - Reports and Standard Queries", "Consultas agregadas para producto, soporte y analitica.", report_items))
+    sections.append(folder("15 - Reports and Standard Queries", "Consultas agregadas para producto, soporte y analitica.", report_items))
 
     open_banking_items = [
         request("List Open Banking Providers", "GET", "/api/integrations/open-banking/providers/", "Muestra por separado configured, certified y available; credenciales solas no habilitan un proveedor."),
@@ -611,7 +676,7 @@ def build_collection() -> dict:
         request("Connection Timeline", "GET", "/api/integrations/open-banking/connections/{{open_banking_connection_id}}/timeline/", "Timeline minimizado de consentimiento, sync, webhook y revocacion.", expected=(200, 404)),
         request("Revoke Bank Connection", "POST", "/api/integrations/open-banking/connections/{{open_banking_connection_id}}/revoke/", "Revoca consentimiento y detiene recoleccion futura.", body={}, expected=(200, 400, 404)),
     ]
-    sections.append(folder("14 - Open Banking", "Consentimiento, catalogo, cuentas, sync, reconciliacion y revocacion local-first.", open_banking_items))
+    sections.append(folder("16 - Open Banking", "Consentimiento, catalogo, cuentas, sync, reconciliacion y revocacion local-first.", open_banking_items))
 
     integration_items = [
         request("Bank Account Sync", "POST", "/api/internal/integrations/banks/accounts/sync/", "Stub interno de sincronizacion bancaria.", internal=True, body={"account_id": "{{account_id}}", "mode": "success", "sync_cursor": "cursor-postman", "provider_metadata": {"provider": "{{bank_provider}}"}}, expected=(200, 400, 401, 403)),
@@ -623,7 +688,7 @@ def build_collection() -> dict:
         request("Transaction Intake Row", "POST", "/api/internal/transactions/intake/row/", "Intake interno single-row idempotente.", internal=True, body={"provider": "{{bank_provider}}", "source": "open_banking", "provider_account_id": "provider-account-001", "external_id": "provider-txn-001", "normalized_payload": {"account_id": "{{account_id}}", "amount": "25000.00", "type": "expense", "date": "{{current_date}}"}}, expected=(200, 201, 400, 401, 403)),
         request("Transaction Intake Batch", "POST", "/api/internal/transactions/intake/batches/", "Crea batch durable de intake.", internal=True, body={"provider": "{{bank_provider}}", "source": "open_banking", "provider_account_id": "provider-account-001", "rows": []}, expected=(200, 201, 400, 401, 403)),
     ]
-    sections.append(folder("15 - Internal Integrations and Services", "Solo adapters/workers. Requiere internal_token y no es API mobile publica.", integration_items))
+    sections.append(folder("17 - Internal Integrations and Services", "Solo adapters/workers. Requiere internal_token y no es API mobile publica.", integration_items))
 
     operation_items = [
         request("Account Outbox Health", "GET", "/api/finance/accounts/outbox-cuentas/health/", "Salud del outbox accounts."),
@@ -636,7 +701,7 @@ def build_collection() -> dict:
         request("Retry Account Outbox Event", "POST", "/api/finance/accounts/outbox-cuentas/{{outbox_event_id}}/retry/", "Reintenta evento fallido con auditoria.", body={}, expected=(200, 400, 403)),
         request("Release Account Outbox Lock", "POST", "/api/finance/accounts/outbox-cuentas/{{outbox_event_id}}/release_lock/", "Libera lock stale de soporte.", body={}, expected=(200, 400, 403)),
     ]
-    sections.append(folder("16 - Eventing and Operations", "Outboxes, contratos, health, retries y locks.", operation_items))
+    sections.append(folder("18 - Eventing and Operations", "Outboxes, contratos, health, retries y locks.", operation_items))
 
     support_items = [
         request(
@@ -671,7 +736,7 @@ def build_collection() -> dict:
         request("Audit by Module", "GET", "/api/support/audit/auditoria/?module=accounts", "Consulta estandar por modulo."),
         request("Audit by Entity", "GET", "/api/support/audit/auditoria/?entity=Account&entity_id={{account_id}}", "Consulta por agregado y entidad."),
     ]
-    sections.append(folder("17 - Support and Audit", "Consultas read-only para soporte y auditoria.", support_items))
+    sections.append(folder("19 - Support and Audit", "Consultas read-only para soporte y auditoria.", support_items))
 
     sections.append(
         folder(

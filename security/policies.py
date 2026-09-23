@@ -142,6 +142,8 @@ REVIEWED_JSON_FIELDS = frozenset(
         "social_identities.UserSocialIdentity.metadata",
         "socialaccount.SocialAccount.extra_data",
         "socialaccount.SocialApp.settings",
+        "shared_expenses.SharedExpenseDomainEventOutbox.metadata",
+        "shared_expenses.SharedExpenseDomainEventOutbox.payload",
         "task_scheduled.ScheduledJobState.last_result",
         "transactions.Transaction.comments",
         "transactions.Transaction.components",

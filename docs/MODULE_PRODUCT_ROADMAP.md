@@ -108,7 +108,7 @@ externa y nunca debe convertirse en la fuente contable final.
 | `social.groups` | Scaffold | Agrupar personas para casos compartidos. | Soporte inspecciona ownership y membresias. | Definir diferencia exacta frente a teams. |
 | `social.memberships` | Scaffold | Aceptar, cambiar rol o abandonar un grupo. | Soporte resuelve estados e invitaciones. | Modelo de autorizacion comun reutilizable. |
 | `social.invitations` | Operativo basico | Enviar, abrir, aceptar y revocar invitaciones con rol y vencimiento. | Notificacion durable y trazabilidad de lifecycle. | Outbox contextual cuando existan mas consumidores. |
-| `social.shared_expenses` | Scaffold | Dividir gasto, aceptar participacion y liquidar. | Soporte reconstruye partes, saldos y disputas. | Aggregate y ledger de settlement sin duplicar `TransactionParticipant`. |
+| `social.shared_expenses` | Operativo | Dividir por partes iguales, monto, porcentaje o peso; aceptar, disputar y liquidar. | Aggregate versionado, settlement trazable y outbox durable. | UX de soporte para conflictos y reverso formal de settlement. |
 | `social.chat` | Scaffold | Conversar sobre una operacion compartida. | Moderacion y soporte con acceso excepcional auditado. | Posponer hasta cerrar colaboracion financiera; alta carga de privacidad. |
 | `social.documents_shared` | Scaffold | Compartir comprobantes con permisos explicitos. | Soporte inspecciona grants, no contenido por defecto. | Depende de Documents y de permisos de membresia. |
 
@@ -254,8 +254,11 @@ de `v1`. Produccion debera usar custodia externa y doble control.
 - gastos compartidos y settlement
 - metas compartidas
 
-Metas compartidas ya cubren membresia, politica de aportes y ownership por
-contribuyente. Gastos compartidos y settlement siguen pendientes.
+Metas compartidas cubren membresia, politica de aportes y ownership por
+contribuyente. Gastos compartidos ya cubren reparto exacto, invitacion,
+aceptacion, disputa, versionado optimista, settlement contra una transaccion
+real y eventos durables. Quedan como evolucion el reverso formal de settlement
+y una vista de soporte especializada para conflictos.
 
 ### P5. Reportes y exportaciones
 

@@ -201,7 +201,7 @@ services:
 
   domain-outbox:
     <<: *backend-common
-    command: ["python", "manage.py", "publish_outbox", "debts,goals,documents", "--loop", "--sleep-seconds", "5"]
+    command: ["python", "manage.py", "publish_outbox", "debts,goals,documents,shared_expenses", "--loop", "--sleep-seconds", "5"]
 
   scheduler-local:
     <<: *backend-common

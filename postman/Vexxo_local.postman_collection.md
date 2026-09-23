@@ -50,13 +50,14 @@ La generacion no necesita Django ni credenciales. La primera linea solo verifica
 | `09 - Alerts and Rules` | 7 | Alertas de producto, acciones y reglas configurables. |
 | `10 - Notifications and Realtime` | 8 | Inbox durable, preferencias y senales de UX. |
 | `11 - Documents and OCR` | 8 | Archivos privados, OCR durable y vinculacion al ledger. |
-| `11 - Contacts and Teams` | 8 | Contactos, equipos y base social para gastos compartidos. |
-| `12 - Finance Catalogs and Planning` | 19 | Categorias, comercios, FX, deudas y metas. |
-| `13 - Reports and Standard Queries` | 8 | Consultas agregadas para producto, soporte y analitica. |
-| `14 - Open Banking` | 9 | Consentimiento, catalogo, cuentas, sync, reconciliacion y revocacion local-first. |
-| `15 - Internal Integrations and Services` | 8 | Solo adapters/workers. Requiere internal_token y no es API mobile publica. |
-| `16 - Eventing and Operations` | 9 | Outboxes, contratos, health, retries y locks. |
-| `17 - Support and Audit` | 7 | Consultas read-only para soporte y auditoria. |
+| `12 - Contacts and Teams` | 8 | Contactos, equipos y base social para gastos compartidos. |
+| `13 - Shared Expenses` | 8 | Division, invitacion, acceptance, disputa y settlement sin duplicar el ledger. |
+| `14 - Finance Catalogs and Planning` | 19 | Categorias, comercios, FX, deudas y metas. |
+| `15 - Reports and Standard Queries` | 8 | Consultas agregadas para producto, soporte y analitica. |
+| `16 - Open Banking` | 9 | Consentimiento, catalogo, cuentas, sync, reconciliacion y revocacion local-first. |
+| `17 - Internal Integrations and Services` | 8 | Solo adapters/workers. Requiere internal_token y no es API mobile publica. |
+| `18 - Eventing and Operations` | 9 | Outboxes, contratos, health, retries y locks. |
+| `19 - Support and Audit` | 7 | Consultas read-only para soporte y auditoria. |
 | `90 - Planned Contracts - Not Executable` | 0 | Roadmap contractual. Estas carpetas no inventan endpoints: documentan fronteras futuras hasta que exista implementacion y pruebas. |
 
 ## Variables

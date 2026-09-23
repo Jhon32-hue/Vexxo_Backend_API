@@ -438,6 +438,19 @@ Lectura:
 - `TransactionIntake*` y `TransactionSourceLink` separan ingreso externo de
   escritura contable
 - `TransactionReconciliationIssue` formaliza correcciones y reversos tardios
+- `SharedExpense` no reemplaza el ledger: coordina reparto, aceptacion y
+  settlement sobre transacciones reales mediante versionado e idempotencia
+
+#### Gastos compartidos
+
+`social.shared_expenses` ya es un vertical operativo. El alta compuesta crea el
+gasto manual y su reparto en una unica transaccion PostgreSQL, por lo que el
+outbox movil puede reintentar sin duplicar ledger. Las aceptaciones materializan
+`TransactionParticipant` solo despues de una accion explicita; las
+liquidaciones requieren otra transaccion real y conexion. Sus eventos salen por
+el outbox durable compartido, no por signals ni por una cola paralela.
+
+Contrato y operacion: [social/shared_expenses/README.md](social/shared_expenses/README.md).
 
 #### 3. Capa de eventos, proyecciones y experiencia
 

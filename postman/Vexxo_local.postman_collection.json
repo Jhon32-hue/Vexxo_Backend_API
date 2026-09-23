@@ -198,6 +198,31 @@
       "type": "string"
     },
     {
+      "key": "shared_expense_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "shared_expense_share_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "shared_expense_version",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "invited_access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "invited_transaction_id",
+      "value": "",
+      "type": "string"
+    },
+    {
       "key": "budget_id",
       "value": "",
       "type": "string"
@@ -5233,7 +5258,7 @@
       ]
     },
     {
-      "name": "11 - Contacts and Teams",
+      "name": "12 - Contacts and Teams",
       "description": "Contactos, equipos y base social para gastos compartidos.",
       "item": [
         {
@@ -5500,7 +5525,322 @@
       ]
     },
     {
-      "name": "12 - Finance Catalogs and Planning",
+      "name": "13 - Shared Expenses",
+      "description": "Division, invitacion, acceptance, disputa y settlement sin duplicar el ledger.",
+      "item": [
+        {
+          "name": "List Shared Expenses",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('List Shared Expenses: status esperado', function () {",
+                  "  pm.expect([200]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Aggregates propios, invitaciones y gastos de equipos visibles.",
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/social/shared-expenses/shared-expenses/"
+          }
+        },
+        {
+          "name": "Create Shared Expense",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Create Shared Expense: status esperado', function () {",
+                  "  pm.expect([201, 400, 409]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) {",
+                  "  const data = pm.response.json();",
+                  "  const value = data.public_id;",
+                  "  if (value !== undefined && value !== null) pm.collectionVariables.set('shared_expense_id', value);",
+                  "}",
+                  "if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) {",
+                  "  const data = pm.response.json();",
+                  "  const invited = (data.shares || []).find((item) => !item.is_payer);",
+                  "  if (invited) pm.collectionVariables.set('shared_expense_share_id', invited.public_id);",
+                  "  if (data.version) pm.collectionVariables.set('shared_expense_version', data.version);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Crea gasto manual y reparto de forma atomica e idempotente.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "postman-shared-expense-001"
+              }
+            ],
+            "url": "{{base_url}}/api/social/shared-expenses/shared-expenses/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transaction_payload\": {\n    \"account\": \"{{account_id}}\",\n    \"category\": \"{{category_id}}\",\n    \"type\": \"expense\",\n    \"status\": \"posted\",\n    \"amount\": \"90000.00\",\n    \"date\": \"{{current_date}}\",\n    \"description\": \"Cena compartida\",\n    \"channel\": \"manual\",\n    \"data_origin\": \"manual\",\n    \"confirmed\": true\n  },\n  \"split_method\": \"equal\",\n  \"shares\": [\n    {\n      \"display_name\": \"Yo\",\n      \"is_payer\": true\n    },\n    {\n      \"display_name\": \"Invitado Postman\",\n      \"email\": \"invitado@example.com\",\n      \"is_payer\": false\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Retrieve Shared Expense",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Retrieve Shared Expense: status esperado', function () {",
+                  "  pm.expect([200]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Detalle versionado del reparto.",
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/social/shared-expenses/shared-expenses/{{shared_expense_id}}/"
+          }
+        },
+        {
+          "name": "Accept Shared Expense Share",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Accept Shared Expense Share: status esperado', function () {",
+                  "  pm.expect([200, 400, 401, 403, 404, 409]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Ejecutar con invited_access_token del usuario cuyo correo coincide con la invitacion.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/social/shared-expenses/shared-expenses/{{shared_expense_id}}/accept/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{invited_access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"share_id\": \"{{shared_expense_share_id}}\",\n  \"base_version\": \"{{shared_expense_version}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Revise Shared Expense",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Revise Shared Expense: status esperado', function () {",
+                  "  pm.expect([200, 400, 403, 404, 409]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "El pagador puede revisar partes solo antes de aceptaciones ajenas.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/social/shared-expenses/shared-expenses/{{shared_expense_id}}/revise/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"base_version\": \"{{shared_expense_version}}\",\n  \"split_method\": \"percentage\",\n  \"shares\": [\n    {\n      \"display_name\": \"Yo\",\n      \"is_payer\": true,\n      \"percentage\": \"60.00\"\n    },\n    {\n      \"display_name\": \"Invitado Postman\",\n      \"email\": \"invitado@example.com\",\n      \"is_payer\": false,\n      \"percentage\": \"40.00\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Settle Shared Expense Share",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Settle Shared Expense Share: status esperado', function () {",
+                  "  pm.expect([200, 400, 401, 403, 404, 409]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Requiere una parte aceptada y una transaccion real del actor invitado.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "postman-shared-settlement-001"
+              }
+            ],
+            "url": "{{base_url}}/api/social/shared-expenses/shared-expenses/{{shared_expense_id}}/settle/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{invited_access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"share_id\": \"{{shared_expense_share_id}}\",\n  \"transaction\": \"{{invited_transaction_id}}\",\n  \"amount\": \"45000.00\",\n  \"base_version\": \"{{shared_expense_version}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Dispute Shared Expense Share",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Dispute Shared Expense Share: status esperado', function () {",
+                  "  pm.expect([200, 400, 401, 403, 404, 409]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Abre una disputa trazable sobre una parte.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/social/shared-expenses/shared-expenses/{{shared_expense_id}}/dispute/",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{invited_access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"share_id\": \"{{shared_expense_share_id}}\",\n  \"base_version\": \"{{shared_expense_version}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Cancel Shared Expense",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Cancel Shared Expense: status esperado', function () {",
+                  "  pm.expect([200, 400, 403, 404, 409]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Cancela el aggregate si aun no tiene liquidaciones.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/social/shared-expenses/shared-expenses/{{shared_expense_id}}/cancel/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"base_version\": \"{{shared_expense_version}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "14 - Finance Catalogs and Planning",
       "description": "Categorias, comercios, FX, deudas y metas.",
       "item": [
         {
@@ -6112,7 +6452,7 @@
       ]
     },
     {
-      "name": "13 - Reports and Standard Queries",
+      "name": "15 - Reports and Standard Queries",
       "description": "Consultas agregadas para producto, soporte y analitica.",
       "item": [
         {
@@ -6364,7 +6704,7 @@
       ]
     },
     {
-      "name": "14 - Open Banking",
+      "name": "16 - Open Banking",
       "description": "Consentimiento, catalogo, cuentas, sync, reconciliacion y revocacion local-first.",
       "item": [
         {
@@ -6652,7 +6992,7 @@
       ]
     },
     {
-      "name": "15 - Internal Integrations and Services",
+      "name": "17 - Internal Integrations and Services",
       "description": "Solo adapters/workers. Requiere internal_token y no es API mobile publica.",
       "item": [
         {
@@ -6978,7 +7318,7 @@
       ]
     },
     {
-      "name": "16 - Eventing and Operations",
+      "name": "18 - Eventing and Operations",
       "description": "Outboxes, contratos, health, retries y locks.",
       "item": [
         {
@@ -7215,7 +7555,7 @@
       ]
     },
     {
-      "name": "17 - Support and Audit",
+      "name": "19 - Support and Audit",
       "description": "Consultas read-only para soporte y auditoria.",
       "item": [
         {

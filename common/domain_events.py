@@ -27,6 +27,7 @@ class EventContext(str, Enum):
     BUDGETS = "budgets"
     GOALS = "goals"
     CONTACTS = "contacts"
+    SHARED_EXPENSES = "shared_expenses"
     DEBTS = "debts"
     REPORTS = "reports"
     FX = "fx"
@@ -153,6 +154,14 @@ class EventNames:
     TRANSACTION_PARTICIPANT_UPDATED = "transactions.participant.updated.v1"
     TRANSACTION_PARTICIPANT_DELETED = "transactions.participant.deleted.v1"
     TRANSACTION_PARTICIPANT_SETTLED = "transactions.participant.settled.v1"
+
+    # --- SHARED EXPENSES ---
+    SHARED_EXPENSE_CREATED = "shared_expenses.created.v1"
+    SHARED_EXPENSE_REVISED = "shared_expenses.revised.v1"
+    SHARED_EXPENSE_SHARE_ACCEPTED = "shared_expenses.share.accepted.v1"
+    SHARED_EXPENSE_DISPUTED = "shared_expenses.disputed.v1"
+    SHARED_EXPENSE_SETTLEMENT_RECORDED = "shared_expenses.settlement.recorded.v1"
+    SHARED_EXPENSE_CANCELED = "shared_expenses.canceled.v1"
 
     # --- ALERTS ---
     ALERT_CREATED = "alerts.created.v1"

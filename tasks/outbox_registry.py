@@ -11,6 +11,7 @@ from identity.eventing.models import IdentityDomainEventOutbox
 from payments.payment_intents.models import PaymentDomainEventOutbox
 from planning.goals.models import GoalDomainEventOutbox
 from documents.ocr_requests.models import DocumentDomainEventOutbox
+from social.shared_expenses.models import SharedExpenseDomainEventOutbox
 
 
 @dataclass(frozen=True)
@@ -49,4 +50,8 @@ OUTBOX_SPECS = {
     "debts": OutboxRuntimeSpec(model=DebtDomainEventOutbox, context=EventContext.DEBTS),
     "goals": OutboxRuntimeSpec(model=GoalDomainEventOutbox, context=EventContext.GOALS),
     "documents": OutboxRuntimeSpec(model=DocumentDomainEventOutbox, context=EventContext.DOCUMENTS),
+    "shared_expenses": OutboxRuntimeSpec(
+        model=SharedExpenseDomainEventOutbox,
+        context=EventContext.SHARED_EXPENSES,
+    ),
 }

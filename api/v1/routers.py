@@ -42,6 +42,7 @@ urlpatterns = [
     # -------------------
     path("social/teams/", include("social.teams.urls")),
     path("social/invitations/", include("social.invitations.urls")),
+    path("social/shared-expenses/", include("social.shared_expenses.urls")),
 
     # -------------------
     # PAYMENTS
