@@ -145,7 +145,12 @@ sequenceDiagram
 `identity.users` ya cubre estos caminos:
 
 - registro `email + password`
-- login con JWT y sesion/dispositivo
+- login con `email` o `username` interno, JWT y sesion/dispositivo
+- Flutter registra y luego inicia sesion automaticamente con el mismo correo;
+  un correo existente responde `409 email_exists`, nunca un error `500`
+- `Idempotency-Key` se conserva durante el intento movil. Repetir la misma
+  operacion devuelve la cuenta creada con `X-Idempotent-Replay: true`; reutilizar
+  la clave para otro correo devuelve `409 idempotency_conflict`
 - refresh seguro con deteccion de reuse
 - logout con revocacion
 - OAuth2 Google y Facebook
@@ -384,6 +389,8 @@ sin volver a meter lecturas OLTP pesadas en el request path.
 ## Relacion con notificaciones y correo
 
 - el correo de bienvenida se dispara desde `users.registered.v1`, no desde el request de registro
+- un fallo de entrega del correo de bienvenida queda trazado en notificaciones y
+  no revierte ni invalida la cuenta ya creada
 - el request de recovery responde siempre 200 para no filtrar si el correo o telefono existen
 - el registro no exige email verification para activar la cuenta; el email de bienvenida permanece informativo
 - el canal principal embebido para recovery y step-up es codigo corto temporal al telefono

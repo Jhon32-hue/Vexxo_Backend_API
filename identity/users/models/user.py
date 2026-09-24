@@ -58,6 +58,13 @@ class User(AbstractUser):
     """
 
     email = models.EmailField(_("Correo electrónico"), unique=True)
+    registration_idempotency_key_hash = models.CharField(
+        max_length=64,
+        unique=True,
+        null=True,
+        blank=True,
+        editable=False,
+    )
 
     phone_number = models.CharField(
         _("Teléfono / WhatsApp"),

@@ -21,6 +21,10 @@ Flutter en el emulador Android usa `http://10.0.2.2:8000`; Compose permite ese
 host solo en el perfil local. Para dispositivos fisicos, la IP LAN se agrega
 manualmente a `VEXXO_LOCAL_ALLOWED_HOSTS` sin habilitar `*`.
 
+El registro movil crea la cuenta y luego abre sesion con el mismo correo. El
+login acepta `email` o el `username` interno; reintentar un correo ya creado
+devuelve `409 email_exists` y no expone una excepcion de PostgreSQL.
+
 Deudas y metas ya operan con servicios explicitos y outboxes durables. Los
 slices financieros levantan `domain-outbox` y un `scheduler-local` singleton
 para vencimientos y pagos programados, por lo que no se necesitan Celery,

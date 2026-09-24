@@ -67,6 +67,113 @@ class IdentityUsersTests(TestCase):
         self.assertFalse(serializer.is_valid())
         self.assertIn("password", serializer.errors)
 
+    def test_mobile_register_then_login_by_email_creates_session(self):
+        payload = {
+            "full_name": "Grace Hopper",
+            "email": "grace@example.com",
+            "password": "VexxoPass2026!",
+            "password2": "VexxoPass2026!",
+        }
+
+        register_response = self.client.post(
+            "/api/identity/users/auth/register/",
+            payload,
+            format="json",
+        )
+        login_response = self.client.post(
+            "/api/identity/users/auth/login/",
+            {"email": payload["email"], "password": payload["password"]},
+            format="json",
+        )
+
+        self.assertEqual(register_response.status_code, 201, register_response.data)
+        self.assertEqual(login_response.status_code, 200, login_response.data)
+        self.assertIn("access", login_response.data)
+        self.assertIn("refresh", login_response.data)
+        self.assertIn("session", login_response.data)
+
+    def test_registration_replays_same_idempotency_key(self):
+        payload = {
+            "full_name": "Katherine Johnson",
+            "email": "katherine@example.com",
+            "password": "VexxoPass2026!",
+            "password2": "VexxoPass2026!",
+        }
+        headers = {"HTTP_IDEMPOTENCY_KEY": "register-mobile-123"}
+
+        first = self.client.post(
+            "/api/identity/users/auth/register/",
+            payload,
+            format="json",
+            **headers,
+        )
+        replay = self.client.post(
+            "/api/identity/users/auth/register/",
+            payload,
+            format="json",
+            **headers,
+        )
+
+        self.assertEqual(first.status_code, 201, first.data)
+        self.assertEqual(replay.status_code, 200, replay.data)
+        self.assertEqual(replay["X-Idempotent-Replay"], "true")
+        self.assertEqual(first.data["id"], replay.data["id"])
+        self.assertEqual(User.objects.filter(email=payload["email"]).count(), 1)
+
+    def test_register_existing_email_returns_conflict_without_server_error(self):
+        User.objects.create_user(
+            username="existing-user",
+            email="existing@example.com",
+            password="VexxoPass2026!",
+        )
+
+        response = self.client.post(
+            "/api/identity/users/auth/register/",
+            {
+                "full_name": "Existing User",
+                "email": "EXISTING@example.com",
+                "password": "VexxoPass2026!",
+                "password2": "VexxoPass2026!",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 409, response.data)
+        self.assertEqual(response.data["code"], "email_exists")
+        self.assertEqual(User.objects.filter(email__iexact="existing@example.com").count(), 1)
+
+    def test_registration_rejects_idempotency_key_reused_for_another_email(self):
+        headers = {"HTTP_IDEMPOTENCY_KEY": "register-mobile-shared-key"}
+        first_payload = {
+            "full_name": "First User",
+            "email": "first@example.com",
+            "password": "VexxoPass2026!",
+            "password2": "VexxoPass2026!",
+        }
+        second_payload = {
+            **first_payload,
+            "full_name": "Second User",
+            "email": "second@example.com",
+        }
+
+        first = self.client.post(
+            "/api/identity/users/auth/register/",
+            first_payload,
+            format="json",
+            **headers,
+        )
+        conflict = self.client.post(
+            "/api/identity/users/auth/register/",
+            second_payload,
+            format="json",
+            **headers,
+        )
+
+        self.assertEqual(first.status_code, 201, first.data)
+        self.assertEqual(conflict.status_code, 409, conflict.data)
+        self.assertEqual(conflict.data["code"], "idempotency_conflict")
+        self.assertFalse(User.objects.filter(email="second@example.com").exists())
+
     def test_plan_capabilities_are_canonical_for_free(self):
         capabilities = get_plan_capabilities("free")
         self.assertEqual(capabilities["max_active_accounts"], 3)

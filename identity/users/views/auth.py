@@ -16,8 +16,11 @@ Analisis detallado:
 
 from __future__ import annotations
 
+import hashlib
+
 from django.contrib.auth import authenticate, get_user_model
 from django.core.exceptions import ImproperlyConfigured
+from django.db import IntegrityError, transaction
 from rest_framework import generics, permissions, serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -250,6 +253,13 @@ def _build_social_session_response(*, request, user, provider: str, login_mode: 
 
 
 class EmailOrUsernameTokenSerializer(TokenObtainPairSerializer):
+    username = serializers.CharField(required=False, allow_blank=True)
+    email = serializers.EmailField(required=False, allow_blank=True, write_only=True)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields[self.username_field].required = False
+
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
@@ -264,8 +274,11 @@ class EmailOrUsernameTokenSerializer(TokenObtainPairSerializer):
         return token
 
     def validate(self, attrs):
-        login = (attrs.get("username") or "").strip()
+        login = (attrs.get("username") or attrs.get("email") or "").strip().lower()
         password = attrs.get("password")
+
+        if not login:
+            raise serializers.ValidationError({"email": "Debes enviar correo o usuario."})
 
         user = _resolve_login_user(login, password)
         if not user:
@@ -330,6 +343,72 @@ class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserRegisterSerializer
     permission_classes = [permissions.AllowAny]
+
+    def create(self, request, *args, **kwargs):
+        email = str(request.data.get("email") or "").strip().lower()
+        idempotency_key = str(request.headers.get("Idempotency-Key") or "").strip()
+        idempotency_hash = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest() if idempotency_key else ""
+
+        if idempotency_hash:
+            replay_user = User.objects.filter(
+                registration_idempotency_key_hash=idempotency_hash,
+            ).first()
+            if replay_user is not None:
+                if replay_user.email.lower() != email:
+                    return Response(
+                        {
+                            "detail": "La clave idempotente ya fue usada para otro registro.",
+                            "code": "idempotency_conflict",
+                        },
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                return Response(
+                    self.get_serializer(replay_user).data,
+                    status=status.HTTP_200_OK,
+                    headers={"X-Idempotent-Replay": "true"},
+                )
+
+        if email and User.objects.filter(email__iexact=email).exists():
+            return self._email_exists_response()
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            with transaction.atomic():
+                self.perform_create(serializer)
+                if idempotency_hash:
+                    serializer.instance.registration_idempotency_key_hash = idempotency_hash
+                    serializer.instance.save(
+                        update_fields=["registration_idempotency_key_hash", "updated_at"],
+                    )
+        except IntegrityError:
+            existing_user = User.objects.filter(email__iexact=email).first() if email else None
+            if (
+                existing_user is not None
+                and idempotency_hash
+                and existing_user.registration_idempotency_key_hash == idempotency_hash
+            ):
+                return Response(
+                    self.get_serializer(existing_user).data,
+                    status=status.HTTP_200_OK,
+                    headers={"X-Idempotent-Replay": "true"},
+                )
+            if existing_user is not None:
+                return self._email_exists_response()
+            raise
+
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    @staticmethod
+    def _email_exists_response():
+        return Response(
+            {
+                "detail": "Ya existe una cuenta con este correo.",
+                "code": "email_exists",
+            },
+            status=status.HTTP_409_CONFLICT,
+        )
 
 
 class PasswordResetRequestView(APIView):
@@ -643,10 +722,7 @@ class LoginView(TokenObtainPairView):
             )
             return response
 
-        user = _resolve_login_user(
-            str(request.data.get("username") or ""),
-            str(request.data.get("password") or ""),
-        )
+        user = _resolve_login_user(login, str(request.data.get("password") or ""))
         if user is None:
             return response
 
