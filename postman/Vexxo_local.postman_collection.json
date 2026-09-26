@@ -178,6 +178,11 @@
       "type": "string"
     },
     {
+      "key": "manual_submission_key",
+      "value": "postman-manual-001",
+      "type": "string"
+    },
+    {
       "key": "inference_request_id",
       "value": "",
       "type": "string"
@@ -2944,7 +2949,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Create Manual Expense: status esperado', function () {",
-                  "  pm.expect([201, 400]).to.include(pm.response.code);",
+                  "  pm.expect([200, 201, 400, 409, 410]).to.include(pm.response.code);",
                   "});",
                   "if (pm.response.code >= 200 && pm.response.code < 300 && pm.response.text()) {",
                   "  const data = pm.response.json();",
@@ -2956,12 +2961,16 @@
             }
           ],
           "request": {
-            "description": "Escritura manual canonica del ledger.",
+            "description": "Escritura manual idempotente. Repetir con la misma clave y body devuelve 200 y el mismo ID. Otro body devuelve 409; original eliminado devuelve 410. Cambiar manual_submission_key solo para un movimiento nuevo. Congelar date al probar reintentos entre dias.",
             "method": "POST",
             "header": [
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{manual_submission_key}}"
               }
             ],
             "url": "{{base_url}}/api/finance/transactions/transactions/",

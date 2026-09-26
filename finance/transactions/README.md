@@ -1,5 +1,27 @@
 # finance.transactions
 
+## Registro manual idempotente
+
+`POST /api/finance/transactions/transactions/` acepta `Idempotency-Key` (maximo
+160 caracteres). Primera escritura: 201; mismo actor, clave y body: 200 con
+`Idempotency-Replayed: true`, sin repetir saldo ni eventos. Clave reutilizada
+con otro body: 409. Original eliminado: 410, sin recrearlo. Sin cabecera se
+mantiene compatibilidad, pero no existe garantia de deduplicacion.
+
+`ManualTransactionReceipt` guarda hashes de clave/body y referencias, no payload
+financiero. El lock PostgreSQL por actor serializa la primera escritura y el
+receipt en una transaccion. Los receipts se conservan como tombstones mientras
+exista el actor; no purgarlos sin definir una ventana contractual de reintentos.
+La lectura de un replay sigue limitada por los permisos actuales del usuario.
+
+Flutter persiste clave y fecha antes del envio, bloquea doble toque y vuelve al
+historial de la cuenta. Una respuesta perdida se reintenta con el mismo body;
+no generar otra clave ni editar el movimiento para resolver una respuesta incierta.
+La cola offline conserva esa misma clave; pendiente local no significa confirmado.
+
+Validacion: `python manage.py test finance.transactions.test_manual_idempotency`.
+Migracion aditiva: `0017_manualtransactionreceipt`. No modifica movimientos previos.
+
 ## Que hace
 
 `finance.transactions` es el ledger transaccional personal de Vexxo.
@@ -1109,4 +1131,3 @@ valor anterior/nuevo. Una correccion humana de categoria crea tambien
 
 El intake externo redacta tokens, secretos, passwords, API keys y headers de
 autorizacion antes de persistir JSON, conservando la metadata financiera util.
-

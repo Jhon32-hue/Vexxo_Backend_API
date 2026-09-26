@@ -1,4 +1,5 @@
 from finance.transactions.Models.outbox import TransactionDomainEventOutbox
+from finance.transactions.Models.manual_receipt import ManualTransactionReceipt
 from finance.transactions.Models.intake import (
     TransactionExternalDetails,
     TransactionFieldProvenance,
@@ -17,6 +18,7 @@ from finance.transactions.Models.transacciones import (
 )
 
 __all__ = [
+    "ManualTransactionReceipt",
     "Transaction",
     "TransactionParticipant",
     "Tag",

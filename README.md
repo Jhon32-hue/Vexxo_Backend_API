@@ -1,5 +1,8 @@
 # Vexxo Backend API
 
+Registro manual: `Idempotency-Key` ahora conserva una unica escritura por actor
+y clave, incluyendo reintentos de Flutter. Ver [contrato de transacciones](finance/transactions/README.md).
+
 ## Estado operativo actual
 
 El backend esta temporalmente en una etapa **local-first**. El desarrollo,

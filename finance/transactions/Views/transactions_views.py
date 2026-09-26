@@ -31,6 +31,7 @@ from finance.transactions.transaction_actions_service import (
     register_transaction_reimbursement,
 )
 from finance.transactions.transaction_write_service import delete_transaction
+from finance.transactions.manual_submission_service import submit_manual_once
 from finance.transactions.transaction_validation_service import (
     participant_scope_for_user,
     transaction_scope_for_user,
@@ -88,6 +89,28 @@ class IncomeSourceViewSet(OwnerScopedMixin, viewsets.ModelViewSet):
 
 
 class TransactionViewSet(OwnerScopedMixin, viewsets.ModelViewSet):
+    def create(self, request, *args, **kwargs):
+        key = str(request.headers.get("Idempotency-Key", "")).strip()
+        if not key:
+            return super().create(request, *args, **kwargs)
+
+        def create():
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            return serializer.instance
+
+        movement, replayed = submit_manual_once(
+            actor=request.user, key=key, payload=request.data, create=create
+        )
+        if not self.get_queryset().filter(pk=movement.pk).exists():
+            raise PermissionDenied("Ya no tienes acceso a este movimiento.")
+        return Response(
+            self.get_serializer(movement).data,
+            status=status.HTTP_200_OK if replayed else status.HTTP_201_CREATED,
+            headers={"Idempotency-Replayed": "true" if replayed else "false"},
+        )
+
     queryset = (
         Transaction.objects.select_related(
             "account",
