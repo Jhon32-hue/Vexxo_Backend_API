@@ -121,3 +121,42 @@ Runbooks canonicos:
 - [Politica de datos](../docs/DATA_SECURITY_POLICY.md)
 - [Gestion y recuperacion de llaves](../docs/KEY_MANAGEMENT_RUNBOOK.md)
 - [Garantias de identidad y dispositivo](../docs/IDENTITY_SECURITY_ASSURANCE.md)
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../api/v1/routers.py).
+
+- Archivos Python de implementacion: **27** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `9c7505fefe2462d4f48595d61e73ac47e3036ff8fa5b024ec9866cf4cf56f164`.
+- Familias detectadas: management, models.
+
+### Declaraciones de modelos detectadas
+
+- `KeyRotationJob` en [security/models.py](models.py).
+- `SecurityAuditEvent` en [security/models.py](models.py).
+- `SecurityThrottleBucket` en [security/models.py](models.py).
+
+No se detectan declaraciones `path`/`re_path` propias en este alcance.
+Esto no implica que el modulo carezca de consumidores internos.
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["security"]
+    M --> D0["documents"]
+    M --> D1["identity"]
+    M --> D2["integrations"]
+```
+
+Flujos transversales: [flujo actualizado](../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

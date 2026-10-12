@@ -63,3 +63,45 @@ Las claves, formas y tipos internos de `data` no cambian. La version incluye
 timestamp y firma de forma/conteo para detectar altas, cambios y eliminaciones.
 Las metas usan `Goal.updated_at`, por lo que un aporte o cambio de progreso
 invalida su seccion aunque la cantidad de metas permanezca igual.
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../v1/routers.py).
+
+- Archivos Python de implementacion: **12** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `d5f1adafaf296be0b2570de2ee166099367cd6c409d1038787e9e98e880ed5e6`.
+- Familias detectadas: management, views.
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `bootstrap/` | [api/mobile/urls.py](urls.py) |
+| `markets/` | [api/mobile/urls.py](urls.py) |
+| `sync-state/` | [api/mobile/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["api.mobile"]
+    M --> D0["alerts"]
+    M --> D1["finance"]
+    M --> D2["identity"]
+    M --> D3["notifications"]
+    M --> D4["payments"]
+    M --> D5["planning"]
+    M --> D6["social"]
+```
+
+Flujos transversales: [flujo actualizado](../../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

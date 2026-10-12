@@ -127,3 +127,45 @@ En local:
 
 Para las reglas de open finance, consulta
 [`docs/OPEN_FINANCE_CONSENT_AND_REVOCATION.md`](../../docs/OPEN_FINANCE_CONSENT_AND_REVOCATION.md).
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../../api/v1/routers.py).
+
+- Archivos Python de implementacion: **13** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `1c9e505aaef8b56c90ffa8350760892de68206bbaca15e95a88da2980e860168`.
+- Familias detectadas: models, serializers, services, views.
+
+### Declaraciones de modelos detectadas
+
+- `UserConsent` en [identity/consents/models/consent.py](models/consent.py).
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `` | [identity/consents/urls.py](urls.py) |
+| `consentimientos/ [DRF router]` | [identity/consents/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["identity.consents"]
+    M --> D0["common"]
+    M --> D1["finance"]
+    M --> D2["integrations_stub"]
+    M --> D3["tasks"]
+```
+
+Flujos transversales: [flujo actualizado](../../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

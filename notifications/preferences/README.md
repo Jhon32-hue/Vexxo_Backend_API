@@ -101,3 +101,41 @@ No cubre aun:
 - reglas finas por tipo de evento
 - campañas o journeys de marketing
 - push provider real
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../../api/v1/routers.py).
+
+- Archivos Python de implementacion: **8** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `b2a2bdcf5898d2ad2495a0fb0a11e600944130fff9bfaf61982f60455facba46`.
+- Familias detectadas: models, serializers, services, views.
+
+### Declaraciones de modelos detectadas
+
+- `NotificationPreference` en [notifications/preferences/models.py](models.py).
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `me/` | [notifications/preferences/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["notifications.preferences"]
+    M --> D0["identity"]
+```
+
+Flujos transversales: [flujo actualizado](../../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

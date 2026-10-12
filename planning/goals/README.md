@@ -98,3 +98,48 @@ hace mediante reversion, nunca editando el ledger manualmente.
 
 La vinculacion automatica a transacciones sigue pendiente de una regla
 explicita y confirmable; una inferencia nunca crea un aporte silencioso.
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../../api/v1/routers.py).
+
+- Archivos Python de implementacion: **12** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `ebeb377dd492d36087ef69b185f2f2269a5c0e4b79dd898a62fe0d62a7aee8a2`.
+- Familias detectadas: models, serializers, services, views.
+
+### Declaraciones de modelos detectadas
+
+- `Goal` en [planning/goals/models/goals.py](models/goals.py).
+- `GoalContribution` en [planning/goals/models/goals.py](models/goals.py).
+- `GoalDomainEventOutbox` en [planning/goals/models/outbox.py](models/outbox.py).
+- `GoalMilestone` en [planning/goals/models/goals.py](models/goals.py).
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `` | [planning/goals/urls.py](urls.py) |
+| `aportes/ [DRF router]` | [planning/goals/urls.py](urls.py) |
+| `metas/ [DRF router]` | [planning/goals/urls.py](urls.py) |
+| `milestones/ [DRF router]` | [planning/goals/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["planning.goals"]
+    M --> D0["common"]
+    M --> D1["social"]
+```
+
+Flujos transversales: [flujo actualizado](../../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

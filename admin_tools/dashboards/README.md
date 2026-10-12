@@ -42,3 +42,44 @@ La superficie staff-only `GET /api/internal/support/operations/` consolida:
 
 Cada consulta queda registrada en `support.audit`. Los logs HTTP siguen en
 stdout JSON; el dashboard no pretende reemplazar un agregador de logs.
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../../api/v1/routers.py).
+
+- Archivos Python de implementacion: **7** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `a7bb4fedae221d63ead212ce52952f25f45f70c55171190b9f78969603cba1ec`.
+- Familias detectadas: models, services, views.
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `operations/` | [admin_tools/dashboards/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["admin_tools.dashboards"]
+    M --> D0["documents"]
+    M --> D1["identity"]
+    M --> D2["integrations"]
+    M --> D3["notifications"]
+    M --> D4["payments"]
+    M --> D5["security"]
+    M --> D6["support"]
+    M --> D7["tasks"]
+```
+
+Flujos transversales: [flujo actualizado](../../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

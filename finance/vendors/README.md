@@ -59,3 +59,43 @@ no deberia tratarse como mero dato auxiliar.
 
 El siguiente cierre funcional es normalizacion y deduplicacion de aliases por
 usuario, no una integracion cloud.
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../../api/v1/routers.py).
+
+- Archivos Python de implementacion: **9** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `831f663f69de8a31bd9a0a94a8739a2279ecda8f5b0609ad408361c4b6a84225`.
+- Familias detectadas: models, serializers, views.
+
+### Declaraciones de modelos detectadas
+
+- `Vendor` en [finance/vendors/models/provedores.py](models/provedores.py).
+- `VendorAlias` en [finance/vendors/models/provedores.py](models/provedores.py).
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `` | [finance/vendors/urls.py](urls.py) |
+| `proveedores/ [DRF router]` | [finance/vendors/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["finance.vendors"]
+    M --> D0["integrations"]
+```
+
+Flujos transversales: [flujo actualizado](../../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

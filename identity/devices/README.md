@@ -119,3 +119,45 @@ La prueba real de Play Integrity exige una app distribuida por Google Play y la
 de App Attest exige hardware Apple. Los mocks prueban el lifecycle, pero no
 certifican la evidencia de plataforma. Consulta
 [Garantias de identidad](../../docs/IDENTITY_SECURITY_ASSURANCE.md).
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../../api/v1/routers.py).
+
+- Archivos Python de implementacion: **15** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `9104504c865ab2dd309623a1411ce0e0c91864e115687de524ddbad5a0108bcb`.
+- Familias detectadas: management, models, serializers, services, views.
+
+### Declaraciones de modelos detectadas
+
+- `DevicePlatformAttestationChallenge` en [identity/devices/models/device.py](models/device.py).
+- `DeviceSignatureChallenge` en [identity/devices/models/device.py](models/device.py).
+- `UserDevice` en [identity/devices/models/device.py](models/device.py).
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `` | [identity/devices/urls.py](urls.py) |
+| `dispositivos/ [DRF router]` | [identity/devices/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["identity.devices"]
+    M --> D0["common"]
+    M --> D1["security"]
+```
+
+Flujos transversales: [flujo actualizado](../../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

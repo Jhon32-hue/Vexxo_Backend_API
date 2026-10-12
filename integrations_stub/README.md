@@ -193,3 +193,44 @@ Viven en:
 
 El stub solo debe actuar como runtime temporal o puente interno.
 
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../api/v1/routers.py).
+
+- Archivos Python de implementacion: **32** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `a48409c6911f5a185ba5a442dfcf5e0b3e402f5b5a6a71f203c180bef99410d1`.
+- Familias detectadas: models, services, views.
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `accounts/intelligence/refresh/` | [integrations_stub/banks/urls.py](banks/urls.py) |
+| `accounts/sync/` | [integrations_stub/banks/urls.py](banks/urls.py) |
+| `consents/revoke/` | [integrations_stub/banks/urls.py](banks/urls.py) |
+| `transactions/inference/worker/` | [integrations_stub/llm/urls.py](llm/urls.py) |
+| `transactions/reconciliation/resolve/` | [integrations_stub/banks/urls.py](banks/urls.py) |
+| `transactions/sync/` | [integrations_stub/banks/urls.py](banks/urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["integrations_stub"]
+    M --> D0["common"]
+    M --> D1["finance"]
+    M --> D2["integrations"]
+    M --> D3["notifications"]
+```
+
+Flujos transversales: [flujo actualizado](../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

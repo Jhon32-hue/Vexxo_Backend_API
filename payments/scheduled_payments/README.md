@@ -405,3 +405,50 @@ La creacion de templates acepta `Idempotency-Key`. La unicidad es por owner:
 un replay identico devuelve `200`, mientras reutilizar la clave con otro
 payload devuelve `400`. Esto permite sincronizar pagos programados creados
 offline desde mobile sin duplicarlos.
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../../api/v1/routers.py).
+
+- Archivos Python de implementacion: **14** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `e2210a60e2e9c338f3540e39fdbd8f647a45f97667eef1b2833add905b057447`.
+- Familias detectadas: management, models, serializers, services, views.
+
+### Declaraciones de modelos detectadas
+
+- `PaymentScheduleRun` en [payments/scheduled_payments/models.py](models.py).
+- `PaymentTemplate` en [payments/scheduled_payments/models.py](models.py).
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `` | [payments/scheduled_payments/urls.py](urls.py) |
+| `programmed-payment-runs/ [DRF router]` | [payments/scheduled_payments/urls.py](urls.py) |
+| `programmed-payments/ [DRF router]` | [payments/scheduled_payments/urls.py](urls.py) |
+| `runs/ [DRF router]` | [payments/scheduled_payments/urls.py](urls.py) |
+| `templates/ [DRF router]` | [payments/scheduled_payments/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["payments.scheduled_payments"]
+    M --> D0["common"]
+    M --> D1["finance"]
+    M --> D2["identity"]
+    M --> D3["notifications"]
+    M --> D4["realtime"]
+```
+
+Flujos transversales: [flujo actualizado](../../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

@@ -427,3 +427,81 @@ de password, reset completado, revocacion de dispositivo, suspension y riesgo
 critico invalidan inmediatamente las familias de sesion correspondientes. La
 politica por operacion esta centralizada en `security_policy.py` y documentada
 en [Garantias de identidad](../../docs/IDENTITY_SECURITY_ASSURANCE.md).
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../../api/v1/routers.py).
+
+- Archivos Python de implementacion: **35** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `eeb8c64168bf43c5059d13d4ffabc87d246376c1cb7621abdcec5c682f3bbe48`.
+- Familias detectadas: models, serializers, services, views.
+
+### Declaraciones de modelos detectadas
+
+- `UserAuthChallenge` en [identity/users/models/auth_challenge.py](models/auth_challenge.py).
+- `UserMfaMethod` en [identity/users/models/mfa.py](models/mfa.py).
+- `UserOnboardingProfile` en [identity/users/models/onboarding.py](models/onboarding.py).
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `` | [identity/users/urls.py](urls.py) |
+| `admin/users/ [DRF router]` | [identity/users/urls.py](urls.py) |
+| `auth/login/` | [identity/users/urls.py](urls.py) |
+| `auth/logout/` | [identity/users/urls.py](urls.py) |
+| `auth/mfa/disable/` | [identity/users/urls.py](urls.py) |
+| `auth/mfa/status/` | [identity/users/urls.py](urls.py) |
+| `auth/mfa/totp/confirm/` | [identity/users/urls.py](urls.py) |
+| `auth/mfa/totp/enroll/` | [identity/users/urls.py](urls.py) |
+| `auth/mfa/verify/` | [identity/users/urls.py](urls.py) |
+| `auth/password-recovery/confirm-code/` | [identity/users/urls.py](urls.py) |
+| `auth/password-recovery/request-code/` | [identity/users/urls.py](urls.py) |
+| `auth/password-reset/confirm/` | [identity/users/urls.py](urls.py) |
+| `auth/password-reset/request/` | [identity/users/urls.py](urls.py) |
+| `auth/refresh/` | [identity/users/urls.py](urls.py) |
+| `auth/register/` | [identity/users/urls.py](urls.py) |
+| `auth/set-password/` | [identity/users/urls.py](urls.py) |
+| `auth/social/<str:provider>/callback/` | [identity/users/urls.py](urls.py) |
+| `auth/social/<str:provider>/start/` | [identity/users/urls.py](urls.py) |
+| `auth/social/<str:provider>/unlink/` | [identity/users/urls.py](urls.py) |
+| `auth/social/exchange/` | [identity/users/urls.py](urls.py) |
+| `auth/social/identities/` | [identity/users/urls.py](urls.py) |
+| `auth/social/providers/` | [identity/users/urls.py](urls.py) |
+| `auth/step-up/confirm-code/` | [identity/users/urls.py](urls.py) |
+| `auth/step-up/request-code/` | [identity/users/urls.py](urls.py) |
+| `dashboard/` | [identity/users/urls.py](urls.py) |
+| `event-contract/` | [identity/users/urls.py](urls.py) |
+| `me/` | [identity/users/urls.py](urls.py) |
+| `onboarding/complete/` | [identity/users/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["identity.users"]
+    M --> D0["alerts"]
+    M --> D1["common"]
+    M --> D2["contacts"]
+    M --> D3["finance"]
+    M --> D4["integrations"]
+    M --> D5["integrations_stub"]
+    M --> D6["notifications"]
+    M --> D7["payments"]
+    M --> D8["planning"]
+    M --> D9["reports"]
+    M --> D10["security"]
+    M --> D11["social"]
+```
+
+Flujos transversales: [flujo actualizado](../../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

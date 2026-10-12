@@ -14,7 +14,8 @@ flowchart LR
     A --> P[(PostgreSQL)]
     A --> O[Outboxes por bounded context]
     O --> E[Publicadores centralizados]
-    E --> W[Workers durables]
+    E --> B[Bus interno y listeners]
+    B --> W[Workers durables cuando el listener agenda trabajo]
     W --> P
     S[Scheduler local singleton] --> P
     S --> J[Servicios periodicos]
@@ -23,6 +24,10 @@ flowchart LR
     D --> M[(Private local media)]
     D --> Q[documents.ocr durable worker]
     Q --> P
+    OB[Open Banking y consentimiento] --> W
+    SH[Gastos compartidos] --> O
+    S --> R[Exports y retencion]
+    R --> P
 ```
 
 PostgreSQL es la verdad operativa, la cola durable inicial y el mecanismo de
@@ -94,7 +99,7 @@ El catalogo contiene, entre otros:
 Las reglas siguen en los servicios de cada modulo. El scheduler solo resuelve
 tiempo, singleton y observabilidad.
 
-El contenedor `domain-outbox` procesa los outboxes de deudas, metas y documentos en un solo
+El contenedor `domain-outbox` procesa los outboxes de deudas, metas, documentos y gastos compartidos en un solo
 loop. Esta agrupacion evita crear un proceso por cada modulo liviano y permite
 sumar contextos en el catalogo comun sin bifurcar el dominio por entorno.
 

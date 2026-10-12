@@ -43,3 +43,44 @@ Los scripts `backup_local_db.ps1`, `restore_local_db.ps1` y
 `load_test_local.py` cubren el circuito operativo inicial. Antes de usuarios
 reales deben medirse objetivos, ensayarse restauraciones en una base aislada y
 agregarse alertas por lag; que el comando exista no demuestra recuperabilidad.
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../api/v1/routers.py).
+
+- Archivos Python de implementacion: **16** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `5bbec7d334b95828e31ea2d76fe310577a5febe8e4d8b19388e9531dd5831314`.
+- Familias detectadas: management, views.
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `health/` | [observability/urls.py](urls.py) |
+| `readiness/` | [observability/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["observability"]
+    M --> D0["alerts"]
+    M --> D1["common"]
+    M --> D2["documents"]
+    M --> D3["finance"]
+    M --> D4["notifications"]
+    M --> D5["security"]
+    M --> D6["tasks"]
+```
+
+Flujos transversales: [flujo actualizado](../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

@@ -61,3 +61,53 @@ Consulta [Runbook de llaves](../docs/KEY_MANAGEMENT_RUNBOOK.md).
 - `POST /api/documents/files/{id}/ocr-corrections/` exige motivo y crea una
   observacion que supersede a la anterior. Nunca reescribe silenciosamente la
   extraccion historica.
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../api/v1/routers.py).
+
+- Archivos Python de implementacion: **40** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `228da300aebaccaafb83dc9781fa9e18cd585fc9b69abf309ad08565020edf8c`.
+- Familias detectadas: management, models, serializers, services, views.
+
+### Declaraciones de modelos detectadas
+
+- `DocumentDomainEventOutbox` en [documents/ocr_requests/models.py](ocr_requests/models.py).
+- `DocumentDownloadGrant` en [documents/files/models.py](files/models.py).
+- `DocumentFile` en [documents/files/models.py](files/models.py).
+- `DocumentMetadata` en [documents/metadata/models.py](metadata/models.py).
+- `DocumentTransactionLink` en [documents/links_to_transactions/models.py](links_to_transactions/models.py).
+- `OcrFieldObservation` en [documents/ocr_requests/models.py](ocr_requests/models.py).
+- `OcrRequest` en [documents/ocr_requests/models.py](ocr_requests/models.py).
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `` | [documents/files/urls.py](files/urls.py) |
+| `` | [documents/links_to_transactions/urls.py](links_to_transactions/urls.py) |
+| `downloads/ [DRF router]` | [documents/files/urls.py](files/urls.py) |
+| `files/ [DRF router]` | [documents/files/urls.py](files/urls.py) |
+| `transaction-links/ [DRF router]` | [documents/links_to_transactions/urls.py](links_to_transactions/urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["documents"]
+    M --> D0["common"]
+    M --> D1["finance"]
+    M --> D2["security"]
+```
+
+Flujos transversales: [flujo actualizado](../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

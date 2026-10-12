@@ -328,3 +328,51 @@ Si en el futuro aparecen:
 - reevaluacion durable de templates modernas
 
 ahi si tendria sentido endurecerlo con read models o jobs dedicados.
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../../api/v1/routers.py).
+
+- Archivos Python de implementacion: **18** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `478a46c334ed7a84e44f9d9f995f0fe458dd376d4244f04ab24f86d8d85b8a00`.
+- Familias detectadas: models, serializers, services, views.
+
+### Declaraciones de modelos detectadas
+
+- `AccountBudget` en [finance/budgets/Models/accountbudget.py](Models/accountbudget.py).
+- `Budget` en [finance/budgets/Models/budget.py](Models/budget.py).
+- `SharedBudget` en [finance/budgets/Models/shared_budget.py](Models/shared_budget.py).
+- `SharedBudgetTemplateLink` en [finance/budgets/Models/shared_budget_links.py](Models/shared_budget_links.py).
+- `SharedBudgetTransactionLink` en [finance/budgets/Models/shared_budget_links.py](Models/shared_budget_links.py).
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `` | [finance/budgets/urls.py](urls.py) |
+| `presupuestos-categoria/ [DRF router]` | [finance/budgets/urls.py](urls.py) |
+| `presupuestos-compartidos/ [DRF router]` | [finance/budgets/urls.py](urls.py) |
+| `resumen-mensual/` | [finance/budgets/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["finance.budgets"]
+    M --> D0["alerts"]
+    M --> D1["common"]
+    M --> D2["payments"]
+    M --> D3["social"]
+```
+
+Flujos transversales: [flujo actualizado](../../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

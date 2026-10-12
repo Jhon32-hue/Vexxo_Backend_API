@@ -59,3 +59,42 @@ Hoy `ReglaViewSet`:
 
 Lo que todavia no se documenta como cerrado aqui es un motor rico de ejecucion
 de reglas; hoy la superficie fuerte es administracion y policy de uso.
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../../api/v1/routers.py).
+
+- Archivos Python de implementacion: **8** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `bb459a7a590e14379d4ea19b3537284b0f691c24f3187f6dca4779fb92cd1063`.
+- Familias detectadas: models, serializers, views.
+
+### Declaraciones de modelos detectadas
+
+- `Rule` en [alerts/rules/models/rules.py](models/rules.py).
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `` | [alerts/rules/urls.py](urls.py) |
+| `reglas/ [DRF router]` | [alerts/rules/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["alerts.rules"]
+    M --> D0["identity"]
+```
+
+Flujos transversales: [flujo actualizado](../../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

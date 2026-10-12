@@ -197,3 +197,71 @@ La topologia esperada es:
 - Cloud SQL guardando intents, callbacks, settlements y casos operativos
 
 Esto permite que la logica del dominio siga estable aunque cambie el PSP.
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../api/v1/routers.py).
+
+- Archivos Python de implementacion: **51** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `c472107a8ac6c3ef52d4e22f71b3187f2812926c4aa611e22a2d12aa874acdaf`.
+- Familias detectadas: management, models, serializers, services, views.
+
+### Declaraciones de modelos detectadas
+
+- `PaymentDomainEventOutbox` en [payments/payment_intents/models.py](payment_intents/models.py).
+- `PaymentIntent` en [payments/payment_intents/models.py](payment_intents/models.py).
+- `PaymentOperationalCase` en [payments/payment_intents/models.py](payment_intents/models.py).
+- `PaymentProviderCallbackReceipt` en [payments/payment_intents/models.py](payment_intents/models.py).
+- `PaymentScheduleRun` en [payments/scheduled_payments/models.py](scheduled_payments/models.py).
+- `PaymentSettlementRecord` en [payments/payment_intents/models.py](payment_intents/models.py).
+- `PaymentTemplate` en [payments/scheduled_payments/models.py](scheduled_payments/models.py).
+- `PayoutBatch` en [payments/payment_intents/models.py](payment_intents/models.py).
+- `PayoutInstruction` en [payments/payment_intents/models.py](payment_intents/models.py).
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `` | [payments/payment_intents/urls.py](payment_intents/urls.py) |
+| `` | [payments/scheduled_payments/urls.py](scheduled_payments/urls.py) |
+| `callback-receipts/ [DRF router]` | [payments/payment_intents/urls.py](payment_intents/urls.py) |
+| `intents/ [DRF router]` | [payments/payment_intents/urls.py](payment_intents/urls.py) |
+| `operational-cases/ [DRF router]` | [payments/payment_intents/urls.py](payment_intents/urls.py) |
+| `outbox-pagos/ [DRF router]` | [payments/payment_intents/urls.py](payment_intents/urls.py) |
+| `payouts/ [DRF router]` | [payments/payment_intents/urls.py](payment_intents/urls.py) |
+| `programmed-payment-runs/ [DRF router]` | [payments/scheduled_payments/urls.py](scheduled_payments/urls.py) |
+| `programmed-payments/ [DRF router]` | [payments/scheduled_payments/urls.py](scheduled_payments/urls.py) |
+| `provider-callback/` | [payments/payment_intents/urls.py](payment_intents/urls.py) |
+| `providers/<str:provider>/callback/` | [payments/payment_intents/urls.py](payment_intents/urls.py) |
+| `providers/<str:provider>/contract/` | [payments/payment_intents/urls.py](payment_intents/urls.py) |
+| `providers/contracts/` | [payments/payment_intents/urls.py](payment_intents/urls.py) |
+| `runs/ [DRF router]` | [payments/scheduled_payments/urls.py](scheduled_payments/urls.py) |
+| `settlements/ [DRF router]` | [payments/payment_intents/urls.py](payment_intents/urls.py) |
+| `templates/ [DRF router]` | [payments/scheduled_payments/urls.py](scheduled_payments/urls.py) |
+| `worker-report/` | [payments/payment_intents/internal_urls.py](payment_intents/internal_urls.py) |
+| `worker-report/` | [payments/payment_intents/urls.py](payment_intents/urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["payments"]
+    M --> D0["common"]
+    M --> D1["finance"]
+    M --> D2["identity"]
+    M --> D3["notifications"]
+    M --> D4["realtime"]
+    M --> D5["security"]
+```
+
+Flujos transversales: [flujo actualizado](../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

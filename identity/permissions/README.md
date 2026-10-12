@@ -152,3 +152,42 @@ Hoy ya resuelve grants por:
 - grants manuales
 
 y publica eventos `users.permission.*` para el resto del ecosistema.
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../../api/v1/routers.py).
+
+- Archivos Python de implementacion: **12** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `207f1b14eccdccca0cf394f4d9fdb91bc1321c3ef0c047472624c2d9089e75de`.
+- Familias detectadas: models, serializers, services, views.
+
+### Declaraciones de modelos detectadas
+
+- `UserPermissionGrant` en [identity/permissions/models/permission_grant.py](models/permission_grant.py).
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `` | [identity/permissions/urls.py](urls.py) |
+| `grants/ [DRF router]` | [identity/permissions/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["identity.permissions"]
+    M --> D0["common"]
+```
+
+Flujos transversales: [flujo actualizado](../../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

@@ -326,3 +326,50 @@ Cuando exista un servicio dedicado de IA, este modulo ya tiene la frontera:
 - `dispatch_service` se mantiene como orquestador
 - el worker interno puede reemplazarse por `llm_gateway`
 - la API publica de alertas no necesita cambiar
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../../api/v1/routers.py).
+
+- Archivos Python de implementacion: **24** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `c3ce1ca7c6e2abef516bde63af47029d8dad49dc32208a901a83d4c932dddebd`.
+- Familias detectadas: management, models, serializers, services, views.
+
+### Declaraciones de modelos detectadas
+
+- `Alert` en [alerts/alerts/models/alerts.py](models/alerts.py).
+- `AlertAiDispatchState` en [alerts/alerts/models/ai_dispatch.py](models/ai_dispatch.py).
+- `AlertDomainEventOutbox` en [alerts/alerts/models/outbox.py](models/outbox.py).
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `` | [alerts/alerts/urls.py](urls.py) |
+| `ai-worker/` | [alerts/alerts/internal_urls.py](internal_urls.py) |
+| `alertas/ [DRF router]` | [alerts/alerts/urls.py](urls.py) |
+| `internal/ai-worker/` | [alerts/alerts/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["alerts.alerts"]
+    M --> D0["common"]
+    M --> D1["finance"]
+    M --> D2["identity"]
+    M --> D3["payments"]
+    M --> D4["tasks"]
+```
+
+Flujos transversales: [flujo actualizado](../../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

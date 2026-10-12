@@ -1,5 +1,13 @@
 # payments.payment_intents
 
+## Frontera de settlement verificada
+
+`reconciliation_service.record_payment_settlement` registra
+`PaymentSettlementRecord`. Ese servicio no escribe `finance.transactions`.
+Los diagramas deben distinguir el artefacto de conciliacion de una
+materializacion de ledger ejecutada mediante su contrato especifico.
+Ver [flujo actual](../../docs/BACKEND_CURRENT_FLOW.md).
+
 ## Que hace
 
 Este modulo es la frontera canonica de pagos externos en Vexxo.
@@ -623,3 +631,63 @@ configuran manualmente fuera de Git.
 explicita y material efimero de pago. El adapter Wompi calcula integridad,
 despacha contra sandbox y persiste solo referencias/estado, nunca PAN, CVV ni
 tokens del medio. Permanece no disponible hasta configurar las tres llaves.
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../../api/v1/routers.py).
+
+- Archivos Python de implementacion: **27** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `1d9aba221a58d7ebfef8dd8b2ecc9a85a5813a27733374f0538d079f4f8b6b1e`.
+- Familias detectadas: management, models, serializers, services, views.
+
+### Declaraciones de modelos detectadas
+
+- `PaymentDomainEventOutbox` en [payments/payment_intents/models.py](models.py).
+- `PaymentIntent` en [payments/payment_intents/models.py](models.py).
+- `PaymentOperationalCase` en [payments/payment_intents/models.py](models.py).
+- `PaymentProviderCallbackReceipt` en [payments/payment_intents/models.py](models.py).
+- `PaymentSettlementRecord` en [payments/payment_intents/models.py](models.py).
+- `PayoutBatch` en [payments/payment_intents/models.py](models.py).
+- `PayoutInstruction` en [payments/payment_intents/models.py](models.py).
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `` | [payments/payment_intents/urls.py](urls.py) |
+| `callback-receipts/ [DRF router]` | [payments/payment_intents/urls.py](urls.py) |
+| `intents/ [DRF router]` | [payments/payment_intents/urls.py](urls.py) |
+| `operational-cases/ [DRF router]` | [payments/payment_intents/urls.py](urls.py) |
+| `outbox-pagos/ [DRF router]` | [payments/payment_intents/urls.py](urls.py) |
+| `payouts/ [DRF router]` | [payments/payment_intents/urls.py](urls.py) |
+| `provider-callback/` | [payments/payment_intents/urls.py](urls.py) |
+| `providers/<str:provider>/callback/` | [payments/payment_intents/urls.py](urls.py) |
+| `providers/<str:provider>/contract/` | [payments/payment_intents/urls.py](urls.py) |
+| `providers/contracts/` | [payments/payment_intents/urls.py](urls.py) |
+| `settlements/ [DRF router]` | [payments/payment_intents/urls.py](urls.py) |
+| `worker-report/` | [payments/payment_intents/internal_urls.py](internal_urls.py) |
+| `worker-report/` | [payments/payment_intents/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["payments.payment_intents"]
+    M --> D0["common"]
+    M --> D1["finance"]
+    M --> D2["identity"]
+    M --> D3["realtime"]
+    M --> D4["security"]
+```
+
+Flujos transversales: [flujo actualizado](../../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

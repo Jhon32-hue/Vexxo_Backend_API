@@ -83,3 +83,42 @@ La arquitectura ya deja listo el camino para:
 - enriquecer metadata y diffs
 - abrir mejores vistas de backoffice
 - correlacionar auditoria con eventos y casos operativos
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../../api/v1/routers.py).
+
+- Archivos Python de implementacion: **11** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `2c5912a657471299a05bb19bc0e26fb4ec256ce9d4e72980c56e52b43f0c78ac`.
+- Familias detectadas: models, serializers, views.
+
+### Declaraciones de modelos detectadas
+
+- `AuditLog` en [support/audit/models/audit.py](models/audit.py).
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `` | [support/audit/urls.py](urls.py) |
+| `auditoria/ [DRF router]` | [support/audit/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["support.audit"]
+    M --- E["Sin imports absolutos a otros paquetes de dominio detectados"]
+```
+
+Flujos transversales: [flujo actualizado](../../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

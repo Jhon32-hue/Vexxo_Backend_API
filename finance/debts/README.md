@@ -256,3 +256,46 @@ ejecuta el refresco de vencimientos con advisory lock.
 `Idempotency-Key`, motivo y nuevo calendario. El servicio bloquea la deuda,
 rechaza cuotas parcialmente pagadas, conserva historia liquidada y guarda
 snapshots antes/despues para soporte y auditoria.
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../../api/v1/routers.py).
+
+- Archivos Python de implementacion: **17** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `3c1dcd99c66d5ed2d9ae1b44a653a0c24bda98535979c8aa8ab9d686d714baef`.
+- Familias detectadas: management, models, serializers, services, views.
+
+### Declaraciones de modelos detectadas
+
+- `Debt` en [finance/debts/models/debts.py](models/debts.py).
+- `DebtDomainEventOutbox` en [finance/debts/models/outbox.py](models/outbox.py).
+- `DebtInstallment` en [finance/debts/models/debts.py](models/debts.py).
+- `DebtRestructuring` en [finance/debts/models/debts.py](models/debts.py).
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `` | [finance/debts/urls.py](urls.py) |
+| `cuotas-deuda/ [DRF router]` | [finance/debts/urls.py](urls.py) |
+| `deudas/ [DRF router]` | [finance/debts/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["finance.debts"]
+    M --> D0["common"]
+```
+
+Flujos transversales: [flujo actualizado](../../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

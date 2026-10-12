@@ -199,3 +199,43 @@ Lo que no debe absorber es:
 - no debe guardar reglas de negocio especificas de producto
 - no debe reemplazar outboxs por contexto
 - no debe mezclar concerns de dominio con concerns de entrega final
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../api/v1/routers.py).
+
+- Archivos Python de implementacion: **17** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `f0d0d334b2bc92aac542e8657f11a1ebb7a819f9f14e8119d7ec045f844d917b`.
+- Familias detectadas: models, serializers, views.
+
+### Declaraciones de modelos detectadas
+
+- `OwnedModel` en [common/models/base.py](models/base.py).
+- `StandardDomainEventOutbox` en [common/models/outbox.py](models/outbox.py).
+- `TimeStampedModel` en [common/models/base.py](models/base.py).
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `salud` | [common/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["common"]
+    M --> D0["tasks"]
+```
+
+Flujos transversales: [flujo actualizado](../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

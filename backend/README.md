@@ -96,3 +96,44 @@ contexto correcto.
 
 Este paquete si es plenamente operativo hoy. La recomendacion es mantenerlo
 como capa de composicion y evitar meter aqui logica de dominio.
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../api/v1/routers.py).
+
+- Archivos Python de implementacion: **5** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `3941ec2eb5fd99d43e258fdefb935418b4452ef53e7a69de024d1e23d48bc9a0`.
+- Familias detectadas: sin capas convencionales detectadas.
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `admin/` | [backend/urls.py](urls.py) |
+| `api/` | [backend/urls.py](urls.py) |
+| `api/internal/integrations/banks/` | [backend/urls.py](urls.py) |
+| `api/internal/integrations/llm/` | [backend/urls.py](urls.py) |
+| `healthz/` | [backend/urls.py](urls.py) |
+| `internal/integrations/banks/` | [backend/urls.py](urls.py) |
+| `internal/integrations/llm/` | [backend/urls.py](urls.py) |
+| `readyz/` | [backend/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["backend"]
+    M --> D0["observability"]
+```
+
+Flujos transversales: [flujo actualizado](../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

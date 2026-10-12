@@ -39,7 +39,7 @@ centralizada dentro de `tasks`.
 - `alerts`
   enriquecimiento async y potencial evaluacion desacoplada.
 - `reports` y `documents`
-  candidatos naturales a jobs por lotes o programados.
+  exports y retencion registrados en el scheduler; OCR tiene worker durable.
 
 ## Encaje Con GCP
 
@@ -54,13 +54,14 @@ Incluso cuando ciertas implementaciones concretas aun no esten desarrolladas.
 
 ## Estado Actual
 
-Hoy el bloque tiene estructura util, pero buena parte de sus apps internas aun
-estan en scaffold. La ejecucion asincrona real del sistema sigue repartida en
-los bounded contexts que ya tienen workers propios o dispatch services.
+La operacion local esta centralizada en wrappers, registro de outboxes y
+scheduler singleton. Los servicios, modelos de trabajo y procesadores siguen
+perteneciendo a los bounded contexts. Algunos archivos reservados permanecen
+vacios; eso no convierte a los wrappers operativos en scaffold.
 
 ## Backend comun de ejecucion
 
-La capa comun que ya empieza a ordenar esa dispersion es:
+La capa comun operativa es:
 
 - `tasks.async_backends`
   decide `cloud_tasks | local_worker | sync_inline_for_tests | disabled`
@@ -70,6 +71,10 @@ La capa comun que ya empieza a ordenar esa dispersion es:
   wrapper unificado para workers locales por `job_type`
 - `manage.py publish_outbox`
   wrapper unificado para publicadores de outbox
+- `tasks.outbox_registry`
+  registra nueve outboxes, incluido `shared_expenses`
+- `tasks.scheduled.registry`
+  registra once jobs ejecutados por `run_scheduler` bajo advisory lock
 
 Eso no reemplaza la logica operativa propia de cada contexto.
 La ordena bajo una sola topologia de entrega.
@@ -85,3 +90,48 @@ La ordena bajo una sola topologia de entrega.
 - `identity.consents` entra por la misma frontera comun, pero hoy no expone un
   `run_worker` durable propio; su modo local oficial es
   `ASYNC_EXECUTION_MODE_IDENTITY_CONSENTS=sync_inline_for_tests`
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../api/v1/routers.py).
+
+- Archivos Python de implementacion: **36** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `1b93206239e7c63a37006e4edc674dcd634bbee4ca040624560a065effcbd299`.
+- Familias detectadas: listeners, management, models, views.
+
+### Declaraciones de modelos detectadas
+
+- `ScheduledJobState` en [tasks/scheduled/models.py](scheduled/models.py).
+
+No se detectan declaraciones `path`/`re_path` propias en este alcance.
+Esto no implica que el modulo carezca de consumidores internos.
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["tasks"]
+    M --> D0["alerts"]
+    M --> D1["common"]
+    M --> D2["documents"]
+    M --> D3["finance"]
+    M --> D4["identity"]
+    M --> D5["integrations"]
+    M --> D6["payments"]
+    M --> D7["planning"]
+    M --> D8["reports"]
+    M --> D9["security"]
+    M --> D10["social"]
+```
+
+Flujos transversales: [flujo actualizado](../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

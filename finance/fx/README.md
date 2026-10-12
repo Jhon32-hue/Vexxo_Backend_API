@@ -54,3 +54,42 @@ Importante:
 
 - hoy no trae tasas de internet por si mismo
 - la ingesta real debe vivir en un servicio o worker aparte
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../../api/v1/routers.py).
+
+- Archivos Python de implementacion: **8** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `0a3885d20267b5e4dfaddb563756067d219b1457616d5bdb687c68fe7397eefc`.
+- Familias detectadas: models, serializers, views.
+
+### Declaraciones de modelos detectadas
+
+- `ExchangeRate` en [finance/fx/models/fx.py](models/fx.py).
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `` | [finance/fx/urls.py](urls.py) |
+| `tasas-fx/ [DRF router]` | [finance/fx/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["finance.fx"]
+    M --- E["Sin imports absolutos a otros paquetes de dominio detectados"]
+```
+
+Flujos transversales: [flujo actualizado](../../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

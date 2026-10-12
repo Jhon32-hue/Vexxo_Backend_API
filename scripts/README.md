@@ -1,5 +1,14 @@
 # Operacion local
 
+## Auditoria documental
+
+`py -3 scripts/audit_backend_docs.py --write` regenera las secciones de evidencia
+de los README de dominio y `docs/BACKEND_DOCUMENTATION_AUDIT.md`.
+`--check` retorna codigo 1 si detecta deriva. Usa AST, no importa Django ni
+lee secretos. Las narrativas y secuencias se revisan en
+`docs/BACKEND_CURRENT_FLOW.md`; los diagramas generados expresan imports,
+no orden de ejecucion ni una certificacion del comportamiento financiero.
+
 Este directorio contiene el unico entrypoint operativo soportado durante la
 etapa local-first. Los scripts no contienen credenciales ni logica de negocio.
 

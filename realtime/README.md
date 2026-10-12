@@ -101,3 +101,42 @@ La fuente semantica actual sigue siendo `RealtimeSignal`.
 - no debe cargar logica de negocio rica
 - no debe reemplazar outbox ni auditoria
 - debe poder migrar a gateways vivos sin romper el contrato de lectura
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../api/v1/routers.py).
+
+- Archivos Python de implementacion: **11** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `2354d5e8beec79ad93cf6cb8f3ca27de5f7a29172b99599f76d98ca689c95118`.
+- Familias detectadas: models, views.
+
+### Declaraciones de modelos detectadas
+
+- `RealtimeSignal` en [realtime/consumers/models.py](consumers/models.py).
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `` | [realtime/consumers/urls.py](consumers/urls.py) |
+| `senales-realtime/ [DRF router]` | [realtime/consumers/urls.py](consumers/urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["realtime"]
+    M --- E["Sin imports absolutos a otros paquetes de dominio detectados"]
+```
+
+Flujos transversales: [flujo actualizado](../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

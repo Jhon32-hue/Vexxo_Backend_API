@@ -1,5 +1,16 @@
 # Vexxo Backend API
 
+## Flujo y auditoria documental actualizados
+
+Revision 2026-10-12: [flujo vigente y diagramas explicativos](docs/BACKEND_CURRENT_FLOW.md)
+y [inventario verificable por modulo](docs/BACKEND_DOCUMENTATION_AUDIT.md).
+Los README de dominio incluyen evidencia de modelos, rutas y dependencias
+extraida del codigo. La narrativa de negocio y el inventario estatico tienen
+alcances distintos; la huella del codigo no certifica despliegues ni permisos.
+
+Regenerar evidencia: `py -3 scripts/audit_backend_docs.py --write`.
+Detectar deriva: `py -3 scripts/audit_backend_docs.py --check`.
+
 Registro manual: `Idempotency-Key` ahora conserva una unica escritura por actor
 y clave, incluyendo reintentos de Flutter. Ver [contrato de transacciones](finance/transactions/README.md).
 

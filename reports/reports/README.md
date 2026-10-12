@@ -60,3 +60,43 @@ Hoy expone tres vistas:
 
 Son reportes directos y utiles, pero aun no constituyen una capa analitica
 amplia ni un data product separado.
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../../api/v1/routers.py).
+
+- Archivos Python de implementacion: **9** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `e030257d777366ea2eeb9285029c927beb6a7df9299c858ad70152122a3cacba`.
+- Familias detectadas: models, serializers, services, views.
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `exports/` | [reports/reports/urls.py](urls.py) |
+| `exports/<uuid:export_id>/download/` | [reports/reports/urls.py](urls.py) |
+| `reportes/cashflow` | [reports/reports/urls.py](urls.py) |
+| `reportes/gastos-por-categoria` | [reports/reports/urls.py](urls.py) |
+| `reportes/presupuestos-mensuales` | [reports/reports/urls.py](urls.py) |
+| `snapshots/` | [reports/reports/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["reports.reports"]
+    M --> D0["finance"]
+    M --> D1["security"]
+```
+
+Flujos transversales: [flujo actualizado](../../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

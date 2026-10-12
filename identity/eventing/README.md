@@ -156,3 +156,44 @@ Estado actual despues de esta pasada:
 
 Hoy ya esta fuera del request path; lo siguiente es endurecer todavia mas la
 observabilidad y no cambiar el contrato.
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../../api/v1/routers.py).
+
+- Archivos Python de implementacion: **11** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `438315d8f2a06aa7325650e99d599608567ecc693622a61512f8faf4a17fe8da`.
+- Familias detectadas: management, models, serializers, services, views.
+
+### Declaraciones de modelos detectadas
+
+- `IdentityDomainEventOutbox` en [identity/eventing/models.py](models.py).
+- `UserProductUsageProjection` en [identity/eventing/models.py](models.py).
+- `UserProductUsageProjectionEvent` en [identity/eventing/models.py](models.py).
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `outbox-identidad/ [DRF router]` | [identity/eventing/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["identity.eventing"]
+    M --> D0["common"]
+    M --> D1["tasks"]
+```
+
+Flujos transversales: [flujo actualizado](../../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

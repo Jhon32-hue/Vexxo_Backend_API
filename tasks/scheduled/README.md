@@ -61,3 +61,45 @@ contenedor, comando diario ni registro por entorno.
 `documents.migrate_encryption` comparte el mismo scheduler y advisory lock.
 Es no-op hasta que exista un keyring valido, por lo que activar cifrado no
 requiere agregar procesos ni editar catalogos por entorno.
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../../api/v1/routers.py).
+
+- Archivos Python de implementacion: **14** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `9a20261e6a802e4de0733050aa291244348fa37467906e0f475e0c36876c9e1d`.
+- Familias detectadas: management, models, views.
+
+### Declaraciones de modelos detectadas
+
+- `ScheduledJobState` en [tasks/scheduled/models.py](models.py).
+
+No se detectan declaraciones `path`/`re_path` propias en este alcance.
+Esto no implica que el modulo carezca de consumidores internos.
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["tasks.scheduled"]
+    M --> D0["common"]
+    M --> D1["documents"]
+    M --> D2["finance"]
+    M --> D3["identity"]
+    M --> D4["integrations"]
+    M --> D5["payments"]
+    M --> D6["reports"]
+    M --> D7["security"]
+```
+
+Flujos transversales: [flujo actualizado](../../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

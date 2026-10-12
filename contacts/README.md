@@ -106,3 +106,41 @@ Si creciera:
 
 Este modulo si es funcional hoy y no debe confundirse con `social.contacts`,
 que sigue en estado scaffold.
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../api/v1/routers.py).
+
+- Archivos Python de implementacion: **10** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `8ccc82cfcfeedd270bcb51cec5a977b05e9b4edcd7dfc52eaaa47920dee9d6f3`.
+- Familias detectadas: models, serializers, views.
+
+### Declaraciones de modelos detectadas
+
+- `Contact` en [contacts/models/contact.py](models/contact.py).
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `/ [DRF router]` | [contacts/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["contacts"]
+    M --> D0["finance"]
+```
+
+Flujos transversales: [flujo actualizado](../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

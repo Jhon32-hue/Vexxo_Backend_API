@@ -674,3 +674,74 @@ Rutas principales:
 - Historial temporal de inteligencia para mostrar evolucion del portafolio.
 - Reglas premium por plan para automatizaciones y cuentas de inversion.
 - Motor de recomendaciones conectado a `AccountProductSignal`.
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../../api/v1/routers.py).
+
+- Archivos Python de implementacion: **76** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `610ef08af103b03cae0a3428164d4899485f94c6b1325bed42f7e60dbc393c8a`.
+- Familias detectadas: management, models, serializers, services, views.
+
+### Declaraciones de modelos detectadas
+
+- `Account` en [finance/accounts/models/account.py](models/account.py).
+- `AccountAccess` en [finance/accounts/models/account_access.py](models/account_access.py).
+- `AccountBalanceFallback` en [finance/accounts/models/fallback.py](models/fallback.py).
+- `AccountCurrencyExposure` en [finance/accounts/models/intelligence.py](models/intelligence.py).
+- `AccountIntelligenceDispatchState` en [finance/accounts/models/intelligence.py](models/intelligence.py).
+- `AccountInvitation` en [finance/accounts/models/invitation.py](models/invitation.py).
+- `AccountMembership` en [finance/accounts/models/membership.py](models/membership.py).
+- `AccountOwnerMetrics` en [finance/accounts/models/intelligence.py](models/intelligence.py).
+- `AccountPortfolioSnapshot` en [finance/accounts/models/intelligence.py](models/intelligence.py).
+- `AccountProductSignal` en [finance/accounts/models/intelligence.py](models/intelligence.py).
+- `AccountRiskSnapshot` en [finance/accounts/models/intelligence.py](models/intelligence.py).
+- `AccountTypeDistribution` en [finance/accounts/models/intelligence.py](models/intelligence.py).
+- `BalanceSnapshot` en [finance/accounts/models/balance_snapshot.py](models/balance_snapshot.py).
+- `DomainEventOutbox` en [finance/accounts/models/outbox.py](models/outbox.py).
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `` | [finance/accounts/urls.py](urls.py) |
+| `<int:account_id>/sync/<str:sync_status>/` | [finance/accounts/internal_urls.py](internal_urls.py) |
+| `cuentas/ [DRF router]` | [finance/accounts/urls.py](urls.py) |
+| `distribuciones-tipo-cuenta/ [DRF router]` | [finance/accounts/urls.py](urls.py) |
+| `exposiciones-moneda-cuenta/ [DRF router]` | [finance/accounts/urls.py](urls.py) |
+| `fallbacks-balance-cuenta/ [DRF router]` | [finance/accounts/urls.py](urls.py) |
+| `membresias-cuenta/ [DRF router]` | [finance/accounts/urls.py](urls.py) |
+| `metricas-owner-cuenta/ [DRF router]` | [finance/accounts/urls.py](urls.py) |
+| `outbox-cuentas/ [DRF router]` | [finance/accounts/urls.py](urls.py) |
+| `senales-producto-cuenta/ [DRF router]` | [finance/accounts/urls.py](urls.py) |
+| `snapshots-balance/ [DRF router]` | [finance/accounts/urls.py](urls.py) |
+| `snapshots-portafolio-cuenta/ [DRF router]` | [finance/accounts/urls.py](urls.py) |
+| `snapshots-riesgo-cuenta/ [DRF router]` | [finance/accounts/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["finance.accounts"]
+    M --> D0["alerts"]
+    M --> D1["common"]
+    M --> D2["identity"]
+    M --> D3["integrations"]
+    M --> D4["integrations_stub"]
+    M --> D5["realtime"]
+    M --> D6["security"]
+    M --> D7["support"]
+    M --> D8["tasks"]
+```
+
+Flujos transversales: [flujo actualizado](../../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

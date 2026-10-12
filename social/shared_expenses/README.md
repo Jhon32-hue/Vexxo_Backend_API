@@ -82,3 +82,47 @@ docker compose --env-file .env.local -f docker-compose.local.yml exec -T api pyt
 Cobertura actual: redondeo determinista, porcentaje invalido, creacion atomica,
 idempotencia, acceptance/projection, version conflict, settlement y aislamiento
 de usuarios.
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../../api/v1/routers.py).
+
+- Archivos Python de implementacion: **9** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `2b0675f6c813afe238d742dfb45f5fe97e57243a8d2e908badb0c4960ad54131`.
+- Familias detectadas: models, serializers, services, views.
+
+### Declaraciones de modelos detectadas
+
+- `SharedExpense` en [social/shared_expenses/models.py](models.py).
+- `SharedExpenseDomainEventOutbox` en [social/shared_expenses/models.py](models.py).
+- `SharedExpenseSettlement` en [social/shared_expenses/models.py](models.py).
+- `SharedExpenseShare` en [social/shared_expenses/models.py](models.py).
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `` | [social/shared_expenses/urls.py](urls.py) |
+| `shared-expenses/ [DRF router]` | [social/shared_expenses/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["social.shared_expenses"]
+    M --> D0["common"]
+    M --> D1["contacts"]
+    M --> D2["finance"]
+```
+
+Flujos transversales: [flujo actualizado](../../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

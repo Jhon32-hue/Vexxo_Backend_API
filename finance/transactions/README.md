@@ -1,5 +1,14 @@
 # finance.transactions
 
+## Alcance operativo de los diagramas
+
+El runtime activo de este checkout es local con PostgreSQL. Las menciones a
+Cloud SQL en secuencias historicas designan la persistencia OLTP, no un
+despliegue cloud verificado. El [flujo actual](../../docs/BACKEND_CURRENT_FLOW.md)
+separa registro manual, intake, inferencias y artefactos de settlement.
+`PaymentSettlementRecord` no demuestra por si solo una escritura al ledger;
+esa escritura requiere un servicio de materializacion o intake identificable.
+
 ## Registro manual idempotente
 
 `POST /api/finance/transactions/transactions/` acepta `Idempotency-Key` (maximo
@@ -1131,3 +1140,71 @@ valor anterior/nuevo. Una correccion humana de categoria crea tambien
 
 El intake externo redacta tokens, secretos, passwords, API keys y headers de
 autorizacion antes de persistir JSON, conservando la metadata financiera util.
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../../api/v1/routers.py).
+
+- Archivos Python de implementacion: **51** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `20b44ba1729a1814534a0750213d076641224fe00b64e6cca202c624d3c0fef7`.
+- Familias detectadas: management, models, serializers, services, views.
+
+### Declaraciones de modelos detectadas
+
+- `IncomeSource` en [finance/transactions/Models/transacciones.py](Models/transacciones.py).
+- `ManualTransactionReceipt` en [finance/transactions/Models/manual_receipt.py](Models/manual_receipt.py).
+- `Tag` en [finance/transactions/Models/transacciones.py](Models/transacciones.py).
+- `Transaction` en [finance/transactions/Models/transacciones.py](Models/transacciones.py).
+- `TransactionClassificationRevision` en [finance/transactions/Models/intake.py](Models/intake.py).
+- `TransactionDomainEventOutbox` en [finance/transactions/Models/outbox.py](Models/outbox.py).
+- `TransactionExternalDetails` en [finance/transactions/Models/intake.py](Models/intake.py).
+- `TransactionFieldProvenance` en [finance/transactions/Models/intake.py](Models/intake.py).
+- `TransactionInferenceRequest` en [finance/transactions/Models/inference.py](Models/inference.py).
+- `TransactionIntakeBatch` en [finance/transactions/Models/intake.py](Models/intake.py).
+- `TransactionIntakeReceipt` en [finance/transactions/Models/intake.py](Models/intake.py).
+- `TransactionParticipant` en [finance/transactions/Models/transacciones.py](Models/transacciones.py).
+- `TransactionReconciliationIssue` en [finance/transactions/Models/intake.py](Models/intake.py).
+- `TransactionSourceLink` en [finance/transactions/Models/intake.py](Models/intake.py).
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `` | [finance/transactions/urls.py](urls.py) |
+| `income-sources/ [DRF router]` | [finance/transactions/urls.py](urls.py) |
+| `inference-requests/ [DRF router]` | [finance/transactions/urls.py](urls.py) |
+| `intake/batches/` | [finance/transactions/internal_urls.py](internal_urls.py) |
+| `intake/batches/<uuid:batch_id>/apply/` | [finance/transactions/internal_urls.py](internal_urls.py) |
+| `intake/message/` | [finance/transactions/internal_urls.py](internal_urls.py) |
+| `intake/reconcile/` | [finance/transactions/internal_urls.py](internal_urls.py) |
+| `intake/row/` | [finance/transactions/internal_urls.py](internal_urls.py) |
+| `reconciliation/issues/<int:issue_id>/resolve/` | [finance/transactions/internal_urls.py](internal_urls.py) |
+| `tags/ [DRF router]` | [finance/transactions/urls.py](urls.py) |
+| `transaction-participants/ [DRF router]` | [finance/transactions/urls.py](urls.py) |
+| `transactions/ [DRF router]` | [finance/transactions/urls.py](urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["finance.transactions"]
+    M --> D0["alerts"]
+    M --> D1["common"]
+    M --> D2["contacts"]
+    M --> D3["identity"]
+    M --> D4["integrations_stub"]
+    M --> D5["security"]
+    M --> D6["tasks"]
+```
+
+Flujos transversales: [flujo actualizado](../../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->

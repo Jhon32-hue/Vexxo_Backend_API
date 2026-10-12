@@ -52,3 +52,49 @@ mantener separacion fuerte de permisos y autenticacion respecto a la API B2C.
 El bloque existe e incluso esta instalado en Django, pero en esta pasada no
 detecte una superficie rica en cada subapp. Se documentan como herramientas
 internas preparadas.
+
+<!-- backend-source-audit:start -->
+## Evidencia del codigo y mapa de dependencias
+
+Inventario estatico reproducible del checkout. Describe declaraciones e imports;
+no prueba despliegue, permisos efectivos ni que todos los caminos se ejecuten.
+Las rutas son locales a su URLConf: el prefijo publico se consulta en
+[`api/v1/routers.py`](../api/v1/routers.py).
+
+- Archivos Python de implementacion: **30** (excluye tests y migraciones).
+- Huella SHA-256 del codigo inventariado: `80827417b93045ce67db14d1dcd642192d34341e20ecc0200e9d8bf6a30381d3`.
+- Familias detectadas: models, serializers, services, views.
+
+### Rutas declaradas
+
+| Patron local | Fuente |
+| --- | --- |
+| `` | [admin_tools/user_lookup/urls.py](user_lookup/urls.py) |
+| `operations/` | [admin_tools/dashboards/urls.py](dashboards/urls.py) |
+| `users/ [DRF router]` | [admin_tools/user_lookup/urls.py](user_lookup/urls.py) |
+
+### Diagrama de dependencia estatica
+
+Las flechas representan imports entre paquetes, no eventos ni orden de ejecucion.
+
+```mermaid
+flowchart LR
+    M["admin_tools"]
+    M --> D0["alerts"]
+    M --> D1["documents"]
+    M --> D2["finance"]
+    M --> D3["identity"]
+    M --> D4["integrations"]
+    M --> D5["notifications"]
+    M --> D6["payments"]
+    M --> D7["planning"]
+    M --> D8["security"]
+    M --> D9["support"]
+    M --> D10["tasks"]
+```
+
+Flujos transversales: [flujo actualizado](../docs/BACKEND_CURRENT_FLOW.md).
+
+Regeneracion: `py -3 scripts/audit_backend_docs.py --write`.
+Comprobacion de deriva: `py -3 scripts/audit_backend_docs.py --check`.
+<!-- backend-source-audit:end -->
