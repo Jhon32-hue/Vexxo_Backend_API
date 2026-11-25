@@ -1,3 +1,5 @@
+"""Reserved module. Active HTTP routing lives in realtime.consumers.urls.
+
 # realtime
 
 ## Que hace
@@ -80,3 +82,4 @@ La fuente semantica actual sigue siendo `RealtimeSignal`.
 - no debe cargar logica de negocio rica
 - no debe reemplazar outbox ni auditoria
 - debe poder migrar a gateways vivos sin romper el contrato de lectura
+"""

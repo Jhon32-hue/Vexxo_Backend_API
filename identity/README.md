@@ -38,7 +38,7 @@ Las rutas son locales a su URLConf: el prefijo publico se consulta en
 [`api/v1/routers.py`](../api/v1/routers.py).
 
 - Archivos Python de implementacion: **103** (excluye tests y migraciones).
-- Huella SHA-256 del codigo inventariado: `ed6666a2f381d85524d83f52cef20eafdee6154ed27da0fa3c7424a08f5de8d5`.
+- Huella SHA-256 del codigo inventariado: `9de06da3792901c52b2261c71b0fa73e922c83e63a9ddc97cda11775b6982ffd`.
 - Familias detectadas: management, models, serializers, services, views.
 
 ### Declaraciones de modelos detectadas

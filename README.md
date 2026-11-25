@@ -1,6 +1,20 @@
 # Vexxo Backend API
 
+## Correccion de imports (2026-11-04)
+
+Los helpers de usuario consultan los modelos canonicos `Contact` y
+`MonthlyReportClose`; el limite de cuentas conectadas consulta `Account` sin
+intentar importar un modelo del stub. Los cuatro modulos reservados de realtime
+son Python importable y conservan su documentacion como docstring.
+Validacion: `manage.py check`, siete pruebas en
+`identity.users.test_import_contracts` e importacion de los 847 modulos de
+aplicacion, con Django inicializado y sin base de datos operativa.
+Las pruebas de imports no certifican SQL ni concurrencia de PostgreSQL.
+
 ## Flujo y auditoria documental actualizados
+
+Evaluacion de producto y bloqueos de desarrollo:
+[Vexxo en 2026: producto, duplicaciones y conexion Flutter](docs/PRODUCT_AND_ENGINEERING_ASSESSMENT_2026.md).
 
 Revision 2026-10-12: [flujo vigente y diagramas explicativos](docs/BACKEND_CURRENT_FLOW.md)
 y [inventario verificable por modulo](docs/BACKEND_DOCUMENTATION_AUDIT.md).

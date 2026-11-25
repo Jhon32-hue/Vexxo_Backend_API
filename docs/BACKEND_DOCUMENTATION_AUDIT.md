@@ -110,10 +110,7 @@ README de dominio inventariados: **98**.
 
 ## Archivos que requieren revision
 
-- `realtime/redis_channels.py`: linea 5: invalid syntax.
-- `realtime/routing.py`: linea 5: invalid syntax.
-- `realtime/typing.py`: linea 5: invalid syntax.
-- `realtime/unread_counters.py`: linea 5: invalid syntax.
+Sin errores de sintaxis detectados en las fuentes inventariadas.
 
 ## Catalogos ejecutables
 

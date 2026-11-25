@@ -1,5 +1,12 @@
 # realtime
 
+## Modulos reservados importables
+
+`redis_channels.py`, `routing.py`, `typing.py` y `unread_counters.py` contienen
+documentacion en docstrings validos. No inicializan Redis, Channels ni sockets.
+El routing HTTP vigente sigue en `realtime.consumers.urls`; ASGI sigue usando
+Django. Se validan sus imports en `identity.users.test_import_contracts`.
+
 ## Que hace
 
 `realtime` guarda senales tecnicas livianas para feedback rapido de la app.
@@ -111,7 +118,7 @@ Las rutas son locales a su URLConf: el prefijo publico se consulta en
 [`api/v1/routers.py`](../api/v1/routers.py).
 
 - Archivos Python de implementacion: **11** (excluye tests y migraciones).
-- Huella SHA-256 del codigo inventariado: `2354d5e8beec79ad93cf6cb8f3ca27de5f7a29172b99599f76d98ca689c95118`.
+- Huella SHA-256 del codigo inventariado: `6d26bb85b2c58f5489ac523a675005cba7b4e1eed8bbd5dbad22bfe9333fa905`.
 - Familias detectadas: models, views.
 
 ### Declaraciones de modelos detectadas

@@ -316,22 +316,7 @@ class User(AbstractUser):
         return current < limit
 
     def can_add_api_connection(self) -> bool:
-        try:
-            from integrations_stub.banks.models import FinancialConnection
-        except Exception:
-            from finance.accounts.models.account import Account, AccountStatus
-
-            cfg = self.get_plan_config()
-            limit = cfg.get("max_connected_accounts", cfg.get("max_api_connections"))
-            if limit is None:
-                return True
-            current = (
-                Account.objects.filter(owner=self, status__in=[AccountStatus.ACTIVE, AccountStatus.FROZEN])
-                .exclude(provider="")
-                .exclude(external_id="")
-                .count()
-            )
-            return current < limit
+        from finance.accounts.models.account import Account, AccountStatus
 
         cfg = self.get_plan_config()
         limit = cfg.get("max_connected_accounts", cfg.get("max_api_connections"))
@@ -339,17 +324,17 @@ class User(AbstractUser):
         if limit is None:
             return True
 
-        current = FinancialConnection.objects.filter(owner=self, is_active=True).count()
+        # This capability limits connected accounts, not provider connections.
+        current = (
+            Account.objects.filter(owner=self, status__in=[AccountStatus.ACTIVE, AccountStatus.FROZEN])
+            .exclude(provider="")
+            .exclude(external_id="")
+            .count()
+        )
         return current < limit
 
     def can_add_contact(self) -> bool:
-        try:
-            from contacts.models.contact import Contact
-        except Exception:
-            try:
-                from social.contacts.models.contact import Contact
-            except Exception:
-                return True
+        from contacts.models import Contact
 
         cfg = self.get_plan_config()
         limit = cfg.get("max_contacts")
@@ -363,10 +348,7 @@ class User(AbstractUser):
     def can_generate_monthly_report(self, when=None) -> bool:
         from datetime import date
 
-        try:
-            from reports.monthly_reports.models.report import MonthlyReport
-        except Exception:
-            return True
+        from reports.monthly_reports.models import MonthlyReportClose
 
         cfg = self.get_plan_config()
         limit = cfg.get("max_monthly_reports")
@@ -381,7 +363,7 @@ class User(AbstractUser):
         else:
             end = when.replace(month=when.month + 1, day=1)
 
-        current = MonthlyReport.objects.filter(
+        current = MonthlyReportClose.objects.filter(
             owner=self,
             created_at__gte=start,
             created_at__lt=end,

@@ -1,5 +1,17 @@
 # identity.users
 
+## Modelos canonicos en helpers de capacidad
+
+Los imports son locales al metodo para respetar la inicializacion de Django.
+`can_add_contact` usa `contacts.models.Contact`; `can_generate_monthly_report`
+usa `reports.monthly_reports.models.MonthlyReportClose` y cuenta creaciones del
+mes solicitado. No convierte errores de importacion en permisos concedidos.
+`can_add_api_connection` conserva el contrato de limite por cuentas conectadas:
+cuentas activas/congeladas con provider y external_id, no cantidad de conexiones
+de un proveedor. No depende del antiguo stub `FinancialConnection`.
+
+Regresion sin DB: `python manage.py test identity.users.test_import_contracts`.
+
 ## Que hace
 
 Este modulo concentra identidad base de usuario, plan efectivo de producto y
@@ -437,7 +449,7 @@ Las rutas son locales a su URLConf: el prefijo publico se consulta en
 [`api/v1/routers.py`](../../api/v1/routers.py).
 
 - Archivos Python de implementacion: **35** (excluye tests y migraciones).
-- Huella SHA-256 del codigo inventariado: `eeb8c64168bf43c5059d13d4ffabc87d246376c1cb7621abdcec5c682f3bbe48`.
+- Huella SHA-256 del codigo inventariado: `9b2636e45a637d9675f52c910a5ae101bea809f36c432d7b0330dd71402ddd5c`.
 - Familias detectadas: models, serializers, services, views.
 
 ### Declaraciones de modelos detectadas
